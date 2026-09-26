@@ -136,14 +136,22 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          ndk-version: r26c
-          cmake-version: 3.22.1
-          platforms: android-34
-          build-tools: 34.0.0
+      - name: Setup Android SDK (Manual)
+        run: |
+          # Install Android SDK manually
+          ANDROID_SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd "$ANDROID_SDK_ROOT/cmdline-tools"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          
+          # Accept licenses and install required packages
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -287,11 +295,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install LÖVE ${{ env.LOVE_VERSION }}
+      - name: Download LÖVE 12.0 AppImage
         run: |
-          sudo apt-get update
-          sudo apt-get install -y love2d
-          echo "LOVE_DIR=/usr/bin" >> $GITHUB_PATH
+          LOVE_URL="https://github.com/love2d/love/releases/download/12.0/love-12.0-linux-x86_64.AppImage"
+          wget -q "$LOVE_URL" -O love.AppImage
+          chmod +x love.AppImage
+          ./love.AppImage --appimage-extract
+          echo "LOVE_DIR=$(pwd)/squashfs-root" >> $GITHUB_PATH
 
       - name: Create .love file
         run: |
@@ -302,19 +312,8 @@ jobs:
           # Create game.love (zip of source)
           zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
           
-          # Find love executable and libraries
-          LOVE_EXE=$(which love)
-          LOVE_LIBS=$(ldd "$LOVE_EXE" 2>/dev/null | grep -o '/[^ ]*' | sort -u)
-          
-          # Copy love executable
-          cp "$LOVE_EXE" "$DIST_DIR/"
-          
-          # Copy dependencies
-          for lib in $LOVE_LIBS; do
-            if [[ "$lib" == /lib/* ]] || [[ "$lib" == /usr/lib/* ]]; then
-              cp "$lib" "$DIST_DIR/" 2>/dev/null || true
-            fi
-          done
+          # Copy love runtime
+          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
           
           # Copy game
           cp game.love "$DIST_DIR/game.love"
