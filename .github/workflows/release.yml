@@ -1,4 +1,4 @@
-name: Release Build #
+name: Release Build
 
 on:
   push:
@@ -70,54 +70,58 @@ jobs:
       - name: Create release body
         id: release_body
         run: |
-          cat > release_body.md << 'EOF'
-# 🎮 ${{ steps.extract_version.outputs.release_name }}
-
-## 📥 Descargas
-
-| Plataforma | Archivo |
-|------------|---------|
-| **Android** | `Light-Engine-${{ steps.extract_version.outputs.version }}-android.apk` |
-| **Windows (64-bit)** | `Light-Engine-${{ steps.extract_version.outputs.version }}-windows-x64.zip` |
-| **Linux (64-bit)** | `Light-Engine-${{ steps.extract_version.outputs.version }}-linux-x64.zip` |
-
-## 📋 Novedades
-
-${{ steps.changelog.outputs.changelog }}
-
----
-
-## ⚙️ Información de la compilación
-
-- **Versión**: ${{ steps.extract_version.outputs.version }}
-- **Motor**: LÖVE 11.5
-- **Paquete**: com.zyn.lightengine
-- **Fecha**: $(date -u +"%Y-%m-%d %H:%M UTC")
-- **Commit**: ${{ github.sha }}
-
-## 🛠️ Requisitos
-
-### Android
-- Android 7.0 (API 24) o superior
-- Arquitectura: arm64-v8a, armeabi-v7a, x86, x86_64
-
-### Windows
-- Windows 10/11 (64-bit)
-- Visual C++ Redistributable 2019+
-
-### Linux
-- glibc 2.31+
-- libGL, libopenal, libSDL2
-
-## 🎨 Capturas de pantalla
-
-![Light Engine Logo](assets/images/menus/splashscreen/FNFLOVE_logo.png)
-
----
-
-**Desarrollado por [Zyn](https://github.com/toZyn) | Basado en [FNF Love](https://github.com/FNF-Love)**
-
-EOF
+          VERSION="${{ steps.extract_version.outputs.version }}"
+          RELEASE_NAME="${{ steps.extract_version.outputs.release_name }}"
+          CHANGELOG="${{ steps.changelog.outputs.changelog }}"
+          COMMIT="${{ github.sha }}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+          {
+            echo "# 🎮 ${RELEASE_NAME}"
+            echo ""
+            echo "## 📥 Descargas"
+            echo ""
+            echo "| Plataforma | Archivo |"
+            echo "|------------|---------|"
+            echo "| **Android** | \`Light-Engine-${VERSION}-android.apk\` |"
+            echo "| **Windows (64-bit)** | \`Light-Engine-${VERSION}-windows-x64.zip\` |"
+            echo "| **Linux (64-bit)** | \`Light-Engine-${VERSION}-linux-x64.zip\` |"
+            echo ""
+            echo "## 📋 Novedades"
+            echo ""
+            echo "${CHANGELOG}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## ⚙️ Información de la compilación"
+            echo ""
+            echo "- **Versión**: ${VERSION}"
+            echo "- **Motor**: LÖVE 11.5"
+            echo "- **Paquete**: com.zyn.lightengine"
+            echo "- **Fecha**: ${DATE}"
+            echo "- **Commit**: ${COMMIT}"
+            echo ""
+            echo "## 🛠️ Requisitos"
+            echo ""
+            echo "### Android"
+            echo "- Android 7.0 (API 24) o superior"
+            echo "- Arquitectura: arm64-v8a, armeabi-v7a, x86, x86_64"
+            echo ""
+            echo "### Windows"
+            echo "- Windows 10/11 (64-bit)"
+            echo "- Visual C++ Redistributable 2019+"
+            echo ""
+            echo "### Linux"
+            echo "- glibc 2.31+"
+            echo "- libGL, libopenal, libSDL2"
+            echo ""
+            echo "## 🎨 Capturas de pantalla"
+            echo ""
+            echo "![Light Engine Logo](assets/images/menus/splashscreen/FNFLOVE_logo.png)"
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Desarrollado por [Zyn](https://github.com/toZyn) | Basado en [FNF Love](https://github.com/FNF-Love)**"
+          } > release_body.md
           echo "body<<EOF" >> $GITHUB_OUTPUT
           cat release_body.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -303,24 +307,24 @@ EOF
           cp "$LOVE_FILE" "$DIST_DIR/game.love"
           
           # Create launch script
-          cat > "$DIST_DIR/Light Engine" << 'LAUNCHER'
-          #!/bin/bash
-          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"
-          exec "$SCRIPT_DIR/love" "$SCRIPT_DIR/game.love" "$@"
-          LAUNCHER
+          {
+            echo '#!/bin/bash'
+            echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+            echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"'
+            echo 'exec "$SCRIPT_DIR/love" "$SCRIPT_DIR/game.love" "$@"'
+          } > "$DIST_DIR/Light Engine"
           chmod +x "$DIST_DIR/Light Engine"
           
           # Create desktop entry
-          cat > "$DIST_DIR/Light Engine.desktop" << DESKTOP
-          [Desktop Entry]
-          Name=Light Engine
-          Comment=Friday Night Funkin' Light Engine
-          Exec=Light Engine
-          Icon=light-engine
-          Type=Application
-          Categories=Game;ArcadeGame;
-          DESKTOP
+          {
+            echo '[Desktop Entry]'
+            echo 'Name=Light Engine'
+            echo 'Comment=Friday Night Funkin\' Light Engine'
+            echo 'Exec=Light Engine'
+            echo 'Icon=light-engine'
+            echo 'Type=Application'
+            echo 'Categories=Game;ArcadeGame;'
+          } > "$DIST_DIR/Light Engine.desktop"
           
           # Zip it
           cd "$DIST_DIR" && zip -r "../Light-Engine-$VERSION-linux-x64.zip" .
