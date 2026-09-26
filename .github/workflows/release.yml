@@ -142,6 +142,8 @@ jobs:
           api-level: 34
           ndk-version: r26c
           cmake-version: 3.22.1
+          platforms: android-34
+          build-tools: 34.0.0
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -227,8 +229,38 @@ jobs:
           # Copy love.exe and dlls
           Copy-Item "$loveDir\*" $distDir -Recurse -Force
           
-          # Create game.love (zip of source) - use 7zip for better exclude support
-          7z a "$distDir\game.love" . -xr!.git -xr!.github -xr!android -xr!tools -xr!lib -xr!release -x!*.love -x!*.apk -x!*.zip -x!*.md -x!*.txt -x!*.xml -x!*.json -x!*.lua -x!*.yml -x!*.yaml -x!Cargo* -x!actionlint* -x!job_logs*
+          # Create game.love (zip of source) - use Compress-Archive with exclude
+          $exclude = @(
+            ".git*",
+            ".github",
+            "android",
+            "tools",
+            "lib",
+            "release",
+            "love",
+            "*.love",
+            "*.apk",
+            "*.zip",
+            "*.md",
+            "*.txt",
+            "*.xml",
+            "*.json",
+            "*.lua",
+            "*.yml",
+            "*.yaml",
+            "Cargo*",
+            "actionlint*",
+            "job_logs*"
+          )
+          $files = Get-ChildItem -Recurse -File | Where-Object { 
+            $relative = $_.FullName.Substring((Get-Location).Path.Length + 1)
+            $shouldExclude = $false
+            foreach ($pattern in $exclude) {
+              if ($relative -like $pattern) { $shouldExclude = $true; break }
+            }
+            return -not $shouldExclude
+          }
+          $files | Compress-Archive -DestinationPath "$distDir\game.love" -Force
           
           # Create launch script
           "@echo off
@@ -255,14 +287,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download LÖVE AppImage (${{ env.LOVE_VERSION }})
+      - name: Install LÖVE ${{ env.LOVE_VERSION }}
         run: |
-          LOVE_VERSION="${{ env.LOVE_VERSION }}"
-          LOVE_URL="https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-linux-x86_64.AppImage"
-          wget -q "$LOVE_URL" -O love.AppImage
-          chmod +x love.AppImage
-          ./love.AppImage --appimage-extract
-          echo "LOVE_DIR=$(pwd)/squashfs-root" >> $GITHUB_PATH
+          sudo apt-get update
+          sudo apt-get install -y love2d
+          echo "LOVE_DIR=/usr/bin" >> $GITHUB_PATH
 
       - name: Create .love file
         run: |
@@ -273,8 +302,19 @@ jobs:
           # Create game.love (zip of source)
           zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
           
-          # Copy love runtime
-          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
+          # Find love executable and libraries
+          LOVE_EXE=$(which love)
+          LOVE_LIBS=$(ldd "$LOVE_EXE" 2>/dev/null | grep -o '/[^ ]*' | sort -u)
+          
+          # Copy love executable
+          cp "$LOVE_EXE" "$DIST_DIR/"
+          
+          # Copy dependencies
+          for lib in $LOVE_LIBS; do
+            if [[ "$lib" == /lib/* ]] || [[ "$lib" == /usr/lib/* ]]; then
+              cp "$lib" "$DIST_DIR/" 2>/dev/null || true
+            fi
+          done
           
           # Copy game
           cp game.love "$DIST_DIR/game.love"
