@@ -163,7 +163,7 @@ jobs:
 
       - name: Clone love-android
         run: |
-          git clone --depth 1 --branch 11.5a https://github.com/love2d/love-android.git
+          git clone --depth 1 --branch 11.5a --recurse-submodules https://github.com/love2d/love-android.git
           echo "LOVE_ANDROID_DIR=$(pwd)/love-android" >> $GITHUB_ENV
 
       - name: Apply patches and copy files
@@ -293,13 +293,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download LÖVE 11.4 AppImage
+      - name: Download LÖVE 11.5 Linux tarball
         run: |
-          LOVE_URL="https://github.com/love2d/love/releases/download/11.4/love-11.4-linux-x86_64.AppImage"
-          wget -q "$LOVE_URL" -O love.AppImage
-          chmod +x love.AppImage
-          ./love.AppImage --appimage-extract
-          echo "LOVE_DIR=$(pwd)/squashfs-root" >> $GITHUB_PATH
+          LOVE_URL="https://github.com/love2d/love/releases/download/11.5/love-11.5-linux-x86_64.tar.gz"
+          wget -q "$LOVE_URL" -O love.tar.gz
+          tar -xzf love.tar.gz
+          LOVE_DIR=$(find . -maxdepth 1 -type d -name 'love-11.5*' | head -1)
+          echo "LOVE_DIR=$(pwd)/$LOVE_DIR" >> $GITHUB_PATH
 
       - name: Create .love file
         run: |
