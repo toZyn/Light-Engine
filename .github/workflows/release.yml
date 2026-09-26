@@ -1,0 +1,392 @@
+name: Release Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'project.lua'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (optional, reads from project.lua)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  LOVE_VERSION: 11.5
+  PROJECT_NAME: "Light Engine"
+
+jobs:
+  # Job to extract version and generate changelog
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract_version.outputs.version }}
+      tag: ${{ steps.extract_version.outputs.tag }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+      release_name: ${{ steps.extract_version.outputs.release_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from project.lua
+        id: extract_version
+        run: |
+          VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' project.lua)
+          TAG="v${VERSION}"
+          RELEASE_NAME="Light Engine ${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          version: ${{ steps.extract_version.outputs.version }}
+          path: ./CHANGELOG.md
+          fail_if_not_found: false
+
+      - name: Fallback changelog from git log
+        if: steps.changelog.outputs.changelog == ''
+        run: |
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")..HEAD 2>/dev/null | head -30)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- Initial release of Light Engine ${VERSION}"
+          fi
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
+
+      - name: Create release body
+        id: release_body
+        run: |
+          cat > release_body.md << 'EOF'
+# 🎮 ${{ steps.extract_version.outputs.release_name }}
+
+## 📥 Descargas
+
+| Plataforma | Archivo |
+|------------|---------|
+| **Android** | `Light-Engine-${{ steps.extract_version.outputs.version }}-android.apk` |
+| **Windows (64-bit)** | `Light-Engine-${{ steps.extract_version.outputs.version }}-windows-x64.zip` |
+| **Linux (64-bit)** | `Light-Engine-${{ steps.extract_version.outputs.version }}-linux-x64.zip` |
+
+## 📋 Novedades
+
+${{ steps.changelog.outputs.changelog }}
+
+---
+
+## ⚙️ Información de la compilación
+
+- **Versión**: ${{ steps.extract_version.outputs.version }}
+- **Motor**: LÖVE 11.5
+- **Paquete**: com.zyn.lightengine
+- **Fecha**: $(date -u +"%Y-%m-%d %H:%M UTC")
+- **Commit**: ${{ github.sha }}
+
+## 🛠️ Requisitos
+
+### Android
+- Android 7.0 (API 24) o superior
+- Arquitectura: arm64-v8a, armeabi-v7a, x86, x86_64
+
+### Windows
+- Windows 10/11 (64-bit)
+- Visual C++ Redistributable 2019+
+
+### Linux
+- glibc 2.31+
+- libGL, libopenal, libSDL2
+
+## 🎨 Capturas de pantalla
+
+![Light Engine Logo](assets/images/menus/splashscreen/FNFLOVE_logo.png)
+
+---
+
+**Desarrollado por [Zyn](https://github.com/toZyn) | Basado en [FNF Love](https://github.com/FNF-Love)**
+
+EOF
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat release_body.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  # Android Build
+  build-android:
+    name: Build Android
+    needs: prepare
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.version != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          ndk-version: r26c
+          cmake-version: 3.22.1
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Clone love-android
+        run: |
+          git clone --depth 1 --branch 11.5a https://github.com/love2d/love-android.git
+          echo "LOVE_ANDROID_DIR=$(pwd)/love-android" >> $GITHUB_ENV
+
+      - name: Apply patches and copy files
+        run: |
+          cd love-android
+          # Apply PhysFS patch for Android/media access
+          if git -C love/src/jni/love apply --reverse --check ../android/allow-android-media-mount.patch >/dev/null 2>&1; then
+            echo "Patch already applied"
+          elif git -C love/src/jni/love apply --check ../android/allow-android-media-mount.patch >/dev/null 2>&1; then
+            git -C love/src/jni/love apply ../android/allow-android-media-mount.patch
+          fi
+
+          # Copy launcher and manifest
+          cp ../android/StoragePermissionActivity.java love/src/main/java/org/love2d/android/StoragePermissionActivity.java
+          cp ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
+          cp ../android/gradle.properties.example gradle.properties
+
+      - name: Install Boon
+        run: |
+          cargo install boon --locked
+
+      - name: Build .love file
+        run: |
+          boon build . --target love --version ${{ env.LOVE_VERSION }}
+          LOVE_FILE=$(ls release/*.love | head -1)
+          echo "LOVE_FILE=$LOVE_FILE" >> $GITHUB_ENV
+
+      - name: Embed .love into APK
+        run: |
+          cd love-android
+          cp ../$LOVE_FILE app/src/embed/assets/game.love
+
+      - name: Build APK
+        run: |
+          cd love-android
+          chmod +x gradlew
+          ./gradlew :app:assembleEmbedNoRecordRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: love-android/app/build/outputs/apk/embedNoRecord/release/app-embed-noRecord-release-unsigned.apk
+          retention-days: 30
+
+  # Windows Build
+  build-windows:
+    name: Build Windows
+    needs: prepare
+    runs-on: windows-latest
+    if: needs.prepare.outputs.version != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download LÖVE ${{ env.LOVE_VERSION }} for Windows
+        run: |
+          $LOVE_VERSION = "${{ env.LOVE_VERSION }}"
+          $LOVE_URL = "https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-win64.zip"
+          Invoke-WebRequest -Uri $LOVE_URL -OutFile "love-$LOVE_VERSION-win64.zip"
+          Expand-Archive -Path "love-$LOVE_VERSION-win64.zip" -DestinationPath "love"
+          echo "LOVE_DIR=$(Get-Location)/love/love-$LOVE_VERSION-win64" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Install Boon
+        run: cargo install boon --locked
+        shell: pwsh
+
+      - name: Build .love file
+        run: |
+          boon build . --target love --version ${{ env.LOVE_VERSION }}
+          $env:LOVE_FILE = (Get-ChildItem release/*.love | Select-Object -First 1).FullName
+          echo "LOVE_FILE=$env:LOVE_FILE" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Create Windows distribution
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $distDir = "Light-Engine-$version-windows-x64"
+          New-Item -ItemType Directory -Path $distDir -Force
+          
+          # Copy love.exe and dlls
+          $loveDir = (Get-Command love.exe).Source
+          Copy-Item "$loveDir\*" $distDir -Recurse -Force
+          
+          # Embed game
+          Copy-Item $env:LOVE_FILE "$distDir\game.love"
+          
+          # Create launch script
+          "@echo off
+          start love.exe game.love" | Out-File -Encoding ASCII "$distDir\Light Engine.bat"
+          
+          # Zip it
+          Compress-Archive -Path "$distDir\*" -DestinationPath "Light-Engine-$version-windows-x64.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: Light-Engine-${{ needs.prepare.outputs.version }}-windows-x64.zip
+          retention-days: 30
+
+  # Linux Build
+  build-linux:
+    name: Build Linux
+    needs: prepare
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.version != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download LÖVE ${{ env.LOVE_VERSION }} for Linux
+        run: |
+          LOVE_VERSION="${{ env.LOVE_VERSION }}"
+          LOVE_URL="https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-linux-x86_64.AppImage"
+          wget -q "$LOVE_URL" -O love.AppImage
+          chmod +x love.AppImage
+          ./love.AppImage --appimage-extract
+          echo "LOVE_DIR=$(pwd)/squashfs-root" >> $GITHUB_PATH
+
+      - name: Install Boon
+        run: cargo install boon --locked
+
+      - name: Build .love file
+        run: |
+          boon build . --target love --version ${{ env.LOVE_VERSION }}
+          LOVE_FILE=$(ls release/*.love | head -1)
+          echo "LOVE_FILE=$LOVE_FILE" >> $GITHUB_ENV
+
+      - name: Create Linux distribution
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          DIST_DIR="Light-Engine-$VERSION-linux-x64"
+          mkdir -p "$DIST_DIR"
+          
+          # Copy love runtime
+          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
+          
+          # Copy game
+          cp "$LOVE_FILE" "$DIST_DIR/game.love"
+          
+          # Create launch script
+          cat > "$DIST_DIR/Light Engine" << 'LAUNCHER'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"
+          exec "$SCRIPT_DIR/love" "$SCRIPT_DIR/game.love" "$@"
+          LAUNCHER
+          chmod +x "$DIST_DIR/Light Engine"
+          
+          # Create desktop entry
+          cat > "$DIST_DIR/Light Engine.desktop" << DESKTOP
+          [Desktop Entry]
+          Name=Light Engine
+          Comment=Friday Night Funkin' Light Engine
+          Exec=Light Engine
+          Icon=light-engine
+          Type=Application
+          Categories=Game;ArcadeGame;
+          DESKTOP
+          
+          # Zip it
+          cd "$DIST_DIR" && zip -r "../Light-Engine-$VERSION-linux-x64.zip" .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-zip
+          path: Light-Engine-${{ needs.prepare.outputs.version }}-linux-x64.zip
+          retention-days: 30
+
+  # Create Release
+  release:
+    name: Create Release
+    needs: [prepare, build-android, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.version != ''
+    steps:
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: ./artifacts/android
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+          path: ./artifacts/windows
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-zip
+          path: ./artifacts/linux
+
+      - name: Rename artifacts
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          mv ./artifacts/android/*.apk "Light-Engine-$VERSION-android.apk"
+          mv ./artifacts/windows/*.zip "Light-Engine-$VERSION-windows-x64.zip"
+          mv ./artifacts/linux/*.zip "Light-Engine-$VERSION-linux-x64.zip"
+
+      - name: Upload logo to release
+        run: |
+          cp assets/images/menus/splashscreen/FNFLOVE_logo.png light-engine-logo.png
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.release_name }}
+          body_path: release_body.md
+          files: |
+            Light-Engine-${{ needs.prepare.outputs.version }}-android.apk
+            Light-Engine-${{ needs.prepare.outputs.version }}-windows-x64.zip
+            Light-Engine-${{ needs.prepare.outputs.version }}-linux-x64.zip
+            light-engine-logo.png
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify release
+        run: |
+          gh release view ${{ needs.prepare.outputs.tag }} --json assets --jq '.assets[].name'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
