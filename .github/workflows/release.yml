@@ -180,6 +180,14 @@ jobs:
           cp ../android/StoragePermissionActivity.java love/src/main/java/org/love2d/android/StoragePermissionActivity.java
           cp ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
           cp ../android/gradle.properties.example gradle.properties
+          
+          # Copy icons to love-android resources
+          mkdir -p app/src/main/res/drawable-mdpi app/src/main/res/drawable-hdpi app/src/main/res/drawable-xhdpi app/src/main/res/drawable-xxhdpi app/src/main/res/drawable-xxxhdpi
+          cp ../android/res/drawable-mdpi/icon.png app/src/main/res/drawable-mdpi/icon.png
+          cp ../android/res/drawable-hdpi/icon.png app/src/main/res/drawable-hdpi/icon.png
+          cp ../android/res/drawable-xhdpi/icon.png app/src/main/res/drawable-xhdpi/icon.png
+          cp ../android/res/drawable-xxhdpi/icon.png app/src/main/res/drawable-xxhdpi/icon.png
+          cp ../android/res/drawable-xxxhdpi/icon.png app/src/main/res/drawable-xxxhdpi/icon.png
 
       - name: Create .love file
         run: |
@@ -293,12 +301,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install LÖVE from PPA
+      - name: Download LÖVE 11.5 Linux tarball
         run: |
-          sudo add-apt-repository -y ppa:love2d/love
-          sudo apt-get update
-          sudo apt-get install -y love
-          echo "LOVE_DIR=/usr/bin" >> $GITHUB_PATH
+          LOVE_URL="https://github.com/love2d/love/releases/download/11.5/love-11.5-linux-x86_64.tar.gz"
+          wget -q "$LOVE_URL" -O love.tar.gz
+          tar -xzf love.tar.gz
+          # Find the extracted directory (e.g., love-11.5-linux-x86_64)
+          LOVE_DIR=$(ls -d love-11.5* | head -1)
+          echo "LOVE_DIR=$(pwd)/$LOVE_DIR" >> $GITHUB_ENV
+          echo "$LOVE_DIR" >> $GITHUB_PATH
 
       - name: Create .love file
         run: |
@@ -309,19 +320,8 @@ jobs:
           # Create game.love (zip of source)
           zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
           
-          # Find love executable and libraries
-          LOVE_EXE=$(which love)
-          LOVE_LIBS=$(ldd "$LOVE_EXE" 2>/dev/null | grep -o '/[^ ]*' | sort -u)
-          
-          # Copy love executable
-          cp "$LOVE_EXE" "$DIST_DIR/"
-          
-          # Copy dependencies
-          for lib in $LOVE_LIBS; do
-            if [[ "$lib" == /lib/* ]] || [[ "$lib" == /usr/lib/* ]]; then
-              cp "$lib" "$DIST_DIR/" 2>/dev/null || true
-            fi
-          done
+          # Copy love runtime
+          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
           
           # Copy game
           cp game.love "$DIST_DIR/game.love"
