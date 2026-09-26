@@ -100,23 +100,160 @@ jobs:
             echo ""
             echo "### Windows"
             echo "- Windows 10/11 (64-bit)"
-            echo "- Visual C++ Redistributable 2019+"
+            echo "- Visual C++ Redistributable 2015-2022"
             echo ""
             echo "### Linux"
             echo "- glibc 2.31+"
-            echo "- libGL, libopenal, libSDL2"
+            echo "- libSDL2, libOpenAL, libfreetype, libluajit"
             echo ""
-            echo "## 🎨 Capturas de pantalla"
+            echo "## 📄 Licencia"
             echo ""
-            echo "![Light Engine Logo](assets/images/menus/splashscreen/FNFLOVE_logo.png)"
-            echo ""
-            echo "---"
-            echo ""
-            echo "**Desarrollado por [Zyn](https://github.com/toZyn) | Basado en [FNF Love](https://github.com/FNF-Love)**"
+            echo "Light Engine es un fork de FNF Love."
+            echo "Ver [LICENSE](LICENSE) para más detalles."
           } > release_body.md
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          cat release_body.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+
+  # Windows Build
+  build-windows:
+    name: Build Windows
+    needs: prepare
+    runs-on: windows-latest
+    if: needs.prepare.outputs.version != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download LÖVE ${{ env.LOVE_VERSION }} for Windows
+        run: |
+          $LOVE_VERSION = "${{ env.LOVE_VERSION }}"
+          $LOVE_URL = "https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-win64.zip"
+          Invoke-WebRequest -Uri $LOVE_URL -OutFile "love-$LOVE_VERSION-win64.zip"
+          Expand-Archive -Path "love-$LOVE_VERSION-win64.zip" -DestinationPath "love"
+          $LOVE_DIR = (Get-ChildItem "love" -Directory | Where-Object { $_.Name -match "love-$LOVE_VERSION-win64" }).FullName
+          echo "LOVE_DIR=$LOVE_DIR" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Create .love file and distribution
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $loveDir = $env:LOVE_DIR
+          $distDir = "Light-Engine-$version-windows-x64"
+          New-Item -ItemType Directory -Path $distDir -Force
+
+          # Copy love.exe and dlls
+          Copy-Item "$loveDir\*" $distDir -Recurse -Force
+
+          # Create game.love (zip of source) - use Compress-Archive with exclude
+          $exclude = @(
+            ".git*",
+            ".github",
+            "android",
+            "tools",
+            "lib",
+            "release",
+            "love",
+            "*.love",
+            "*.apk",
+            "*.zip",
+            "*.md",
+            "*.txt",
+            "*.xml",
+            "*.json",
+            "*.lua",
+            "*.yml",
+            "*.yaml",
+            "Cargo*",
+            "actionlint*",
+            "job_logs*"
+          )
+          $files = Get-ChildItem -Recurse -File | Where-Object {
+            $relative = $_.FullName.Substring((Get-Location).Path.Length + 1)
+            $shouldExclude = $false
+            foreach ($pattern in $exclude) {
+              if ($relative -like $pattern) { $shouldExclude = $true; break }
+            }
+            return -not $shouldExclude
+          }
+          $files | Compress-Archive -DestinationPath "$distDir\game.love" -Force
+
+          # Create launch script
+          "@echo off
+          start love.exe game.love" | Out-File -Encoding ASCII "$distDir\Light Engine.bat"
+
+          # Zip it
+          Compress-Archive -Path "$distDir\*" -DestinationPath "Light-Engine-$version-windows-x64.zip" -Force
+        shell: pwsh
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: Light-Engine-${{ needs.prepare.outputs.version }}-windows-x64.zip
+          retention-days: 30
+
+  # Linux Build
+  build-linux:
+    name: Build Linux
+    needs: prepare
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.version != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download LÖVE ${{ env.LOVE_VERSION }} AppImage
+        run: |
+          LOVE_URL="https://github.com/love2d/love/releases/download/${{ env.LOVE_VERSION }}/love-${{ env.LOVE_VERSION }}-linux-x86_64.AppImage"
+          wget -q "$LOVE_URL" -O love.AppImage
+          chmod +x love.AppImage
+          ./love.AppImage --appimage-extract
+          LOVE_DIR=$(pwd)/squashfs-root
+          echo "LOVE_DIR=$LOVE_DIR" >> $GITHUB_ENV
+          echo "$LOVE_DIR" >> $GITHUB_PATH
+
+      - name: Create .love file
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          DIST_DIR="Light-Engine-$VERSION-linux-x64"
+          mkdir -p "$DIST_DIR"
+
+          # Create game.love (zip of source)
+          zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
+
+          # Copy love runtime from AppImage extraction
+          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
+
+          # Copy game
+          cp game.love "$DIST_DIR/game.love"
+
+          # Create launch script
+          {
+            echo '#!/bin/bash'
+            echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+            echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"'
+            echo 'exec "$SCRIPT_DIR/love" "$SCRIPT_DIR/game.love" "$@"'
+          } > "$DIST_DIR/Light Engine"
+          chmod +x "$DIST_DIR/Light Engine"
+
+          # Create desktop entry
+          {
+            echo '[Desktop Entry]'
+            echo 'Name=Light Engine'
+            echo 'Comment=Friday Night Funkin\' Light Engine'
+            echo 'Exec=Light Engine'
+            echo 'Icon=light-engine'
+            echo 'Type=Application'
+            echo 'Categories=Game;ArcadeGame;'
+          } > "$DIST_DIR/Light Engine.desktop"
+
+          # Zip it
+          cd "$DIST_DIR" && zip -r "../Light-Engine-$VERSION-linux-x64.zip" .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-zip
+          path: Light-Engine-${{ needs.prepare.outputs.version }}-linux-x64.zip
+          retention-days: 30
 
   # Android Build
   build-android:
@@ -146,7 +283,7 @@ jobs:
           mv cmdline-tools latest
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          
+
           # Accept licenses and install required packages
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "cmake;3.22.1"
@@ -180,7 +317,7 @@ jobs:
           cp ../android/StoragePermissionActivity.java love/src/main/java/org/love2d/android/StoragePermissionActivity.java
           cp ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
           cp ../android/gradle.properties.example gradle.properties
-          
+
           # Copy icons to love-android resources
           mkdir -p app/src/main/res/drawable-mdpi app/src/main/res/drawable-hdpi app/src/main/res/drawable-xhdpi app/src/main/res/drawable-xxhdpi app/src/main/res/drawable-xxxhdpi
           cp ../android/res/drawable-mdpi/icon.png app/src/main/res/drawable-mdpi/icon.png
@@ -211,149 +348,6 @@ jobs:
         with:
           name: android-apk
           path: love-android/app/build/outputs/apk/embedNoRecord/release/app-embed-noRecord-release-unsigned.apk
-          retention-days: 30
-
-  # Windows Build
-  build-windows:
-    name: Build Windows
-    needs: prepare
-    runs-on: windows-latest
-    if: needs.prepare.outputs.version != ''
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download LÖVE ${{ env.LOVE_VERSION }} for Windows
-        run: |
-          $LOVE_VERSION = "${{ env.LOVE_VERSION }}"
-          $LOVE_URL = "https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-win64.zip"
-          Invoke-WebRequest -Uri $LOVE_URL -OutFile "love-$LOVE_VERSION-win64.zip"
-          Expand-Archive -Path "love-$LOVE_VERSION-win64.zip" -DestinationPath "love"
-          $LOVE_DIR = (Get-ChildItem "love" -Directory | Where-Object { $_.Name -match "love-$LOVE_VERSION-win64" }).FullName
-          echo "LOVE_DIR=$LOVE_DIR" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Create .love file and distribution
-        run: |
-          $version = "${{ needs.prepare.outputs.version }}"
-          $loveDir = $env:LOVE_DIR
-          $distDir = "Light-Engine-$version-windows-x64"
-          New-Item -ItemType Directory -Path $distDir -Force
-          
-          # Copy love.exe and dlls
-          Copy-Item "$loveDir\*" $distDir -Recurse -Force
-          
-          # Create game.love (zip of source) - use Compress-Archive with exclude
-          $exclude = @(
-            ".git*",
-            ".github",
-            "android",
-            "tools",
-            "lib",
-            "release",
-            "love",
-            "*.love",
-            "*.apk",
-            "*.zip",
-            "*.md",
-            "*.txt",
-            "*.xml",
-            "*.json",
-            "*.lua",
-            "*.yml",
-            "*.yaml",
-            "Cargo*",
-            "actionlint*",
-            "job_logs*"
-          )
-          $files = Get-ChildItem -Recurse -File | Where-Object { 
-            $relative = $_.FullName.Substring((Get-Location).Path.Length + 1)
-            $shouldExclude = $false
-            foreach ($pattern in $exclude) {
-              if ($relative -like $pattern) { $shouldExclude = $true; break }
-            }
-            return -not $shouldExclude
-          }
-          $files | Compress-Archive -DestinationPath "$distDir\game.love" -Force
-          
-          # Create launch script
-          "@echo off
-          start love.exe game.love" | Out-File -Encoding ASCII "$distDir\Light Engine.bat"
-          
-          # Zip it
-          Compress-Archive -Path "$distDir\*" -DestinationPath "Light-Engine-$version-windows-x64.zip" -Force
-        shell: pwsh
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-zip
-          path: Light-Engine-${{ needs.prepare.outputs.version }}-windows-x64.zip
-          retention-days: 30
-
-  # Linux Build
-  build-linux:
-    name: Build Linux
-    needs: prepare
-    runs-on: ubuntu-latest
-    if: needs.prepare.outputs.version != ''
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download LÖVE 11.5 Linux tarball
-        run: |
-          LOVE_URL="https://github.com/love2d/love/releases/download/11.5/love-11.5-linux-x86_64.tar.gz"
-          wget -q "$LOVE_URL" -O love.tar.gz
-          tar -xzf love.tar.gz
-          # Find the extracted directory (e.g., love-11.5-linux-x86_64)
-          LOVE_DIR=$(ls -d love-11.5* | head -1)
-          echo "LOVE_DIR=$(pwd)/$LOVE_DIR" >> $GITHUB_ENV
-          echo "$LOVE_DIR" >> $GITHUB_PATH
-
-      - name: Create .love file
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-          DIST_DIR="Light-Engine-$VERSION-linux-x64"
-          mkdir -p "$DIST_DIR"
-          
-          # Create game.love (zip of source)
-          zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
-          
-          # Copy love runtime
-          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
-          
-          # Copy game
-          cp game.love "$DIST_DIR/game.love"
-          
-          # Create launch script
-          {
-            echo '#!/bin/bash'
-            echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
-            echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"'
-            echo 'exec "$SCRIPT_DIR/love" "$SCRIPT_DIR/game.love" "$@"'
-          } > "$DIST_DIR/Light Engine"
-          chmod +x "$DIST_DIR/Light Engine"
-          
-          # Create desktop entry
-          {
-            echo '[Desktop Entry]'
-            echo 'Name=Light Engine'
-            echo 'Comment=Friday Night Funkin\' Light Engine'
-            echo 'Exec=Light Engine'
-            echo 'Icon=light-engine'
-            echo 'Type=Application'
-            echo 'Categories=Game;ArcadeGame;'
-          } > "$DIST_DIR/Light Engine.desktop"
-          
-          # Zip it
-          cd "$DIST_DIR" && zip -r "../Light-Engine-$VERSION-linux-x64.zip" .
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-zip
-          path: Light-Engine-${{ needs.prepare.outputs.version }}-linux-x64.zip
           retention-days: 30
 
   # Create Release
@@ -388,7 +382,7 @@ jobs:
           mv ./artifacts/windows/*.zip "Light-Engine-$VERSION-windows-x64.zip"
           mv ./artifacts/linux/*.zip "Light-Engine-$VERSION-linux-x64.zip"
 
-      - name: Upload logo to release
+      - name: Copy logo to release
         run: |
           cp assets/images/menus/splashscreen/FNFLOVE_logo.png light-engine-logo.png
 
