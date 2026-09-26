@@ -7,7 +7,7 @@ return {
 	file = "Light Engine",
 	icon = "art/icon.png",
 	version = "0.1.0",
-	package = "zyn.light.engine",
+	package = "com.zyn.lightengine"
 	width = 1280,
 	height = 720,
 
