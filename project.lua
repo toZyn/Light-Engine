@@ -1,13 +1,13 @@
 local os = (require "love.system").getOS()
 
 return {
-	DEBUG_MODE = true,
+	DEBUG_MODE = false,
 
-	title = "Friday Night Funkin' Löve",
-	file = "FNF-LOVE",
+	title = "Friday Night Funkin' Light Engine",
+	file = "Light Engine",
 	icon = "art/icon.png",
 	version = "0.1.0",
-	package = "fr.stilic.fnflove",
+	package = "zyn.light.engine",
 	width = 1280,
 	height = 720,
 
@@ -15,7 +15,7 @@ return {
 
 	FPS = 60,
 	vSync = true,
-	company = "Stilic",
+	company = "Zyn",
 
 	flags = {
 		checkForUpdates = false,
