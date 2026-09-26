@@ -9,7 +9,7 @@
 On Android, the game uses the following shared-storage layout:
 
 ```text
-Android/media/fr.stilic.fnflove/
+Android/media/com.zyn.lightengine/
 ├── mods/
 ├── addons/
 └── saves/
