@@ -1,4 +1,4 @@
-<h1 align="center">FNF LÖVE</h1>
+<h1 align="center">Light Engine</h1>
 
 ![](art/funkin_logo.png)
 
@@ -29,15 +29,15 @@ The **Virtual controls** option under **Options > Gameplay** is enabled by defau
 Turning it off immediately hides and disables all on-screen/touch controls while
 leaving keyboard and gamepad input available.
 
-## Discord Server
-
-[![Discord Banner](https://invidget.switchblade.xyz/eFFgHz7X8N)](https://discord.gg/eFFgHz7X8N)
-
 ## Contributing
 
 Please follow our [contributing guidelines](CONTRIBUTING.md) while contributing to this project.
 
-## Dev Team
+## Development Team
+
+- [Zyn (current owner)](https://github.com/toZyn)
+
+## FNF LÖVE Development Team
 
 - [Stilic (owner)](https://github.com/Stilic)
 - [Victor Kaoy](https://github.com/ViKaoy)
@@ -46,7 +46,11 @@ Please follow our [contributing guidelines](CONTRIBUTING.md) while contributing 
 - [Dawn Fowler](https://github.com/fowluhhdevbcfunny)
 - [Carrot](https://github.com/n64carrot)
 
-## Former Dev Team members
+### Discord Server
+
+[![Discord Banner](https://invidget.switchblade.xyz/eFFgHz7X8N)](https://discord.gg/eFFgHz7X8N)
+
+### Former members of the FNF LÖVE development team
 
 - [Raltyro](https://github.com/Raltyro) (huge thanks to them for the 3d and modchart code)
 - [Ikawa](https://github.com/ikawaluvyu)
