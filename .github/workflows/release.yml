@@ -293,13 +293,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download LÖVE 11.5 Linux tarball
+      - name: Install LÖVE from PPA
         run: |
-          LOVE_URL="https://github.com/love2d/love/releases/download/11.5/love-11.5-linux-x86_64.tar.gz"
-          wget -q "$LOVE_URL" -O love.tar.gz
-          tar -xzf love.tar.gz
-          LOVE_DIR=$(find . -maxdepth 1 -type d -name 'love-11.5*' | head -1)
-          echo "LOVE_DIR=$(pwd)/$LOVE_DIR" >> $GITHUB_PATH
+          sudo add-apt-repository -y ppa:love2d/love
+          sudo apt-get update
+          sudo apt-get install -y love
+          echo "LOVE_DIR=/usr/bin" >> $GITHUB_PATH
 
       - name: Create .love file
         run: |
@@ -310,8 +309,19 @@ jobs:
           # Create game.love (zip of source)
           zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
           
-          # Copy love runtime
-          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
+          # Find love executable and libraries
+          LOVE_EXE=$(which love)
+          LOVE_LIBS=$(ldd "$LOVE_EXE" 2>/dev/null | grep -o '/[^ ]*' | sort -u)
+          
+          # Copy love executable
+          cp "$LOVE_EXE" "$DIST_DIR/"
+          
+          # Copy dependencies
+          for lib in $LOVE_LIBS; do
+            if [[ "$lib" == /lib/* ]] || [[ "$lib" == /usr/lib/* ]]; then
+              cp "$lib" "$DIST_DIR/" 2>/dev/null || true
+            fi
+          done
           
           # Copy game
           cp game.love "$DIST_DIR/game.love"
