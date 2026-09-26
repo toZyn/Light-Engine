@@ -46,16 +46,8 @@ jobs:
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Generate changelog
+      - name: Generate changelog from git log
         id: changelog
-        uses: mindsers/changelog-reader-action@v2
-        with:
-          version: ${{ steps.extract_version.outputs.version }}
-          path: ./CHANGELOG.md
-          fail_if_not_found: false
-
-      - name: Fallback changelog from git log
-        if: steps.changelog.outputs.changelog == ''
         run: |
           CHANGELOG=$(git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")..HEAD 2>/dev/null | head -30)
           if [ -z "$CHANGELOG" ]; then
