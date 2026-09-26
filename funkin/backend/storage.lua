@@ -1,0 +1,306 @@
+local lfs = love.filesystem
+local packageName = Project.package or "fr.stilic.fnflove"
+
+local Storage = {
+	available = false,
+	mounted = false,
+	initialized = false,
+	mountPoint = "external",
+	root = nil,
+	savePath = nil,
+	watchInterval = 0.75
+}
+
+local watchedDirectories = {}
+
+local function addCandidate(candidates, path)
+	if path and path ~= "" and not table.find(candidates, path) then
+		table.insert(candidates, path)
+	end
+end
+
+local function canWrite(path)
+	local testPath = path .. "/.fnf-love-write-test"
+	local file = io.open(testPath, "wb")
+	if not file then return false end
+
+	file:close()
+	os.remove(testPath)
+	return true
+end
+
+local function getAndroidCandidates()
+	local candidates = {}
+	local externalStorage = os.getenv("EXTERNAL_STORAGE")
+	local relativePath = "/Android/media/" .. packageName
+
+	addCandidate(candidates, externalStorage and externalStorage .. relativePath)
+	addCandidate(candidates, "/sdcard" .. relativePath)
+	addCandidate(candidates, "/storage/emulated/0" .. relativePath)
+
+	return candidates
+end
+
+local function tryMount()
+	if not Storage.available or Storage.mounted then return Storage.mounted end
+
+	local mounted = lfs.mount(Storage.root, Storage.mountPoint)
+	local mods = lfs.getInfo(Storage.mountPoint .. "/mods")
+	local addons = lfs.getInfo(Storage.mountPoint .. "/addons")
+
+	Storage.mounted = mounted and mods and mods.type == "directory"
+		and addons and addons.type == "directory" or false
+	return Storage.mounted
+end
+
+function Storage.init()
+	if Storage.initialized then return end
+	Storage.initialized = true
+
+	if love.system.getOS() ~= "Android" then return end
+
+	for _, root in ipairs(getAndroidCandidates()) do
+		if canWrite(root .. "/mods") and canWrite(root .. "/addons") and canWrite(root .. "/saves") then
+			Storage.available = true
+			Storage.root = root
+			Storage.savePath = root .. "/saves"
+			break
+		end
+	end
+
+	if not Storage.available then
+		print("[Storage] Android/media is unavailable; external mods and add-ons are disabled.")
+		return
+	end
+
+	if not tryMount() then
+		print("[Storage] Android/media is writable but could not be mounted.")
+	end
+end
+
+local function pathSignature(path, kind)
+	if kind == "file" then
+		local info = lfs.getInfo(path)
+		if not info then return "" end
+		return table.concat({info.modtime or 0, info.size or 0}, ":")
+	elseif kind == "root" then
+		return tostring(lfs.getLastModified(path) or 0)
+	end
+
+	local success, items = pcall(lfs.getDirectoryItems, path)
+	if not success then return "" end
+	table.sort(items)
+
+	local parts = {}
+	for _, item in ipairs(items) do
+		local child = path .. "/" .. item
+		local info = lfs.getInfo(child)
+		if info then
+			parts[#parts + 1] = table.concat({
+				item, info.type, info.modtime or 0
+			}, ":")
+		end
+	end
+
+	return table.concat(parts, "|")
+end
+
+local function addWatch(path, kind, name)
+	for _, watch in ipairs(watchedDirectories) do
+		if watch.path == path then return end
+	end
+	table.insert(watchedDirectories, {path = path, kind = kind, name = name})
+end
+
+function Storage.refreshWatchList()
+	if not Storage.mounted then return end
+
+	table.clear(watchedDirectories)
+	addWatch(Storage.mountPoint .. "/mods", "root", "mods")
+	addWatch(Storage.mountPoint .. "/addons", "root", "addons")
+	addWatch(Storage.mountPoint .. "/saves/funkin.lox", "file", "funkin")
+
+	if Mods and Mods.currentMod then
+		addWatch(Storage.mountPoint .. "/mods/" .. Mods.currentMod, "tree", Mods.currentMod)
+	end
+
+	if Addons then
+		for _, addon in ipairs(Addons.all) do
+			if addon.active then
+				addWatch(Storage.mountPoint .. "/addons/" .. addon.path, "tree", addon.path)
+			end
+		end
+	end
+end
+
+local function inspectWatchedDirectories()
+	local changed, contentChanged, saveChanged = false, false, false
+	for _, watch in ipairs(watchedDirectories) do
+		local signature = pathSignature(watch.path, watch.kind)
+		if watch.signature == nil then
+			watch.signature = signature
+		elseif watch.signature ~= signature then
+			watch.signature = signature
+			changed = true
+			if watch.kind == "file" and watch.name == "funkin" then
+				saveChanged = true
+			elseif watch.kind == "tree" then
+				contentChanged = true
+			end
+		end
+	end
+
+	return changed, contentChanged, saveChanged
+end
+
+local watchTime = 0
+
+local function clearContentCache()
+	local state = game and game.getState and game.getState()
+	if state and PlayState and state:is(PlayState) then return false end
+
+	paths.clearCache()
+	if Shader then Shader.clear() end
+	return true
+end
+
+function Storage.refreshNow(clearCache)
+	if not Storage.mounted and not tryMount() then return false end
+
+	if Mods then Mods.reload() end
+	if Addons then Addons.reload() end
+	if clearCache ~= false then clearContentCache() end
+
+	Storage.refreshWatchList()
+	inspectWatchedDirectories()
+	return true
+end
+
+function Storage.update(dt)
+	watchTime = watchTime + dt
+	if not Storage.mounted then
+		if Storage.available and watchTime >= 2 then
+			watchTime = 0
+			if tryMount() then
+				Storage.refreshNow(false)
+			end
+		end
+		return
+	end
+
+	if watchTime < Storage.watchInterval then return end
+	watchTime = 0
+
+	local changed, contentChanged, saveChanged = inspectWatchedDirectories()
+	if not changed then return end
+
+	if saveChanged and Storage.reloadSave then Storage.reloadSave("funkin") end
+	if Mods then Mods.reload() end
+	if Addons then Addons.reload() end
+	if contentChanged then clearContentCache() end
+
+	Storage.refreshWatchList()
+	inspectWatchedDirectories()
+end
+
+function Storage.getContentRoot(name)
+	if Storage.mounted then return Storage.mountPoint .. "/" .. name end
+	return name
+end
+
+function Storage.installSave(save)
+	if save.externalStorageInstalled then return end
+	save.externalStorageInstalled = true
+
+	local json = loxreq "lib.json"
+	local originalInit, originalBind = save.init, save.bind
+
+	local function showCorruptSave()
+		if Timer and Toast then
+			Timer.wait(0.1, function() Toast.error("Save file is corrupt!") end)
+		end
+	end
+
+	local function readExternalSave(name)
+		local file = io.open(Storage.savePath .. "/" .. name .. ".lox", "rb")
+		if not file then return end
+
+		local encoded = file:read("a")
+		file:close()
+
+		local decodeSuccess, decoded = pcall(love.data.decode, "string", "hex", encoded)
+		if not decodeSuccess then
+			showCorruptSave()
+			return
+		end
+
+		local success, data = pcall(json.decode, decoded)
+		if not success or type(data) ~= "table" then
+			showCorruptSave()
+			return
+		end
+
+		return data
+	end
+
+	Storage.reloadSave = function(name)
+		local data = readExternalSave(name)
+		if not data then return false end
+
+		save.data = data
+		if ClientPrefs then
+			pcall(table.merge, ClientPrefs.data, data.prefs)
+			pcall(table.merge, ClientPrefs.controls, data.controls)
+			if controls then controls:reset({controls = table.clone(ClientPrefs.controls)}) end
+		end
+		if Highscore then Highscore.scores = data.scores or {songs = {}, weeks = {}} end
+
+		return true
+	end
+
+	Storage.noteSaveWrite = function(name)
+		if not Storage.mounted then return end
+		Storage.refreshWatchList()
+		for _, watch in ipairs(watchedDirectories) do
+			if watch.kind == "file" and watch.name == name then
+				watch.signature = pathSignature(watch.path, watch.kind)
+			end
+		end
+	end
+
+	save.init = function(name)
+		if not Storage.available then return originalInit(name) end
+		if save.initialized then return end
+
+		save.initialized = true
+		save.path = Storage.savePath
+
+		local data = readExternalSave(name)
+		if data then save.data = data end
+	end
+
+	save.bind = function(name)
+		if not Storage.available then return originalBind(name) end
+
+		local encoded = love.data.encode("string", "hex", json.encode(save.data))
+		local file, err = io.open(Storage.savePath .. "/" .. name .. ".lox", "wb")
+		if not file then
+			print("[Storage] Could not write save file: " .. tostring(err))
+			return originalBind(name)
+		end
+
+		local success, writeError = pcall(function()
+			file:write(encoded)
+		end)
+		file:close()
+
+		if not success then
+			print("[Storage] Could not write save file: " .. tostring(writeError))
+			return originalBind(name)
+		end
+
+		Storage.noteSaveWrite(name)
+	end
+end
+
+return Storage

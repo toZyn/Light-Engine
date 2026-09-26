@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.VIBRATE" />
+  <uses-permission android:name="android.permission.BLUETOOTH" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+  <uses-feature android:glEsVersion="0x00020000" />
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+  <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+  <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+  <uses-feature android:name="android.hardware.type.pc" android:required="false" />
+  <uses-feature android:name="android.hardware.audio.low_latency" android:required="false" />
+  <uses-feature android:name="android.hardware.audio.pro" android:required="false" />
+
+  <application
+      android:allowBackup="true"
+      android:icon="@drawable/love"
+      android:label="${NAME}"
+      android:requestLegacyExternalStorage="true"
+      android:usesCleartextTraffic="true">
+    <activity
+        android:name="org.love2d.android.StoragePermissionActivity"
+        android:exported="true"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+        <category android:name="tv.ouya.intent.category.GAME" />
+      </intent-filter>
+    </activity>
+
+    <activity
+        android:name="org.love2d.android.GameActivity"
+        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+        android:exported="true"
+        android:label="${NAME}"
+        android:launchMode="singleInstance"
+        android:resizeableActivity="false"
+        android:screenOrientation="${ORIENTATION}"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+      <intent-filter>
+        <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
