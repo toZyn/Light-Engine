@@ -142,6 +142,7 @@ jobs:
           api-level: 34
           ndk-version: r26c
           cmake-version: 3.22.1
+          caches: gradle
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -213,13 +214,14 @@ jobs:
           $LOVE_URL = "https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-win64.zip"
           Invoke-WebRequest -Uri $LOVE_URL -OutFile "love-$LOVE_VERSION-win64.zip"
           Expand-Archive -Path "love-$LOVE_VERSION-win64.zip" -DestinationPath "love"
-          echo "LOVE_DIR=$(Get-Location)/love/love-$LOVE_VERSION-win64" >> $env:GITHUB_PATH
+          $LOVE_DIR = (Get-ChildItem "love" -Directory | Where-Object { $_.Name -match "love-$LOVE_VERSION-win64" }).FullName
+          echo "LOVE_DIR=$LOVE_DIR" >> $env:GITHUB_ENV
         shell: pwsh
 
-      - name: Create .love file
+      - name: Create .love file and distribution
         run: |
           $version = "${{ needs.prepare.outputs.version }}"
-          $loveDir = (Get-Command love.exe).Source
+          $loveDir = $env:LOVE_DIR
           $distDir = "Light-Engine-$version-windows-x64"
           New-Item -ItemType Directory -Path $distDir -Force
           
@@ -234,6 +236,7 @@ jobs:
             "tools",
             "lib",
             "release",
+            "love",
             "*.love",
             "*.apk",
             "*.zip",
@@ -274,10 +277,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download LÖVE ${{ env.LOVE_VERSION }} for Linux
+      - name: Download LÖVE AppImage
         run: |
-          LOVE_VERSION="${{ env.LOVE_VERSION }}"
-          LOVE_URL="https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-linux-x86_64.AppImage"
+          # Use LÖVE 12.0 AppImage which is available
+          LOVE_URL="https://github.com/love2d/love/releases/download/12.0/love-12.0-linux-x86_64.AppImage"
           wget -q "$LOVE_URL" -O love.AppImage
           chmod +x love.AppImage
           ./love.AppImage --appimage-extract
