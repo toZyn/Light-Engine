@@ -33,9 +33,9 @@ install -m 0644 "$ROOT/android/gradle.properties.example" \
 rm -rf "$ROOT/release"
 "$BOON" build "$ROOT" --target love --version 11.5
 if command -v advzip >/dev/null 2>&1; then
-  advzip -z -4 -i 5 "$ROOT/release/FNF LOVE.love"
+  advzip -z -4 -i 5 "$ROOT/release/Light Engine.love"
 fi
-install -m 0644 "$ROOT/release/FNF LOVE.love" \
+install -m 0644 "$ROOT/release/Light Engine.love" \
   "$TEMPLATE/app/src/embed/assets/game.love"
 
 ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" \

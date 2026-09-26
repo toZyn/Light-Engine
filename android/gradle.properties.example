@@ -1,5 +1,5 @@
-app.name=FNF LOVE
-app.application_id=fr.stilic.fnflove
+app.name=Light Engine
+app.application_id=com.zyn.lightengine
 app.orientation=landscape
 app.version_code=2
 app.version_name=0.1.1

@@ -18,6 +18,18 @@ local function user(name, icon, color, description, ...)
 end
 
 CreditsState.defaultData = {
+	category("Owners", {
+
+		user("Zyn", "https://github.com/toZyn.png", "#FF6B35", "Owner Actual",
+			"X", "@Zyn",
+			"Github", "/toZyn"
+		),
+
+		user("FNF Love Team", "https://github.com/FNF-Love.png", "#E91E63", "Base Engine Team (FNF Love)",
+			"Github", "/FNF-Love"
+		),
+	}),
+
 	category("Contributors", {
 
 		user("Stilic", "https://github.com/stilic.png", "#FFCA45", "Main director and programmer",

@@ -3,7 +3,7 @@ local os = (require "love.system").getOS()
 return {
 	DEBUG_MODE = false,
 
-	title = "Friday Night Funkin' Light Engine",
+	title = "Light Engine",
 	file = "Light Engine",
 	icon = "art/icon.png",
 	version = "0.1.0",

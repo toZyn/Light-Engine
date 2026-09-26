@@ -62,7 +62,10 @@ function DialogueBox:new(box, anim, song, ...)
 
 	local read = love.filesystem.read
 	local file = read(paths.getPath("songs/" .. song .."/dialogue.txt"))
-	if not file then return self:closeDialogue() end
+	if not file or file == "" then
+		print("[DialogueBox] No dialogue file found for " .. song .. ", closing dialogue")
+		return self:closeDialogue()
+	end
 	self.curDialogue = 1
 	self.dialogueDelay = 0.3
 	self:splitDialogues(file)

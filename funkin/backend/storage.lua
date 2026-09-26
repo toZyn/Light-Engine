@@ -1,5 +1,5 @@
 local lfs = love.filesystem
-local packageName = Project.package or "fr.stilic.fnflove"
+local packageName = Project.package or "com.zyn.lightengine"
 
 local Storage = {
 	available = false,
@@ -20,6 +20,13 @@ local function addCandidate(candidates, path)
 end
 
 local function canWrite(path)
+	-- Ensure directory exists
+	if love.system.getOS() == "Windows" then
+		os.execute('mkdir "' .. path .. '" 2>nul')
+	else
+		os.execute('mkdir -p "' .. path .. '" 2>/dev/null')
+	end
+
 	local testPath = path .. "/.fnf-love-write-test"
 	local file = io.open(testPath, "wb")
 	if not file then return false end
@@ -41,6 +48,26 @@ local function getAndroidCandidates()
 	return candidates
 end
 
+local function getDesktopCandidates()
+	local candidates = {}
+	local baseDir
+
+	if love.system.getOS() == "Windows" then
+		baseDir = os.getenv("APPDATA")
+	else
+		baseDir = os.getenv("HOME")
+	end
+
+	if baseDir then
+		local company = Project.company or "Zyn"
+		local file = Project.file or "Light Engine"
+		local fullPath = baseDir .. "/" .. company .. "/" .. file
+		addCandidate(candidates, fullPath)
+	end
+
+	return candidates
+end
+
 local function tryMount()
 	if not Storage.available or Storage.mounted then return Storage.mounted end
 
@@ -53,28 +80,62 @@ local function tryMount()
 	return Storage.mounted
 end
 
+local function createDesktopDirs(path)
+	if love.system.getOS() == "Windows" then
+		os.execute('mkdir "' .. path .. '\\mods"')
+		os.execute('mkdir "' .. path .. '\\addons"')
+		os.execute('mkdir "' .. path .. '\\saves"')
+	else
+		os.execute('mkdir -p "' .. path .. '/mods"')
+		os.execute('mkdir -p "' .. path .. '/addons"')
+		os.execute('mkdir -p "' .. path .. '/saves"')
+	end
+end
+
 function Storage.init()
 	if Storage.initialized then return end
 	Storage.initialized = true
 
-	if love.system.getOS() ~= "Android" then return end
+	local candidates = {}
+	if love.system.getOS() == "Android" then
+		candidates = getAndroidCandidates()
+	else
+		candidates = getDesktopCandidates()
+	end
 
-	for _, root in ipairs(getAndroidCandidates()) do
-		if canWrite(root .. "/mods") and canWrite(root .. "/addons") and canWrite(root .. "/saves") then
+	for _, root in ipairs(candidates) do
+		local modsPath = root .. "/mods"
+		local addonsPath = root .. "/addons"
+		local savesPath = root .. "/saves"
+		
+		if canWrite(modsPath) and canWrite(addonsPath) and canWrite(savesPath) then
 			Storage.available = true
 			Storage.root = root
-			Storage.savePath = root .. "/saves"
+			Storage.savePath = savesPath
 			break
+		elseif love.system.getOS() ~= "Android" then
+			-- On desktop, create directories if they don't exist
+			createDesktopDirs(root)
+			if canWrite(modsPath) and canWrite(addonsPath) and canWrite(savesPath) then
+				Storage.available = true
+				Storage.root = root
+				Storage.savePath = savesPath
+				break
+			end
 		end
 	end
 
 	if not Storage.available then
-		print("[Storage] Android/media is unavailable; external mods and add-ons are disabled.")
+		if love.system.getOS() == "Android" then
+			print("[Storage] Android/media is unavailable; external mods and add-ons are disabled.")
+		else
+			print("[Storage] Could not set up external storage; mods and add-ons will use internal storage.")
+		end
 		return
 	end
 
 	if not tryMount() then
-		print("[Storage] Android/media is writable but could not be mounted.")
+		print("[Storage] External storage is writable but could not be mounted.")
 	end
 end
 

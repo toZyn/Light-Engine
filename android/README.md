@@ -7,8 +7,8 @@
 - creates `Android/media/<applicationId>/mods`, `addons`, and `saves` automatically;
 - starts the embedded LÖVE game after the permission flow returns.
 
-The exported application ID is `fr.stilic.fnflove`, so its data directory is
-`Android/media/fr.stilic.fnflove`.
+The exported application ID is `com.zyn.lightengine`, so its data directory is
+`Android/media/com.zyn.lightengine`.
 
 When rebuilding with `love-android` 11.5a:
 
