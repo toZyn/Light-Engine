@@ -173,15 +173,11 @@ jobs:
           cp ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
           cp ../android/gradle.properties.example gradle.properties
 
-      - name: Install Boon
+      - name: Create .love file
         run: |
-          cargo install boon --locked
-
-      - name: Build .love file
-        run: |
-          boon build . --target love --version ${{ env.LOVE_VERSION }}
-          LOVE_FILE=$(ls release/*.love | head -1)
-          echo "LOVE_FILE=$LOVE_FILE" >> $GITHUB_ENV
+          # Create game.love (zip of source)
+          zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
+          echo "LOVE_FILE=$(pwd)/game.love" >> $GITHUB_ENV
 
       - name: Embed .love into APK
         run: |
@@ -220,29 +216,38 @@ jobs:
           echo "LOVE_DIR=$(Get-Location)/love/love-$LOVE_VERSION-win64" >> $env:GITHUB_PATH
         shell: pwsh
 
-      - name: Install Boon
-        run: cargo install boon --locked
-        shell: pwsh
-
-      - name: Build .love file
-        run: |
-          boon build . --target love --version ${{ env.LOVE_VERSION }}
-          $env:LOVE_FILE = (Get-ChildItem release/*.love | Select-Object -First 1).FullName
-          echo "LOVE_FILE=$env:LOVE_FILE" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Create Windows distribution
+      - name: Create .love file
         run: |
           $version = "${{ needs.prepare.outputs.version }}"
+          $loveDir = (Get-Command love.exe).Source
           $distDir = "Light-Engine-$version-windows-x64"
           New-Item -ItemType Directory -Path $distDir -Force
           
           # Copy love.exe and dlls
-          $loveDir = (Get-Command love.exe).Source
           Copy-Item "$loveDir\*" $distDir -Recurse -Force
           
-          # Embed game
-          Copy-Item $env:LOVE_FILE "$distDir\game.love"
+          # Create game.love (zip of source)
+          Compress-Archive -Path * -DestinationPath "$distDir\game.love" -Force -Exclude @(
+            ".git*",
+            ".github",
+            "android",
+            "tools",
+            "lib",
+            "release",
+            "*.love",
+            "*.apk",
+            "*.zip",
+            "*.md",
+            "*.txt",
+            "*.xml",
+            "*.json",
+            "*.lua",
+            "*.yml",
+            "*.yaml",
+            "Cargo*",
+            "actionlint*",
+            "job_logs*"
+          )
           
           # Create launch script
           "@echo off
@@ -250,6 +255,7 @@ jobs:
           
           # Zip it
           Compress-Archive -Path "$distDir\*" -DestinationPath "Light-Engine-$version-windows-x64.zip" -Force
+        shell: pwsh
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -277,26 +283,20 @@ jobs:
           ./love.AppImage --appimage-extract
           echo "LOVE_DIR=$(pwd)/squashfs-root" >> $GITHUB_PATH
 
-      - name: Install Boon
-        run: cargo install boon --locked
-
-      - name: Build .love file
-        run: |
-          boon build . --target love --version ${{ env.LOVE_VERSION }}
-          LOVE_FILE=$(ls release/*.love | head -1)
-          echo "LOVE_FILE=$LOVE_FILE" >> $GITHUB_ENV
-
-      - name: Create Linux distribution
+      - name: Create .love file
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           DIST_DIR="Light-Engine-$VERSION-linux-x64"
           mkdir -p "$DIST_DIR"
           
+          # Create game.love (zip of source)
+          zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
+          
           # Copy love runtime
           cp -r "$LOVE_DIR"/* "$DIST_DIR/"
           
           # Copy game
-          cp "$LOVE_FILE" "$DIST_DIR/game.love"
+          cp game.love "$DIST_DIR/game.love"
           
           # Create launch script
           {
