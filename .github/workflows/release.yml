@@ -190,7 +190,7 @@ jobs:
       - name: Embed .love into APK
         run: |
           cd love-android
-          cp ../$LOVE_FILE app/src/embed/assets/game.love
+          cp "$LOVE_FILE" app/src/embed/assets/game.love
 
       - name: Build APK
         run: |
@@ -293,11 +293,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install LÖVE
+      - name: Download LÖVE 11.4 AppImage
         run: |
-          sudo apt-get update
-          sudo apt-get install -y love2d
-          echo "LOVE_DIR=/usr/bin" >> $GITHUB_PATH
+          LOVE_URL="https://github.com/love2d/love/releases/download/11.4/love-11.4-linux-x86_64.AppImage"
+          wget -q "$LOVE_URL" -O love.AppImage
+          chmod +x love.AppImage
+          ./love.AppImage --appimage-extract
+          echo "LOVE_DIR=$(pwd)/squashfs-root" >> $GITHUB_PATH
 
       - name: Create .love file
         run: |
@@ -308,19 +310,8 @@ jobs:
           # Create game.love (zip of source)
           zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
           
-          # Find love executable and libraries
-          LOVE_EXE=$(which love)
-          LOVE_LIBS=$(ldd "$LOVE_EXE" 2>/dev/null | grep -o '/[^ ]*' | sort -u)
-          
-          # Copy love executable
-          cp "$LOVE_EXE" "$DIST_DIR/"
-          
-          # Copy dependencies
-          for lib in $LOVE_LIBS; do
-            if [[ "$lib" == /lib/* ]] || [[ "$lib" == /usr/lib/* ]]; then
-              cp "$lib" "$DIST_DIR/" 2>/dev/null || true
-            fi
-          done
+          # Copy love runtime
+          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
           
           # Copy game
           cp game.love "$DIST_DIR/game.love"
