@@ -6,7 +6,7 @@ return {
 	title = "Light Engine",
 	file = "Light Engine",
 	icon = "art/icon.png",
-	version = "0.1.0",
+	version = "0.1.1",
 	package = "com.zyn.lightengine"
 	width = 1280,
 	height = 720,
