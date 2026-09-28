@@ -38,8 +38,8 @@ luac.out
 *.sublime-workspace
 *.love
 actionlint
-mods
-addons
-release
+/mods/
+/addons/
+/release/
 __pycache__/
 *.pyc

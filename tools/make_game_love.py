@@ -48,13 +48,18 @@ REQUIRED_ENTRIES = (
     "lib/baton.lua",
     "lib/https.lua",
     "art/logo.png",
+    "funkin/ui/mods/modcard.lua",
+    "funkin/ui/mods/searchbox.lua",
+    "funkin/ui/mods/selectionlist.lua",
 )
 
 
 def is_excluded(rel: str) -> bool:
     """`rel` is a POSIX style path relative to the repository root."""
     parts = rel.split("/")
-    if any(part in SKIP_DIRS for part in parts[:-1]):
+    # These names are root-level build/content directories. Matching every
+    # path component would also remove runtime modules such as funkin/ui/mods.
+    if parts and parts[0] in SKIP_DIRS:
         return True
 
     name = parts[-1]
@@ -75,7 +80,10 @@ def collect_files() -> list[str]:
         rel_dir = os.path.relpath(current, ROOT).replace(os.sep, "/")
         if rel_dir == ".":
             rel_dir = ""
-        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        if not rel_dir:
+            dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        else:
+            dirs[:] = sorted(dirs)
         for name in sorted(files):
             rel = f"{rel_dir}/{name}".lstrip("/") if rel_dir else name
             if not is_excluded(rel):

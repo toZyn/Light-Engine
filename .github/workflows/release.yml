@@ -5,6 +5,16 @@ on:
     branches: [main]
     paths:
       - 'project.lua'
+      - 'main.lua'
+      - 'conf.lua'
+      - 'funkin/**'
+      - 'loxel/**'
+      - 'lib/**'
+      - 'assets/**'
+      - 'art/**'
+      - 'android/**'
+      - 'tools/make_game_love.py'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 permissions:
