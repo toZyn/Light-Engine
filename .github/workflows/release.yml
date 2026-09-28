@@ -1,4 +1,4 @@
-name: Release Build
+name: Release
 
 on:
   push:
@@ -6,405 +6,675 @@ on:
     paths:
       - 'project.lua'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (optional, reads from project.lua)'
-        required: false
-        type: string
 
 permissions:
   contents: write
-  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
-  LOVE_VERSION: 11.5
-  PROJECT_NAME: "Light Engine"
+  LOVE_VERSION: '11.5'
 
 jobs:
-  # Job to extract version and generate changelog
   prepare:
-    name: Prepare Release
+    name: Prepare release
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.extract_version.outputs.version }}
-      tag: ${{ steps.extract_version.outputs.tag }}
-      changelog: ${{ steps.changelog.outputs.changelog }}
-      release_name: ${{ steps.extract_version.outputs.release_name }}
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Extract version from project.lua
-        id: extract_version
+      - name: Read version from project.lua
+        id: meta
         run: |
-          VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' project.lua)
-          TAG="v${VERSION}"
-          RELEASE_NAME="Light Engine ${VERSION}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
-
-      - name: Generate changelog from git log
-        id: changelog
-        run: |
-          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")..HEAD 2>/dev/null | head -30)
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- Initial release of Light Engine ${VERSION}"
+          set -euo pipefail
+          VERSION=$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' project.lua | head -n1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::No version found in project.lua"
+            exit 1
           fi
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        env:
-          VERSION: ${{ steps.extract_version.outputs.version }}
-
-      - name: Create release body
-        id: release_body
-        run: |
-          VERSION="${{ steps.extract_version.outputs.version }}"
-          RELEASE_NAME="${{ steps.extract_version.outputs.release_name }}"
-          CHANGELOG="${{ steps.changelog.outputs.changelog }}"
-          COMMIT="${{ github.sha }}"
-          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
           {
-            echo "# 🎮 ${RELEASE_NAME}"
-            echo ""
-            echo "## 📥 Descargas"
-            echo ""
-            echo "| Plataforma | Archivo |"
-            echo "|------------|---------|"
-            echo "| **Android** | \`Light-Engine-${VERSION}-android.apk\` |"
-            echo "| **Windows (64-bit)** | \`Light-Engine-${VERSION}-windows-x64.zip\` |"
-            echo "| **Linux (64-bit)** | \`Light-Engine-${VERSION}-linux-x64.zip\` |"
-            echo ""
-            echo "## 📋 Novedades"
-            echo ""
-            echo "${CHANGELOG}"
-            echo ""
-            echo "---"
-            echo ""
-            echo "## ⚙️ Información de la compilación"
-            echo ""
-            echo "- **Versión**: ${VERSION}"
-            echo "- **Motor**: LÖVE 11.5"
-            echo "- **Paquete**: com.zyn.lightengine"
-            echo "- **Fecha**: ${DATE}"
-            echo "- **Commit**: ${COMMIT}"
-            echo ""
-            echo "## 🛠️ Requisitos"
-            echo ""
-            echo "### Android"
-            echo "- Android 7.0 (API 24) o superior"
-            echo "- Arquitectura: arm64-v8a, armeabi-v7a, x86, x86_64"
-            echo ""
-            echo "### Windows"
-            echo "- Windows 10/11 (64-bit)"
-            echo "- Visual C++ Redistributable 2015-2022"
-            echo ""
-            echo "### Linux"
-            echo "- glibc 2.31+"
-            echo "- libSDL2, libOpenAL, libfreetype, libluajit"
-            echo ""
-            echo "## 📄 Licencia"
-            echo ""
-            echo "Light Engine es un fork de FNF Love."
-            echo "Ver [LICENSE](LICENSE) para más detalles."
-          } > release_body.md
+            echo "version=${VERSION}"
+            echo "tag=v${VERSION}"
+            echo "release_name=Light Engine ${VERSION}"
+          } >> "$GITHUB_OUTPUT"
 
-  # Windows Build
+      - name: Build release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          PATTERN="^## \[$(printf '%s' "$VERSION" | sed 's/\./\\./g')\]"
+          awk -v pat="$PATTERN" '
+            $0 ~ pat { found = 1; next }
+            /^## \[/ && found { exit }
+            found { print }
+          ' CHANGELOG.md > changelog-section.md
+
+          {
+            echo "## Light Engine ${VERSION}"
+            echo
+            if [ -s changelog-section.md ]; then
+              cat changelog-section.md
+            else
+              echo "See [CHANGELOG.md](CHANGELOG.md) and the commit history."
+            fi
+            echo
+            echo "## Install"
+            echo
+            echo "- **Windows**: unzip and run \`Light Engine.exe\`."
+            echo "- **Linux AppImage**: \`chmod +x\`, then run it."
+            echo "- **Linux portable**: unpack the tar.gz and run \`light-engine.sh\`."
+            echo "- **Android**: install the APK matching your CPU (\`arm64-v8a\`, \`armeabi-v7a\`) or the universal one."
+          } > notes.md
+          cat notes.md
+
+      - name: Generate icons from art/logo.png
+        run: |
+          set -euo pipefail
+          if command -v magick >/dev/null 2>&1; then
+            IM=magick
+          elif command -v convert >/dev/null 2>&1; then
+            IM=convert
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq imagemagick
+            IM=convert
+          fi
+          mkdir -p inputs
+          "$IM" art/logo.png -background none -resize 256x256 \
+            -define icon:auto-resize=256,128,64,48,32,24,16 inputs/icon.ico
+          "$IM" art/logo.png -resize 256x256 inputs/icon-256.png
+          for spec in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            dir=${spec%%:*}
+            size=${spec##*:}
+            mkdir -p "inputs/drawable-${dir}"
+            "$IM" art/logo.png -resize "${size}x${size}" "inputs/drawable-${dir}/icon.png"
+          done
+          cp notes.md inputs/notes.md
+          find inputs -type f | sort
+
+      - name: Open draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_NAME: ${{ steps.meta.outputs.release_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, reusing it."
+          else
+            gh release create "$TAG" --draft --target main \
+              --title "$RELEASE_NAME" --notes-file notes.md
+          fi
+          gh release edit "$TAG" --notes-file notes.md
+          gh release upload "$TAG" CHANGELOG.md --clobber
+
+      - name: Upload build inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-inputs
+          path: inputs/
+          if-no-files-found: error
+          retention-days: 1
+
   build-windows:
-    name: Build Windows
+    name: Windows ${{ matrix.arch }}
     needs: prepare
     runs-on: windows-latest
-    if: needs.prepare.outputs.version != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            love_asset: love-11.5-win64.zip
+          - arch: x86
+            love_asset: love-11.5-win32.zip
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download build inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-inputs
+          path: inputs
+
+      - name: Build game.love
+        shell: bash
+        run: python tools/make_game_love.py game.love
 
       - name: Download LÖVE ${{ env.LOVE_VERSION }} for Windows
+        shell: bash
         run: |
-          $LOVE_VERSION = "${{ env.LOVE_VERSION }}"
-          $LOVE_URL = "https://github.com/love2d/love/releases/download/$LOVE_VERSION/love-$LOVE_VERSION-win64.zip"
-          Invoke-WebRequest -Uri $LOVE_URL -OutFile "love-$LOVE_VERSION-win64.zip"
-          Expand-Archive -Path "love-$LOVE_VERSION-win64.zip" -DestinationPath "love"
-          $LOVE_DIR = (Get-ChildItem "love" -Directory | Where-Object { $_.Name -match "love-$LOVE_VERSION-win64" }).FullName
-          echo "LOVE_DIR=$LOVE_DIR" >> $env:GITHUB_ENV
-        shell: pwsh
+          set -euo pipefail
+          curl -sSL --fail -o love.zip \
+            "https://github.com/love2d/love/releases/download/${LOVE_VERSION}/${{ matrix.love_asset }}"
+          mkdir -p runtime
+          unzip -q love.zip -d runtime
 
-      - name: Create .love file and distribution
+      - name: Fuse the game into the executable
+        shell: bash
         run: |
-          $version = "${{ needs.prepare.outputs.version }}"
-          $loveDir = $env:LOVE_DIR
-          $distDir = "Light-Engine-$version-windows-x64"
-          New-Item -ItemType Directory -Path $distDir -Force
-
-          # Copy love.exe and dlls
-          Copy-Item "$loveDir\*" $distDir -Recurse -Force
-
-          # Create game.love (zip of source) - use Compress-Archive with exclude
-          $exclude = @(
-            ".git*",
-            ".github",
-            "android",
-            "tools",
-            "lib",
-            "release",
-            "love",
-            "*.love",
-            "*.apk",
-            "*.zip",
-            "*.md",
-            "*.txt",
-            "*.xml",
-            "*.json",
-            "*.lua",
-            "*.yml",
-            "*.yaml",
-            "Cargo*",
-            "actionlint*",
-            "job_logs*"
-          )
-          $files = Get-ChildItem -Recurse -File | Where-Object {
-            $relative = $_.FullName.Substring((Get-Location).Path.Length + 1)
-            $shouldExclude = $false
-            foreach ($pattern in $exclude) {
-              if ($relative -like $pattern) { $shouldExclude = $true; break }
-            }
-            return -not $shouldExclude
-          }
-          $files | Compress-Archive -DestinationPath "$distDir\game.love" -Force
-
-          # Create launch script
-          "@echo off
-          start love.exe game.love" | Out-File -Encoding ASCII "$distDir\Light Engine.bat"
-
-          # Zip it
-          Compress-Archive -Path "$distDir\*" -DestinationPath "Light-Engine-$version-windows-x64.zip" -Force
-        shell: pwsh
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-zip
-          path: Light-Engine-${{ needs.prepare.outputs.version }}-windows-x64.zip
-          retention-days: 30
-
-  # Linux Build
-  build-linux:
-    name: Build Linux
-    needs: prepare
-    runs-on: ubuntu-latest
-    if: needs.prepare.outputs.version != ''
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download LÖVE ${{ env.LOVE_VERSION }} AppImage
-        run: |
-          LOVE_URL="https://github.com/love2d/love/releases/download/${{ env.LOVE_VERSION }}/love-${{ env.LOVE_VERSION }}-linux-x86_64.AppImage"
-          wget -q "$LOVE_URL" -O love.AppImage
-          chmod +x love.AppImage
-          ./love.AppImage --appimage-extract
-          LOVE_DIR=$(pwd)/squashfs-root
-          echo "LOVE_DIR=$LOVE_DIR" >> $GITHUB_ENV
-          echo "$LOVE_DIR" >> $GITHUB_PATH
-
-      - name: Create .love file
-        run: |
+          set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          DIST_DIR="Light-Engine-$VERSION-linux-x64"
-          mkdir -p "$DIST_DIR"
+          OUT="Light-Engine-${VERSION}-windows-${{ matrix.arch }}.zip"
+          export OUT
+          DIST="dist/Light Engine"
 
-          # Create game.love (zip of source)
-          zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
+          LOVE_EXE=$(find runtime -maxdepth 2 -iname love.exe | head -n1)
+          if [ -z "$LOVE_EXE" ]; then
+            echo "::error::love.exe not found in the LÖVE archive"
+            exit 1
+          fi
+          LOVE_DIR=$(dirname "$LOVE_EXE")
 
-          # Copy love runtime from AppImage extraction
-          cp -r "$LOVE_DIR"/* "$DIST_DIR/"
+          rm -rf dist
+          mkdir -p "$DIST"
+          find "$LOVE_DIR" -maxdepth 1 -type f ! -iname 'love.exe' \
+            -exec cp {} "$DIST/" \;
+          cp "$LOVE_EXE" "$DIST/Light Engine.exe"
 
-          # Copy game
-          cp game.love "$DIST_DIR/game.love"
+          # The app icon must be art/logo.png, not art/icon.png.
+          curl -sSL --fail -o rcedit.exe \
+            https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe
+          ./rcedit.exe "$DIST/Light Engine.exe" --set-icon "$PWD/inputs/icon.ico" \
+            --set-version-string "ProductName" "Light Engine" \
+            --set-version-string "FileDescription" "Light Engine" \
+            --set-version-string "CompanyName" "Zyn" \
+            --set-version-string "OriginalFilename" "Light Engine.exe"
 
-          # Create launch script
-          {
-            echo '#!/bin/bash'
-            echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
-            echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"'
-            echo 'exec "$SCRIPT_DIR/love" "$SCRIPT_DIR/game.love" "$@"'
-          } > "$DIST_DIR/Light Engine"
-          chmod +x "$DIST_DIR/Light Engine"
+          # LÖVE reads the .love appended to its own executable.
+          LOVE_EXE_SIZE=$(stat -c%s "$DIST/Light Engine.exe")
+          cat "$DIST/Light Engine.exe" game.love > "$DIST/fused.exe"
+          mv "$DIST/fused.exe" "$DIST/Light Engine.exe"
+          echo "LOVE_EXE_SIZE=$LOVE_EXE_SIZE" >> "$GITHUB_ENV"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
 
-          # Create desktop entry
-          {
-            echo '[Desktop Entry]'
-            echo 'Name=Light Engine'
-            echo 'Comment=Friday Night Funkin\' Light Engine'
-            echo 'Exec=Light Engine'
-            echo 'Icon=light-engine'
-            echo 'Type=Application'
-            echo 'Categories=Game;ArcadeGame;'
-          } > "$DIST_DIR/Light Engine.desktop"
+          python - <<'PY'
+          import os
+          import zipfile
 
-          # Zip it
-          cd "$DIST_DIR" && zip -r "../Light-Engine-$VERSION-linux-x64.zip" .
+          out = os.environ["OUT"]
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+              for root, _, files in os.walk("dist"):
+                  for name in sorted(files):
+                      path = os.path.join(root, name)
+                      archive.write(path, os.path.relpath(path, "dist").replace(os.sep, "/"))
+          print(f"{out}: {os.path.getsize(out) / (1024 * 1024):.1f} MiB")
+          PY
 
-      - name: Upload Linux artifact
+      - name: Validate the archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sys
+          import zipfile
+
+          out = os.environ["OUT"]
+          exe = "Light Engine/Light Engine.exe"
+          expected = int(os.environ["LOVE_EXE_SIZE"]) + os.path.getsize("game.love")
+
+          with zipfile.ZipFile(out) as archive:
+              names = archive.namelist()
+              broken = [n for n in names if "\\" in n]
+              if broken:
+                  print(f"::error::{len(broken)} entries use backslashes, e.g. {broken[0]}")
+                  sys.exit(1)
+              try:
+                  info = archive.getinfo(exe)
+              except KeyError:
+                  print(f"::error::{exe} missing from the archive: {names}")
+                  sys.exit(1)
+              if info.file_size != expected:
+                  print(
+                      f"::error::{exe} is {info.file_size} bytes, "
+                      f"expected love.exe + game.love = {expected}"
+                  )
+                  sys.exit(1)
+              with archive.open(info) as handle:
+                  if handle.read(2) != b"MZ":
+                      print("::error::the executable is not a PE file")
+                      sys.exit(1)
+          print(f"{out} looks valid ({len(names)} entries, {expected / (1024 * 1024):.1f} MiB)")
+          PY
+
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$OUT" --clobber
+          sha256sum "$OUT" > "sha256-windows-${{ matrix.arch }}.txt"
+
+      - name: Store checksum
         uses: actions/upload-artifact@v4
         with:
-          name: linux-zip
-          path: Light-Engine-${{ needs.prepare.outputs.version }}-linux-x64.zip
-          retention-days: 30
+          name: sha256-windows-${{ matrix.arch }}
+          path: sha256-windows-${{ matrix.arch }}.txt
+          retention-days: 1
 
-  # Android Build
-  build-android:
-    name: Build Android
+  build-linux:
+    name: Linux ${{ matrix.kind }}
     needs: prepare
     runs-on: ubuntu-latest
-    if: needs.prepare.outputs.version != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: AppImage
+            suffix: x86_64.AppImage
+          - kind: portable
+            suffix: linux-x86_64.tar.gz
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download build inputs
+        uses: actions/download-artifact@v4
         with:
-          submodules: recursive
+          name: build-inputs
+          path: inputs
+
+      - name: Build game.love
+        run: python3 tools/make_game_love.py game.love
+
+      - name: Download the LÖVE AppImage runtime
+        run: |
+          set -euo pipefail
+          curl -sSL --fail -o love.AppImage \
+            "https://github.com/love2d/love/releases/download/${LOVE_VERSION}/love-${LOVE_VERSION}-x86_64.AppImage"
+          chmod +x love.AppImage
+          rm -rf AppDir squashfs-root
+          ./love.AppImage --appimage-extract >/dev/null
+          mv squashfs-root AppDir
+
+      - name: Build the AppDir
+        run: |
+          set -euo pipefail
+          cp game.love AppDir/game.love
+
+          # The official AppRun already supports a fused game via FUSE_PATH.
+          # shellcheck disable=SC2016  # $APPDIR must survive into the file
+          sed -i 's|^#FUSE_PATH=.*|FUSE_PATH="$APPDIR/game.love"|' AppDir/AppRun
+          # shellcheck disable=SC2016
+          if ! grep -q 'FUSE_PATH="$APPDIR/game.love"' AppDir/AppRun; then
+            echo "::error::could not point AppRun at game.love"
+            exit 1
+          fi
+
+          rm -f AppDir/love.desktop AppDir/love.svg AppDir/.DirIcon
+          cat > AppDir/LightEngine.desktop <<'EOF'
+          [Desktop Entry]
+          Name=Light Engine
+          Comment=Friday Night Funkin' Light Engine
+          Exec=love %f
+          Icon=light-engine
+          Terminal=false
+          Type=Application
+          Categories=Game;ArcadeGame;
+          EOF
+          install -m 0644 inputs/icon-256.png AppDir/light-engine.png
+          ln -s light-engine.png AppDir/.DirIcon
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          if [ "${{ matrix.suffix }}" = "x86_64.AppImage" ]; then
+            curl -sSL --fail -o appimagetool \
+              https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+            chmod +x appimagetool
+            ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
+              ./appimagetool AppDir "Light-Engine-${VERSION}-${{ matrix.suffix }}"
+            OUT="Light-Engine-${VERSION}-${{ matrix.suffix }}"
+          else
+            D="Light-Engine-${VERSION}-linux-x86_64"
+            mv AppDir "$D"
+            install -m 0755 "$D/AppRun" "$D/light-engine.sh"
+            tar -czf "Light-Engine-${VERSION}-${{ matrix.suffix }}" "$D"
+            OUT="Light-Engine-${VERSION}-${{ matrix.suffix }}"
+          fi
+          export OUT
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          ls -l "$OUT"
+
+      - name: Validate the package
+        run: |
+          set -euo pipefail
+          if [ "${OUT##*.}" = "AppImage" ]; then
+            python - <<'PY'
+          import os
+          import sys
+
+          out = os.environ["OUT"]
+          with open(out, "rb") as handle:
+              head = handle.read(12)
+          if head[:4] != b"\x7fELF" or head[8:11] != b"AI\x02":
+              print("::error::not a type 2 AppImage")
+              sys.exit(1)
+          # The bare LÖVE runtime is ~5 MB; anything close to it means the
+          # game never made it into the image.
+          minimum = max(5 * 1024 * 1024, os.path.getsize("game.love") // 2)
+          if os.path.getsize(out) < minimum:
+              print(
+                  f"::error::{out} is {os.path.getsize(out)} bytes, "
+                  f"expected at least {minimum}"
+              )
+              sys.exit(1)
+          print(f"{out} looks valid")
+          PY
+          else
+            D="${OUT%.tar.gz}"
+            tar -tzf "$OUT" > listing.txt
+            for entry in game.love bin/love light-engine.png LightEngine.desktop light-engine.sh; do
+              if ! grep -qxF "$D/$entry" listing.txt; then
+                echo "::error::$D/$entry is missing from the tarball"
+                exit 1
+              fi
+            done
+            echo "$OUT looks valid"
+          fi
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$OUT" --clobber
+          sha256sum "$OUT" > "sha256-linux-${{ matrix.suffix }}.txt"
+
+      - name: Store checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-linux-${{ matrix.suffix }}
+          path: sha256-linux-${{ matrix.suffix }}.txt
+          retention-days: 1
+
+  build-android:
+    name: Android
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-inputs
+          path: inputs
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK
+      - name: Locate the Android SDK
+        id: sdk
         run: |
-          ANDROID_SDK_ROOT="$HOME/android-sdk"
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          cd "$ANDROID_SDK_ROOT/cmdline-tools"
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip
-          mv cmdline-tools latest
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            SDK="$HOME/android-sdk"
+          fi
+          SDKM=""
+          for candidate in \
+            "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+            "$SDK/cmdline-tools/bin/sdkmanager" \
+            "$SDK/tools/bin/sdkmanager"; do
+            if [ -x "$candidate" ]; then
+              SDKM="$candidate"
+              break
+            fi
+          done
+          if [ -z "$SDKM" ]; then
+            mkdir -p "$SDK/cmdline-tools"
+            curl -sSL --fail -o /tmp/cmdline-tools.zip \
+              https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/cmdline-tools.zip -d "$SDK/cmdline-tools"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+            SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
+          echo "sdkmanager=$SDKM" >> "$GITHUB_OUTPUT"
+          echo "ndk=$SDK/ndk/25.2.9519653" >> "$GITHUB_OUTPUT"
 
-          # Accept licenses and install required packages
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "cmake;3.22.1"
+      - name: Cache the NDK
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.sdk.outputs.ndk }}
+          key: android-ndk-25.2.9519653
 
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle.properties.example', 'android/AndroidManifest.xml') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Install SDK packages
+        run: |
+          set -euo pipefail
+          yes | "${{ steps.sdk.outputs.sdkmanager }}" --licenses >/dev/null 2>&1 || true
+          if [ ! -d "${{ steps.sdk.outputs.ndk }}" ]; then
+            "${{ steps.sdk.outputs.sdkmanager }}" --install "ndk;25.2.9519653"
+          fi
+          "${{ steps.sdk.outputs.sdkmanager }}" --install \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Clone love-android
         run: |
-          git clone --depth 1 --branch 11.5a --recurse-submodules https://github.com/love2d/love-android.git
-          echo "LOVE_ANDROID_DIR=$(pwd)/love-android" >> $GITHUB_ENV
+          set -euo pipefail
+          git clone --depth 1 --branch 11.5a --recurse-submodules --shallow-submodules \
+            https://github.com/love2d/love-android.git
 
-      - name: Apply patches and copy files
+      - name: Apply the project template
         run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
           cd love-android
-          # Apply PhysFS patch for Android/media access
-          if git -C love/src/jni/love apply --reverse --check ../android/allow-android-media-mount.patch >/dev/null 2>&1; then
-            echo "Patch already applied"
-          elif git -C love/src/jni/love apply --check ../android/allow-android-media-mount.patch >/dev/null 2>&1; then
-            git -C love/src/jni/love apply ../android/allow-android-media-mount.patch
+
+          PATCH=../android/allow-android-media-mount.patch
+          if ! git -C love/src/jni/love apply --check "$PATCH" >/dev/null 2>&1; then
+            git -C love/src/jni/love apply "$PATCH"
           fi
 
-          # Copy launcher and manifest
-          cp ../android/StoragePermissionActivity.java love/src/main/java/org/love2d/android/StoragePermissionActivity.java
-          cp ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
-          cp ../android/gradle.properties.example gradle.properties
+          install -m 0644 ../android/StoragePermissionActivity.java \
+            love/src/main/java/org/love2d/android/StoragePermissionActivity.java
+          install -m 0644 ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
+          install -m 0644 ../android/gradle.properties.example gradle.properties
 
-          # Copy icons to love-android resources
-          mkdir -p app/src/main/res/drawable-mdpi app/src/main/res/drawable-hdpi app/src/main/res/drawable-xhdpi app/src/main/res/drawable-xxhdpi app/src/main/res/drawable-xxxhdpi
-          cp ../android/res/drawable-mdpi/icon.png app/src/main/res/drawable-mdpi/icon.png
-          cp ../android/res/drawable-hdpi/icon.png app/src/main/res/drawable-hdpi/icon.png
-          cp ../android/res/drawable-xhdpi/icon.png app/src/main/res/drawable-xhdpi/icon.png
-          cp ../android/res/drawable-xxhdpi/icon.png app/src/main/res/drawable-xxhdpi/icon.png
-          cp ../android/res/drawable-xxxhdpi/icon.png app/src/main/res/drawable-xxxhdpi/icon.png
+          MA=${VERSION%%.*}; REST=${VERSION#*.}
+          MI=${REST%%.*}; PA=${REST#*.}
+          if [[ "$MA" =~ ^[0-9]+$ && "$MI" =~ ^[0-9]+$ && "$PA" =~ ^[0-9]+$ ]]; then
+            CODE=$(( 10#$MA * 10000 + 10#$MI * 100 + 10#$PA ))
+          else
+            CODE=1
+          fi
+          sed -i "s/^app.version_code=.*/app.version_code=$CODE/" gradle.properties
+          sed -i "s/^app.version_name=.*/app.version_name=$VERSION/" gradle.properties
 
-      - name: Create .love file
+          # Launcher icons come from art/logo.png, not art/icon.png.
+          for dir in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p "app/src/main/res/drawable-$dir"
+            install -m 0644 "../inputs/drawable-$dir/icon.png" "app/src/main/res/drawable-$dir/icon.png"
+          done
+
+          cat >> app/build.gradle <<'EOF'
+
+          // Injected by .github/workflows/release.yml: one APK per ABI plus a universal one.
+          android {
+              splits {
+                  abi {
+                      enable true
+                      reset()
+                      include 'armeabi-v7a', 'arm64-v8a'
+                      universalApk true
+                  }
+              }
+          }
+          EOF
+
+      - name: Build the APKs
         run: |
-          # Create game.love (zip of source)
-          zip -r game.love . -x ".git/*" ".github/*" "android/*" "tools/*" "lib/*" "release/*" "*.love" "*.apk" "*.zip" "*.md" "*.txt" "*.xml" "*.json" "*.lua" "*.yml" "*.yaml" "Cargo*" "actionlint*" "job_logs*"
-          echo "LOVE_FILE=$(pwd)/game.love" >> $GITHUB_ENV
-
-      - name: Embed .love into APK
-        run: |
-          cd love-android
-          cp "$LOVE_FILE" app/src/embed/assets/game.love
-
-      - name: Build APK
-        run: |
+          set -euo pipefail
           cd love-android
           chmod +x gradlew
-          ./gradlew :app:assembleEmbedNoRecordRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+          ./gradlew :app:assembleEmbedNoRecordRelease --no-daemon
 
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: love-android/app/build/outputs/apk/embedNoRecord/release/app-embed-noRecord-release-unsigned.apk
-          retention-days: 30
-
-  # Create Release
-  release:
-    name: Create Release
-    needs: [prepare, build-android, build-windows, build-linux]
-    runs-on: ubuntu-latest
-    if: needs.prepare.outputs.version != ''
-    steps:
-      - name: Download Android artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: android-apk
-          path: ./artifacts/android
-
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-zip
-          path: ./artifacts/windows
-
-      - name: Download Linux artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-zip
-          path: ./artifacts/linux
-
-      - name: Rename artifacts
+      - name: Sign the APKs
         run: |
+          set -euo pipefail
+          set -a
+          . android/keystore.properties
+          set +a
+          rm -rf signed
+          mkdir -p signed
+          for apk in love-android/app/build/outputs/apk/embedNoRecord/release/*.apk; do
+            name=$(basename "$apk" .apk)
+            apksigner sign \
+              --ks android/keystore.jks \
+              --ks-type JKS \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:$KEY_PASSWORD" \
+              --key-pass "pass:$KEY_PASSWORD" \
+              --out "signed/$name.apk" "$apk"
+            apksigner verify --print-certs "signed/$name.apk" | head -n 4
+          done
+          ls -l signed
+
+      - name: Validate and name the APKs
+        run: |
+          set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          mv ./artifacts/android/*.apk "Light-Engine-$VERSION-android.apk"
-          mv ./artifacts/windows/*.zip "Light-Engine-$VERSION-windows-x64.zip"
-          mv ./artifacts/linux/*.zip "Light-Engine-$VERSION-linux-x64.zip"
+          for apk in signed/*.apk; do
+            echo "== $apk"
+            aapt2 dump badging "$apk" \
+              | grep -E "^(package|application-label|native-code):" || true
+          done
+          python3 - "$VERSION" <<'PY'
+          import glob
+          import os
+          import sys
+          import zipfile
 
-      - name: Copy logo to release
-        run: |
-          cp assets/images/menus/splashscreen/FNFLOVE_logo.png light-engine-logo.png
+          version = sys.argv[1]
+          produced = {}
+          for path in sorted(glob.glob("signed/*.apk")):
+              with zipfile.ZipFile(path) as archive:
+                  names = archive.namelist()
+              abis = sorted(
+                  n.split("/")[1] for n in names if n.startswith("lib/") and n.count("/") > 1
+              )
+              if not abis:
+                  print(f"::error::{path} has no native libraries")
+                  sys.exit(1)
+              if not any(n.endswith("game.love") for n in names):
+                  print(f"::error::{path} does not contain game.love")
+                  sys.exit(1)
+              if not any(n.startswith("META-INF/") for n in names):
+                  print(f"::error::{path} is not signed")
+                  sys.exit(1)
+              if abis == ["arm64-v8a", "armeabi-v7a"]:
+                  out = f"Light-Engine-{version}-android.apk"
+              elif len(abis) == 1:
+                  out = f"Light-Engine-{version}-android-{abis[0]}.apk"
+              else:
+                  print(f"::error::{path} has unexpected ABIs: {abis}")
+                  sys.exit(1)
+              os.replace(path, out)
+              produced[out] = abis
+              print(f"{out}: {', '.join(abis)}")
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: ${{ needs.prepare.outputs.release_name }}
-          body_path: release_body.md
-          files: |
-            Light-Engine-${{ needs.prepare.outputs.version }}-android.apk
-            Light-Engine-${{ needs.prepare.outputs.version }}-windows-x64.zip
-            Light-Engine-${{ needs.prepare.outputs.version }}-linux-x64.zip
-            light-engine-logo.png
-          draft: false
-          prerelease: false
-          generate_release_notes: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if f"Light-Engine-{version}-android.apk" not in produced:
+              print("::error::the universal APK is missing")
+              sys.exit(1)
+          PY
+          ls -l Light-Engine-*.apk
 
-      - name: Verify release
-        run: |
-          gh release view ${{ needs.prepare.outputs.tag }} --json assets --jq '.assets[].name'
+      - name: Attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          APKS=(Light-Engine-*.apk)
+          gh release upload "$TAG" "${APKS[@]}" --clobber
+          sha256sum "${APKS[@]}" > sha256-android.txt
+
+      - name: Store checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-android
+          path: sha256-android.txt
+          retention-days: 1
+
+  finalize:
+    name: Publish release
+    needs: [prepare, build-windows, build-linux, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-inputs
+          path: inputs
+
+      - name: Download checksums
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sha256-*
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_NAME: ${{ needs.prepare.outputs.release_name }}
+        run: |
+          set -euo pipefail
+          cat sha256-*.txt | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
+
+          REQUIRED=(
+            "Light-Engine-${VERSION}-windows-x64.zip"
+            "Light-Engine-${VERSION}-windows-x86.zip"
+            "Light-Engine-${VERSION}-x86_64.AppImage"
+            "Light-Engine-${VERSION}-linux-x86_64.tar.gz"
+            "Light-Engine-${VERSION}-android.apk"
+            "Light-Engine-${VERSION}-android-arm64-v8a.apk"
+            "Light-Engine-${VERSION}-android-armeabi-v7a.apk"
+            "CHANGELOG.md"
+            "SHA256SUMS.txt"
+          )
+          ATTACHED=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          MISSING=0
+          for name in "${REQUIRED[@]}"; do
+            if ! grep -qx "$name" <<< "$ATTACHED"; then
+              echo "::error::$name is not attached, keeping the release as a draft"
+              MISSING=1
+            fi
+          done
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
+          gh release edit "$TAG" --draft=false --title "$RELEASE_NAME" --notes-file inputs/notes.md
+          echo "Published $TAG"
+          printf '%s\n' "$ATTACHED" | sort

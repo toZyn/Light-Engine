@@ -5,6 +5,29 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-09-28
+
+### Fixed
+- `project.lua` was missing a comma, so the game could not be loaded at all
+- Release workflow uploads every binary (Windows, Linux, Android) together with
+  `CHANGELOG.md` to the GitHub release
+- Release notes come from this file instead of a generated `release_body.md`
+- `game.love` again contains the Lua sources, assets and `lib/`; the previous
+  archives shipped no code, which made every binary fail to start
+- Linux builds use the official LÖVE 11.5 AppImage as the runtime, since 11.5
+  does not publish a `linux-x86_64.tar.gz`
+- Android APKs are signed with a stable keystore instead of a throwaway debug
+  key, so updates install over older versions
+- Binaries use `art/logo.png` as their icon instead of the 16x16
+  `art/icon.png` (Windows executable, Android launcher, AppImage and desktop entry)
+
+### Added
+- Windows builds for x64 and x86
+- Linux portable tarball and AppImage builds
+- One Android APK per ABI (`arm64-v8a`, `armeabi-v7a`) plus a universal APK
+- `SHA256SUMS.txt` attached to every release
+- `tools/make_game_love.py`, which builds the game archive for every platform
+
 ## [0.1.6] - 2024-XX-XX
 
 ### Changed

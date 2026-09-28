@@ -36,6 +36,8 @@ luac.out
 # Custom
 *.lnk
 *.sublime-workspace
+*.love
+actionlint
 mods
 addons
 release

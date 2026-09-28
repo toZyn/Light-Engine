@@ -41,5 +41,29 @@ install -m 0644 "$ROOT/release/Light Engine.love" \
 ANDROID_SDK_ROOT="$SDK" ANDROID_HOME="$SDK" \
   "$TEMPLATE/gradlew" -p "$TEMPLATE" :app:assembleEmbedNoRecordRelease --no-daemon
 
-echo "Unsigned APK:"
-echo "$TEMPLATE/app/build/outputs/apk/embedNoRecord/release/app-embed-noRecord-release-unsigned.apk"
+UNSIGNED="$TEMPLATE/app/build/outputs/apk/embedNoRecord/release/app-embed-noRecord-release-unsigned.apk"
+
+if [[ -f "$ROOT/android/keystore.jks" && -f "$ROOT/android/keystore.properties" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$ROOT/android/keystore.properties"
+  set +a
+  APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+  if [[ -z "$APKSIGNER" ]]; then
+    echo "apksigner not found under $SDK/build-tools." >&2
+    exit 1
+  fi
+  SIGNED="$ROOT/release/light-engine.apk"
+  mkdir -p "$ROOT/release"
+  "$APKSIGNER" sign \
+    --ks "$ROOT/android/keystore.jks" \
+    --ks-type JKS \
+    --ks-key-alias "$KEY_ALIAS" \
+    --ks-pass "pass:$KEY_PASSWORD" \
+    --key-pass "pass:$KEY_PASSWORD" \
+    --out "$SIGNED" "$UNSIGNED"
+  "$APKSIGNER" verify --print-certs "$SIGNED"
+  echo "Signed APK: $SIGNED"
+else
+  echo "Unsigned APK: $UNSIGNED"
+fi
