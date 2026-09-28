@@ -502,7 +502,7 @@ function PlayState:executeCutscene(name, type, onComplete)
 		end)
 
 		cutsceneScript:call("create")
-		if isEnd then cutsceneScript:call("postCreate") end
+		cutsceneScript:call("postCreate")
 
 		self.scripts:add(cutsceneScript)
 	else

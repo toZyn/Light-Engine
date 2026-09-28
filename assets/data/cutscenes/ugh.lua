@@ -1,4 +1,5 @@
 local bgMusic
+local tankman
 local isVideo = ClientPrefs.data.lowQuality
 
 local function startVideo()

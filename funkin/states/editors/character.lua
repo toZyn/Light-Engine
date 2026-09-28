@@ -424,8 +424,11 @@ function CharacterEditor:loadCharacter()
 end
 
 function CharacterEditor:changeOffsets(x, y)
-	self.char.offset.x, self.char.offset.y = x, y
+	self.curAnim[6] = self.curAnim[6] or {0, 0}
+	self.curAnim[6][1], self.curAnim[6][2] = x, y
 	self.char.animOffsets[self.curAnim[1]] = {x = x, y = y}
+	local animation = self.char.anim:get(self.curAnim[1])
+	if animation then animation.offset:set(x, y) end
 end
 
 function CharacterEditor:changeAnim(huh)

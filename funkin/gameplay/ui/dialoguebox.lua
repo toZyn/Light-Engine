@@ -10,7 +10,7 @@ local function dispatchAnims(spr, data)
 		else
 			spr.animation:addByPrefix(name, prefix, fps, loop)
 		end
-		if offsets then
+		if offset then
 			local anim = spr.animation:get(name)
 			if anim then anim.offset:set(unpack(offset)) end
 		end
@@ -88,7 +88,7 @@ function DialogueBox:loadBox(anim)
 		self.boxSpr:setFrames(paths.getAtlas("dialogue/boxes/" .. data.sprite))
 		dispatchAnims(self.boxSpr, data.animations)
 		self.boxSpr.animation:play("enter")
-		self.boxSpr.animation.onFinish = bind(self.boxSpr, self.onFinishAnim)
+		self.boxSpr.animation.onFinish:add(bind(self.boxSpr, self.onFinishAnim))
 	else
 		self.boxSpr:loadTexture(paths.getImage("dialogue/boxes/" .. data.sprite))
 		self.boxSpr.frames = nil
@@ -112,8 +112,8 @@ function DialogueBox:loadBox(anim)
 		if ndata.animations then
 			spr:setFrames(paths.getAtlas("dialogue/boxes/" .. ndata.sprite))
 			dispatchAnims(spr, ndata.animations)
-			spr:play("enter")
-			spr.animation.onFinish = bind(spr, self.onFinishAnim)
+			spr.animation:play("enter")
+			spr.animation.onFinish:add(bind(spr, self.onFinishAnim))
 		else
 			spr:loadTexture(paths.getImage("dialogue/boxes/" .. ndata.sprite))
 			spr.frames = nil
@@ -179,7 +179,7 @@ function DialogueBox:startDialogue()
 	self.characters.visible = true
 	if not self.box.visible then
 		self.box.visible = true
-		if self.boxSpr.animations then self.boxSpr:play("enter") end
+		if self.boxSpr.animation:has("enter") then self.boxSpr.animation:play("enter") end
 	end
 
 	if self.finishSpr then self.finishSpr.visible = false end
@@ -197,8 +197,8 @@ function DialogueBox:startDialogue()
 		self.text.completeCallback = function()
 			if self.finishSpr then
 				self.finishSpr.visible = true
-				if self.finishSpr.__animations then
-					self.finishSpr:play("enter")
+				if self.finishSpr.animation:has("enter") then
+					self.finishSpr.animation:play("enter")
 				end
 			end
 			self.finished = true
@@ -231,8 +231,8 @@ function DialogueBox:resetCharacters(chars)
 		if char.animations then
 			spr:setFrames(paths.getAtlas("dialogue/characters/" .. char.sprite))
 			dispatchAnims(spr, char.animations)
-			spr:play("enter")
-			spr.animation.finished = bind(spr, self.onCharFinishAnim)
+			spr.animation:play("enter")
+			spr.animation.onFinish:add(bind(spr, self.onCharFinishAnim))
 		else
 			spr:loadTexture(paths.getImage("dialogue/characters/" .. char.sprite))
 			spr.frames = nil
@@ -282,21 +282,22 @@ end
 function DialogueBox:splitDialogues(data)
 	local lines = data:split('\n')
 	for i, line in ipairs(lines) do
-		local stuff = line:split(':')
+		if line:match('%S') then
+			local stuff = line:split(':')
 
-		local dialogue = stuff[#stuff]
-		stuff[#stuff] = nil
+			local dialogue = stuff[#stuff]
+			stuff[#stuff] = nil
 
-		local chars = {}
-		for i = 1, #stuff do
-			local line = stuff[i]
-			local name, expr = line:match("([^.]+)%.?(.*)")
-			if not expr or expr == "" then expr = "default" end
-			table.insert(chars, self:getCachedChar(name, expr))
+			local chars = {}
+			for i = 1, #stuff do
+				local line = stuff[i]
+				local name, expr = line:match("([^.]+)%.?(.*)")
+				if not expr or expr == "" then expr = "default" end
+				table.insert(chars, self:getCachedChar(name, expr))
+			end
+
+			table.insert(self.dialogues, {chars, dialogue, table.concat(stuff)})
 		end
-
-		table.insert(self.dialogues, {chars, dialogue, table.concat(stuff)})
-		local prev = self.dialogues[#self.dialogues - 1]
 	end
 end
 

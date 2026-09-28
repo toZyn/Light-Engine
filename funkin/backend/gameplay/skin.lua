@@ -27,17 +27,7 @@ end
 
 function Skin:get(asset, type)
 	type = type or "image"
-
-	local function try(skin)
-		return loadAsset(type, "skins/" .. skin .. "/" .. asset)
-	end
-
-	local obj = try(self.skin)
-	if not obj and self.isPixel and self.skin ~= "default-pixel" then
-		obj = try("default-pixel")
-	end
-	if not obj then obj = try("default") end
-	return obj
+	return loadAsset(type, self:getPath(asset, type))
 end
 
 function Skin:getPath(asset, type)

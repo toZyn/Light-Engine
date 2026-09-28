@@ -20,6 +20,29 @@ function Character:new(x, y, char, isPlayer)
 	local data, type = Parser.getCharacter(self.char)
 	self.data = data
 
+	if Character.editorMode then
+		self.animationsTable = data.animations or {}
+		self.animOffsets = {}
+		for _, animation in ipairs(self.animationsTable) do
+			animation[6] = animation[6] or {0, 0}
+			local offset = animation[6]
+			self.animOffsets[animation[1]] = {
+				x = offset[1] or 0,
+				y = offset[2] or 0
+			}
+		end
+
+		local position = data.position or {0, 0}
+		self.positionTable = {
+			x = position[1] or 0,
+			y = position[2] or 0
+		}
+		self.imageFile = data.sprite or ""
+		self.jsonFlipX = data.flip_x == true
+		self.jsonAntialiasing = data.antialiasing ~= false
+		self.jsonScale = data.scale or 1
+	end
+
 	local fullpath = paths.getPath('images/' .. data.sprite)
 	if paths.exists(fullpath, "directory") and paths.exists(fullpath .. "/Animation.json", "file") then
 		self._animAtlas = AnimateAtlas(0, 0, paths.getAnimateAtlas(data.sprite))

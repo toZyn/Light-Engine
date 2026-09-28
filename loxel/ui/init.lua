@@ -7,5 +7,6 @@ return {
 	UIGrid = loxreq "ui.grid",
 	UIInputTextBox = loxreq "ui.inputtextbox",
 	UINumericStepper = loxreq "ui.numericstepper",
-	UISlider = loxreq "ui.slider"
+	UISlider = loxreq "ui.slider",
+	UITabMenu = loxreq "ui.tabmenu"
 }
