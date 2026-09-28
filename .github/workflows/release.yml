@@ -478,6 +478,9 @@ jobs:
           "${{ steps.sdk.outputs.sdkmanager }}" --install \
             "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Build game.love
+        run: python3 tools/make_game_love.py game.love
+
       - name: Clone love-android
         run: |
           set -euo pipefail
@@ -507,6 +510,11 @@ jobs:
             love/src/main/java/org/love2d/android/StoragePermissionActivity.java
           install -m 0644 ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
           install -m 0644 ../android/gradle.properties.example gradle.properties
+
+          # The embed flavor serves the game from assets/game.love.
+          mkdir -p app/src/embed/assets
+          install -m 0644 "$WS/game.love" app/src/embed/assets/game.love
+          ls -l app/src/embed/assets/game.love
 
           MA=${VERSION%%.*}; REST=${VERSION#*.}
           MI=${REST%%.*}; PA=${REST#*.}
