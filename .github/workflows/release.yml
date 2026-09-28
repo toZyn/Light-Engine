@@ -665,6 +665,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_NAME: ${{ needs.prepare.outputs.release_name }}
@@ -672,7 +673,7 @@ jobs:
           set -euo pipefail
           cat sha256-*.txt | sort -k2 > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          gh release upload "$TAG" SHA256SUMS.txt --clobber --repo "$REPO"
 
           REQUIRED=(
             "Light-Engine-${VERSION}-windows-x64.zip"
@@ -685,7 +686,7 @@ jobs:
             "CHANGELOG.md"
             "SHA256SUMS.txt"
           )
-          ATTACHED=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          ATTACHED=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
           MISSING=0
           for name in "${REQUIRED[@]}"; do
             if ! grep -qx "$name" <<< "$ATTACHED"; then
@@ -697,6 +698,6 @@ jobs:
             exit 1
           fi
 
-          gh release edit "$TAG" --draft=false --title "$RELEASE_NAME" --notes-file inputs/notes.md
+          gh release edit "$TAG" --repo "$REPO" --draft=false --title "$RELEASE_NAME" --notes-file inputs/notes.md
           echo "Published $TAG"
           printf '%s\n' "$ATTACHED" | sort
