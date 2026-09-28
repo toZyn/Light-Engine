@@ -596,9 +596,11 @@ jobs:
           for path in sorted(glob.glob("signed/*.apk")):
               with zipfile.ZipFile(path) as archive:
                   names = archive.namelist()
-              abis = sorted(
-                  n.split("/")[1] for n in names if n.startswith("lib/") and n.count("/") > 1
-              )
+              abis = sorted({
+                  n.split("/")[1]
+                  for n in names
+                  if n.startswith("lib/") and n.count("/") > 1
+              })
               if not abis:
                   print(f"::error::{path} has no native libraries")
                   sys.exit(1)
