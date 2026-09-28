@@ -41,3 +41,5 @@ actionlint
 mods
 addons
 release
+__pycache__/
+*.pyc
