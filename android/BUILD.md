@@ -29,6 +29,7 @@ committed copies only matter for local builds.
 `keystore.jks` holds the release key and `keystore.properties` holds its alias
 and password. Both are read by `tools/build-android.sh` and by the release
 workflow. Its job is to give every build the same signature, so updates install
-over older versions instead of failing with "app not installed". The key lives
-in the repository, so anyone with access to it can sign the same package;
-rotating the key means installed copies have to be uninstalled first.
+over older versions instead of failing with "app not installed". This
+repository is public, so the keystore and its password are public too: anyone
+can sign the same package. Rotating the key means installed copies have to be
+uninstalled first.

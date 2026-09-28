@@ -33,7 +33,10 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          VERSION=$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' project.lua | head -n1)
+          # Two steps on purpose: piping sed into head can make sed die of
+          # SIGPIPE, which pipefail turns into a step failure.
+          ALL_VERSIONS=$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' project.lua)
+          VERSION=$(printf '%s\n' "$ALL_VERSIONS" | sed -n '1p')
           if [ -z "$VERSION" ]; then
             echo "::error::No version found in project.lua"
             exit 1
@@ -166,7 +169,7 @@ jobs:
           export OUT
           DIST="dist/Light Engine"
 
-          LOVE_EXE=$(find runtime -maxdepth 2 -iname love.exe | head -n1)
+          LOVE_EXE=$(find runtime -maxdepth 2 -iname love.exe -print -quit)
           if [ -z "$LOVE_EXE" ]; then
             echo "::error::love.exe not found in the LÖVE archive"
             exit 1
@@ -485,11 +488,19 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          cd love-android
+          WS="$GITHUB_WORKSPACE"
+          cd "$WS/love-android"
 
-          PATCH=../android/allow-android-media-mount.patch
-          if ! git -C love/src/jni/love apply --check "$PATCH" >/dev/null 2>&1; then
+          # git resolves patch paths against the directory given to -C, so it
+          # has to be absolute; the shell-relative one is wrong there.
+          PATCH="$WS/android/allow-android-media-mount.patch"
+          if git -C love/src/jni/love apply --check "$PATCH"; then
             git -C love/src/jni/love apply "$PATCH"
+          elif git -C love/src/jni/love apply --reverse --check "$PATCH"; then
+            echo "media mount patch is already applied"
+          else
+            echo "::error::allow-android-media-mount.patch does not apply to love 11.5"
+            exit 1
           fi
 
           install -m 0644 ../android/StoragePermissionActivity.java \
@@ -552,7 +563,8 @@ jobs:
               --ks-pass "pass:$KEY_PASSWORD" \
               --key-pass "pass:$KEY_PASSWORD" \
               --out "signed/$name.apk" "$apk"
-            apksigner verify --print-certs "signed/$name.apk" | head -n 4
+            CERTS=$(apksigner verify --print-certs "signed/$name.apk")
+            printf '%s\n' "$CERTS" | sed -n '1,4p'
           done
           ls -l signed
 
