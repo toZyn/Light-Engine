@@ -5,6 +5,29 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16] - 2026-09-28
+
+### Fixed
+- Restored the FNF title logo and the animated `logoBumpin` atlas, which had been
+  replaced by a 1x1 placeholder frame
+- Week 6 (`Senpai`, `Roses`, `Thorns`) had no dialogue files, so the cutscenes
+  opened an empty text box
+- `DialogueBox` applied the wrong variable to animation offsets, overwrote
+  `animation.onFinish` instead of registering a listener, tried to play an
+  `enter` animation on the static hand sprite, and inserted empty lines as
+  dialogue entries
+- Cutscene scripts `ugh` and `guns` assigned `tankman` as a global, so the
+  sprite was `nil` inside their timed callbacks and the cutscene crashed
+- The character editor crashed on startup because `ui.UITabMenu` was never
+  implemented or exported; it is now available in `loxel/ui/tabmenu.lua`
+- The character editor now exposes the animation offsets, position, sprite and
+  JSON flags, applies offset edits to the live animation, and keeps them when
+  saving the character JSON
+- `PlayState` only called `postCreate` on the final cutscene, so every earlier
+  cutscene never finished setting itself up
+- `Skin:get` tried to load `default-pixel/healthBar`, which does not exist, and
+  logged a null-value warning before falling back to the `default` skin
+
 ## [0.1.15] - 2026-09-28
 
 ### Fixed
