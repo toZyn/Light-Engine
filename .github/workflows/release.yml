@@ -50,6 +50,7 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       release_name: ${{ steps.meta.outputs.release_name }}
       android_version_code: ${{ steps.meta.outputs.android_version_code }}
+      build_release: ${{ steps.published.outputs.build_release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,7 +93,16 @@ jobs:
           print(f"Release {version}; Android versionCode {code}")
           PYCODE
 
+      - name: Check whether this version is already published
+        id: published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          python3 tools/release_state.py --repository "$GITHUB_REPOSITORY" --tag "$TAG"
+
       - name: Build release notes from CHANGELOG.md
+        if: steps.published.outputs.build_release == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ steps.meta.outputs.version }}"
@@ -122,6 +132,7 @@ jobs:
           cat notes.md
 
       - name: Generate icons from art/logo.png
+        if: steps.published.outputs.build_release == 'true'
         run: |
           set -euo pipefail
           if command -v magick >/dev/null 2>&1; then
@@ -147,9 +158,11 @@ jobs:
           find inputs -type f | sort
 
       - name: Package the optional addon separately
+        if: steps.published.outputs.build_release == 'true'
         run: python3 tools/make_addon_release.py Light-Engine-screen-overlay-addon.zip
 
       - name: Open draft release
+        if: steps.published.outputs.build_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
@@ -167,6 +180,7 @@ jobs:
           gh release upload "$TAG" Light-Engine-screen-overlay-addon.zip --clobber
 
       - name: Upload build inputs
+        if: steps.published.outputs.build_release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: build-inputs
@@ -177,6 +191,7 @@ jobs:
   build-windows:
     name: Windows ${{ matrix.arch }}
     needs: prepare
+    if: needs.prepare.outputs.build_release == 'true'
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -317,6 +332,7 @@ jobs:
   build-linux:
     name: Linux ${{ matrix.kind }}
     needs: prepare
+    if: needs.prepare.outputs.build_release == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -455,6 +471,7 @@ jobs:
   build-android:
     name: Android
     needs: prepare
+    if: needs.prepare.outputs.build_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

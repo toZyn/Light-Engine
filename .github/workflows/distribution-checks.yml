@@ -1,0 +1,220 @@
+name: Distribution checks
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/distribution-checks.yml'
+      - 'tools/check_*'
+      - 'tools/fetch_release_package.py'
+      - 'tests/test_packaged_game.py'
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Commit used to build the release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distribution-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SOURCE_COMMIT: ${{ inputs.source_commit || github.event.pull_request.base.sha || github.sha }}
+  ALSOFT_DRIVERS: 'null'
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.kind }} binary
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: AppImage
+            asset: 'Light-Engine-{version}-x86_64.AppImage'
+          - kind: portable
+            asset: 'Light-Engine-{version}-linux-x86_64.tar.gz'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native GUI test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool libgl1 libopengl0 libegl1 libasound2
+          python3 -m pip install Pillow==11.3.0 python-xlib==0.33
+      - name: Download and verify the built release asset
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: python3 tools/fetch_release_package.py "$ASSET" .ci/package --commit "$SOURCE_COMMIT"
+      - name: Verify shipped source and run the packaged binary
+        env:
+          PACKAGE_KIND: ${{ matrix.kind }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -euo pipefail
+          if [ "$PACKAGE_KIND" = AppImage ]; then
+            chmod +x .ci/package
+            (cd .ci && ./package --appimage-extract > extraction.log)
+            GAME=.ci/squashfs-root/game.love
+            LAUNCHER="$PWD/.ci/package"
+          else
+            tar -xzf .ci/package -C .ci
+            GAME=$(find .ci -name game.love -print -quit)
+            LAUNCHER="$PWD/$(dirname "$GAME")/light-engine.sh"
+          fi
+          python3 tools/check_packaged_game.py "$GAME"
+          xvfb-run -a python3 tools/check_desktop_binary.py \
+            --output "test-results/distribution-linux-$PACKAGE_KIND" "$LAUNCHER"
+      - name: Upload native screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-linux-${{ matrix.kind }}
+          path: test-results/
+          retention-days: 14
+
+  windows:
+    name: Windows ${{ matrix.arch }} binary
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    env:
+      GALLIUM_DRIVER: llvmpipe
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install screenshot support
+        run: python -m pip install Pillow==11.3.0
+      - name: Download and verify the built release asset
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: python tools/fetch_release_package.py "Light-Engine-{version}-windows-$env:PACKAGE_ARCH.zip" .ci/package.zip --commit "$env:SOURCE_COMMIT"
+      - name: Extract and verify the fused game executable
+        run: |
+          python -c "import zipfile; zipfile.ZipFile('.ci/package.zip').extractall('.ci/distribution')"
+          python tools/check_packaged_game.py ".ci/distribution/Light Engine/Light Engine.exe"
+      - name: Install a software OpenGL renderer
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          Invoke-WebRequest https://github.com/pal1000/mesa-dist-win/releases/download/25.0.7/mesa3d-25.0.7-release-msvc.7z -OutFile .ci/mesa.7z
+          7z x -y .ci/mesa.7z "-o.ci/mesa"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $Mesa = Get-ChildItem .ci/mesa -Recurse -Filter opengl32.dll | Where-Object { $_.Directory.Name -eq $env:PACKAGE_ARCH } | Select-Object -First 1
+          if (-not $Mesa) { throw "Mesa architecture missing: $env:PACKAGE_ARCH" }
+          Copy-Item (Join-Path $Mesa.Directory.FullName '*.dll') '.ci/distribution/Light Engine'
+          "SDL_OPENGL_LIBRARY=$((Resolve-Path '.ci/distribution/Light Engine/opengl32.dll').Path)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Run the packaged game through native input
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: python tools/check_desktop_binary.py --output "test-results/distribution-windows-$env:PACKAGE_ARCH" ".ci/distribution/Light Engine/Light Engine.exe"
+      - name: Exercise the real desktop companion windows
+        if: matrix.arch == 'x64'
+        run: |
+          python -m pip install -r separate-addons/screen-overlay/desktop/requirements.txt
+          python -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
+      - name: Upload native screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-windows-${{ matrix.arch }}
+          path: test-results/
+          retention-days: 14
+
+  android:
+    name: Android ${{ matrix.kind }} signed APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: universal
+            suffix: android
+            abi: arm64-v8a
+          - kind: arm64
+            suffix: android-arm64-v8a
+            abi: arm64-v8a
+          - kind: armv7
+            suffix: android-armeabi-v7a
+            abi: armeabi-v7a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify the signed release APK
+        env:
+          APK_SUFFIX: ${{ matrix.suffix }}
+        run: |
+          python3 tools/fetch_release_package.py "Light-Engine-{version}-$APK_SUFFIX.apk" .ci/game.apk --commit "$SOURCE_COMMIT"
+          python3 tools/check_packaged_game.py .ci/game.apk --android
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the ARM release using Android native translation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -memory 4096
+          script: python3 tools/check_android_apk.py .ci/game.apk --abi ${{ matrix.abi }} --output test-results/distribution-android-${{ matrix.kind }}
+      - name: Upload emulator screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-android-${{ matrix.kind }}
+          path: test-results/
+          retention-days: 14
+
+  android-overlay:
+    name: Android 15 overlay companion APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify the signed companion APK
+        run: python3 tools/fetch_release_package.py Light-Engine-screen-overlay-android.apk .ci/overlay.apk --commit "$SOURCE_COMMIT"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise consent and native overlay windows
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -memory 4096
+          script: python3 tools/check_android_overlay.py .ci/overlay.apk --output test-results/distribution-android-overlay
+      - name: Upload companion screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-android-overlay
+          path: test-results/
+          retention-days: 14
