@@ -33,6 +33,7 @@ SKIP_DIRS = {
     "docs",
     "examples",
     "test-results",
+    "inputs",
 }
 
 # Files that only exist for development/CI.
@@ -66,7 +67,7 @@ REQUIRED_ENTRIES = (
 def is_excluded(rel: str) -> bool:
     """`rel` is a POSIX style path relative to the repository root."""
     parts = rel.split("/")
-    if "__pycache__" in parts:
+    if "__pycache__" in parts or ".vscode" in parts:
         return True
     # These names are root-level build/content directories. Matching every
     # path component would also remove runtime modules such as funkin/ui/mods.
@@ -94,7 +95,7 @@ def collect_files() -> list[str]:
         if not rel_dir:
             dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         else:
-            dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+            dirs[:] = sorted(d for d in dirs if d not in {"__pycache__", ".vscode"})
         for name in sorted(files):
             rel = f"{rel_dir}/{name}".lstrip("/") if rel_dir else name
             if not is_excluded(rel):
