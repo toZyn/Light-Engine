@@ -55,6 +55,12 @@ class PackagedGameTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'development files'):
             self.verify(self.package('dirty.love', junk=True))
 
+    def test_android_aapt_excludes_editor_directories(self):
+        apk = self.package('android.love', prefix='assets/')
+        with patch.object(checker, 'ROOT', str(self.root)), \
+                patch.object(checker, 'collect_files', return_value=['main.lua', 'assets/pixel.png', 'loxel/.vscode/settings.json']):
+            checker.verify(apk, android=True)
+
 
 if __name__ == '__main__':
     unittest.main()

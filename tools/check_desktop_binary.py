@@ -72,9 +72,9 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     if os.name == 'nt':
-        saves = Path(os.environ['APPDATA']) / 'LOVE' / 'com.zyn.lightengine'
+        saves = Path(os.environ['APPDATA']) / 'com.zyn.lightengine'
     else:
-        saves = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'love' / 'com.zyn.lightengine'
+        saves = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'com.zyn.lightengine'
     diagnostic = saves / 'diagnostics' / 'engine.log'
     errors = saves / 'diagnostics' / 'last-error.txt'
     if errors.exists():
@@ -126,8 +126,13 @@ def main():
                 raise RuntimeError('Packaged game quit with exit ' + str(code))
             if (saves / 'diagnostics/session.active').exists():
                 raise RuntimeError('Packaged game did not finish diagnostics cleanly')
-            print('DESKTOP BINARY PASSED: native menus, song, input, pause/resume and clean shutdown')
+            print('DESKTOP BINARY PASSED: input-driven menu navigation, song loading and clean shutdown')
+            print('MANUAL REVIEW REQUIRED: gameplay input and pause/resume screenshots')
         finally:
+            try:
+                ImageGrab.grab().save(args.output / 'final.png')
+            except OSError as error:
+                print('Final screenshot unavailable: ' + str(error))
             if diagnostic.exists():
                 (args.output / 'engine.log').write_bytes(diagnostic.read_bytes())
             if errors.exists():

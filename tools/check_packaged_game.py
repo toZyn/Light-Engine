@@ -12,6 +12,12 @@ def verify(package, android=False):
     prefix = 'assets/' if android else ''
     with zipfile.ZipFile(package) as archive:
         expected = collect_files()
+        if android:
+            # Android's default AAPT asset policy excludes hidden paths and
+            # directories beginning with an underscore from the APK.
+            expected = [name for name in expected if not any(part.startswith('.') for part in Path(name).parts)
+                        and not any(part.startswith('_') for part in Path(name).parts[:-1])
+                        and not name.endswith('~')]
         for name in expected:
             source = Path(ROOT, name).read_bytes()
             try:

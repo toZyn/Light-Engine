@@ -40,7 +40,7 @@ def main():
     def key(value):
         adb('shell', 'input', 'keyevent', value)
 
-    def wait_state(state, timeout=150):
+    def wait_state(state, timeout=150, previous_log=None):
         nonlocal diagnostic
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -56,7 +56,7 @@ def main():
                 error = adb('shell', 'cat', diagnostic.replace('engine.log', 'last-error.txt'), check=False)
                 if error.strip():
                     raise RuntimeError(error)
-                if text.splitlines() and ('state=' + state) in text.splitlines()[-1]:
+                if text != previous_log and text.splitlines() and ('state=' + state) in text.splitlines()[-1]:
                     print('ANDROID STATE: ' + state, flush=True)
                     screenshot(state)
                     return
@@ -91,10 +91,16 @@ def main():
         key('KEYCODE_ENTER')
         time.sleep(3)
         screenshot('resumed')
+        original_pid = adb('shell', 'pidof', PACKAGE).strip()
+        previous_log = adb('shell', 'cat', diagnostic)
         key('KEYCODE_HOME')
         time.sleep(2)
+        if adb('shell', 'pidof', PACKAGE, check=False).strip() != original_pid:
+            raise RuntimeError('Android killed the game while backgrounded')
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/org.love2d.android.GameActivity')
-        time.sleep(3)
+        if adb('shell', 'pidof', PACKAGE, check=False).strip() != original_pid:
+            raise RuntimeError('Foregrounding restarted the game process')
+        wait_state('PlayState', previous_log=previous_log)
         screenshot('foreground-restored')
         if not adb('shell', 'pidof', PACKAGE).strip():
             raise RuntimeError('Release APK did not survive background/foreground')
@@ -106,7 +112,8 @@ def main():
             if error.strip():
                 raise RuntimeError(error)
         print('App-private storage: ' + adb('shell', 'du', '-sk', '/data/data/' + PACKAGE + '/files', check=False).strip())
-        print('ANDROID APK PASSED: ' + args.abi + ', signed install, storage, native menus, song, input, pause/resume and foreground restore')
+        print('ANDROID APK PASSED: ' + args.abi + ', signed install, storage, input-driven menus, song loading and process/state continuity')
+        print('MANUAL REVIEW REQUIRED: gameplay input and pause/resume screenshots')
     finally:
         (args.output / 'logcat.txt').write_text(adb('logcat', '-d', check=False))
         screenshot('final')
