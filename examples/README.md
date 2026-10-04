@@ -14,6 +14,10 @@ its HUD objects and subscriptions in `leave()`. A disabled or absent addon omits
 the optional HUD and lets the song run normally. Botplay samples are automatic;
 turn botplay off to measure your own input.
 
+Native `goodNoteHit(note, rating, time)` callbacks receive the judged hit time
+in seconds. Use that timestamp for timing statistics, since keyboard events can
+arrive between updates of the notefield.
+
 `Beat.phase(conductor, milliseconds)` returns fractional phase and a zero-based
 beat number. `Beat.subscribe(conductor, callback)` returns an idempotent detach
 function. Call it before the conductor is destroyed.
@@ -29,5 +33,4 @@ python3 tools/make_addon_release.py /tmp/tempo-tools.zip --source examples/tempo
 ```
 
 The other example directories demonstrate compatibility callbacks, optional
-dependencies and shared scene modules. See [addon modules](../docs/addon-modules.md)
-for their lifecycle rules.
+dependencies and shared scene modules.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run native LÖVE engine regressions in temporary, isolated game directories.
 Usage: python3 tools/run_engine_tests.py --love /path/to/love [suite ...]
-A working graphics/audio backend is required; see docs/engine-stability.md.
+A working graphics/audio backend is required.
 """
 import argparse
 import os

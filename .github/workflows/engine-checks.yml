@@ -44,7 +44,15 @@ jobs:
       - name: Install graphics test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libgl1 libopengl0 libegl1 libasound2 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0
+          sudo apt-get install -y -qq xvfb libgl1 libopengl0 libegl1 libasound2 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 libxcb-sync1
+
+      - name: Validate workflow syntax and expressions
+        run: |
+          mkdir -p .ci
+          curl --fail --location --retry 3 -o .ci/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar -xzf .ci/actionlint.tar.gz -C .ci actionlint
+          .ci/actionlint -shellcheck=""
 
       - name: Test build and runner utilities
         run: python3 -m unittest discover -s tests -p 'test_*.py'
@@ -106,7 +114,7 @@ jobs:
           python3 -m pip install -r separate-addons/screen-overlay/desktop/requirements.txt
           python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_policy.py
           python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_installer.py
-          QT_DEBUG_PLUGINS=1 xvfb-run -a python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
+          xvfb-run -a python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
 
       - name: Upload Linux test logs
         if: always()
