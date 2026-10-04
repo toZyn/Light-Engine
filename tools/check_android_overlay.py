@@ -48,6 +48,7 @@ def main():
         adb('shell', 'uiautomator', 'dump', '/sdcard/overlay-window.xml')
         adb('shell', 'test', '-s', '/sdcard/overlay-window.xml')
         text = adb('shell', 'cat', '/sdcard/overlay-window.xml')
+        (args.output / 'ui-last.xml').write_text(text)
         return list(ET.fromstring(text).iter('node'))
 
     def find(text, timeout=30):
@@ -66,6 +67,8 @@ def main():
 
     def tap(text):
         x, y = center(find(text))
+        print('Tap ' + text + ': ' + str((x, y)), flush=True)
+        screenshot('before-' + text.lower().replace(' ', '-'))
         adb('shell', 'input', 'tap', str(x), str(y))
 
     def request(hide=False, token=TOKEN):
@@ -156,6 +159,7 @@ def main():
             raise RuntimeError('Android reported an overlay crash or ANR')
         print('ANDROID OVERLAY PASSED: signed install, consent/cancel, display above home, dragging, close, token-scoped hide and permission revocation')
     finally:
+        screenshot('final')
         (args.output / 'logcat.txt').write_text(adb('logcat', '-d', check=False))
         (args.output / 'window.txt').write_text(adb('shell', 'dumpsys', 'window', 'windows', check=False))
         adb('shell', 'am', 'force-stop', PACKAGE, check=False)
