@@ -1,3 +1,5 @@
+-- Exercise the compatibility fallback even on Lua versions with table.move.
+table.move = nil
 require 'loxel.lib.override'
 Classic = require 'loxel.lib.classic'
 Basic = require 'loxel.basic'
@@ -11,6 +13,15 @@ local function check(name, test)
 end
 
 function love.load()
+	check('table.move preserves offsets and overlapping ranges', function()
+		local source, destination = {'a', 'b', 'c', 'd'}, {}
+		assert(table.move(source, 2, 3, 1, destination) == destination)
+		assert(table.concat(destination, ',') == 'b,c')
+		table.move(source, 1, 3, 2)
+		assert(table.concat(source, ',') == 'a,a,b,c')
+		table.move(source, 2, 4, 1)
+		assert(table.concat(source, ',') == 'a,b,c,c')
+	end)
 	check('trimming preserves the last nonspace character', function()
 		for _, value in ipairs({'a', 'song', 'song ', 'song\t\n', '  song  '}) do
 			local expected = value:match('%S+')

@@ -12,9 +12,11 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-STANDALONE = {'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
-DEFAULT = ['core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
+STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
+DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
 SUCCESS = {
+    'extension-examples': r'EXTENSION EXAMPLES PASSED:',
+    'chart-timing': r'CHART TIMING: \d+ passed, 0 failed',
     'core-utilities': r'CORE UTILITIES: \d+ passed, 0 failed',
     'audio': r'AUDIO TESTS: \d+ passed, 0 failed',
     'timer-lifecycle': r'TIMER/TWEEN TESTS: \d+ passed, 0 failed',
@@ -76,7 +78,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='light-engine-test-') as directory:
         runner=Path(directory)
         for entry in ROOT.iterdir():
-            if entry.name not in {'.git','main.lua','conf.lua','test-results','release','android','docs','tools','.github','.ci','.superpowers','mods','addons','separate-addons','__pycache__'}:
+            if entry.name not in {'.git','main.lua','conf.lua','test-results','release','android','docs','tools','.github','.ci','.superpowers','mods','addons','__pycache__'}:
                 if args.copy:
                     if entry.is_dir(): shutil.copytree(entry,runner/entry.name)
                     else: shutil.copy2(entry,runner/entry.name)
@@ -88,7 +90,7 @@ def main():
                 (runner/'main.lua').write_text(fixture.read_text(encoding='utf-8'),encoding='utf-8')
             else:
                 (runner/'main.lua').write_text(BOOT % (lua_string(ROOT/'main.lua'),lua_string(suite)),encoding='utf-8')
-            window='t.window.width=64;t.window.height=64' if suite in {'audio','menu-audio','timer-lifecycle','async'} else 't.modules.window=false'
+            window='t.window.width=64;t.window.height=64' if suite in {'core-utilities','audio','menu-audio','timer-lifecycle','async'} else 't.modules.window=false'
             (runner/'conf.lua').write_text(CONF % (lua_string(suite),lua_string(suite),window),encoding='utf-8')
             env=os.environ.copy();env['ENGINE_ROOT']=str(ROOT)
             logfile=args.logs/(suite+'.log')

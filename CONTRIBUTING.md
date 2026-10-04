@@ -1,11 +1,8 @@
-## Use of Generative AI
+## Contributing
 
-Light allows the use of generative AI tools in contributions, including code,
-documentation, translations, and artwork.
+Keep changes focused and describe the problem they solve. Include a regression
+test for bug fixes and run the engine checks before submitting a pull request.
 
-Contributors remain responsible for reviewing their submissions and ensuring
-that they do not infringe third-party copyrights, trademarks, licenses, or
-other rights.
-
-AI-generated contributions may be rejected if they do not meet the project's
-quality, security, or licensing requirements.
+Contributors are responsible for reviewing their submissions and ensuring they
+meet the project's quality, security, and licensing requirements. Preserve
+third-party copyright notices and license terms.

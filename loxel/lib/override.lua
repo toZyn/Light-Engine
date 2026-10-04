@@ -27,7 +27,12 @@ table.clear = table_clear
 local table_move = table.move
 if not table_move then
 	function table_move(a, f, e, t, b)
-		b = b or a; for i = f, e do b[i + t - 1] = a[i] end
+		b = b or a
+		if b == a and t > f and t <= e then
+			for i = e, f, -1 do b[i - f + t] = a[i] end
+		else
+			for i = f, e do b[i - f + t] = a[i] end
+		end
 		return b
 	end
 

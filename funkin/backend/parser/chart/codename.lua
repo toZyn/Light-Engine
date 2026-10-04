@@ -71,7 +71,7 @@ function codename.parse(data, events, meta)
 
 	local timeChanges = {}
 	if events then
-		for _, e in ipairs(events) do
+		for _, e in ipairs(events.events) do
 			if e.name == "BPM Change" then
 				table.insert(timeChanges, Parser.newTimeChange(e.time, e.params[1]))
 			end

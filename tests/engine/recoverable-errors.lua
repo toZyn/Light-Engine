@@ -2,6 +2,8 @@
 require 'loxel'
 require 'funkin'
 local function contains(text, needle) assert(text and text:find(needle, 1, true), 'missing original error: ' .. needle) end
+-- Windows clipboard text uses CRLF; report files retain their original bytes.
+local function clipboardText() return love.system.getClipboardText():gsub('\r\n', '\n') end
 function love.load()
  local ok, err = xpcall(function()
   love.window.setMode(320, 240, {vsync = 0}); game.width, game.height = 320, 240
@@ -13,7 +15,7 @@ function love.load()
   local first = R.report('original optional error ' .. string.char(255), 'full original trace\nlast original frame', {source = 'optional-module'})
   assert(first.persisted and first.copied and first.queued and not first.duplicate)
   contains(love.filesystem.read('diagnostics/last-error.txt'), 'full original trace\nlast original frame')
-  contains(love.system.getClipboardText(), 'full original trace\nlast original frame')
+  contains(clipboardText(), 'full original trace\nlast original frame')
   contains(first.report, '\\xFF')
   local saved = love.filesystem.read('diagnostics/last-error.txt')
   for i = 1, 100 do assert(R.report('original optional error ' .. string.char(255), 'full original trace\nlast original frame', {source = 'optional-module'}).duplicate) end
