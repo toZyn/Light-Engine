@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
-DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
+DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
 SUCCESS = {
     'extension-examples': r'EXTENSION EXAMPLES PASSED:',
     'chart-timing': r'CHART TIMING: \d+ passed, 0 failed',

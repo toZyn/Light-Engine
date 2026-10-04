@@ -5,7 +5,7 @@ local samples, label, misses = Statistics.new(), nil, 0
 local function refresh()
 	if not label then return end
 	local stats = samples:snapshot()
-	label.content = ('%d hits | %d misses | mean %+.1f ms | spread %.1f ms'):format(
+	label.content = ('%d hits | %d misses | mean %+.1f ms | absolute %.1f ms'):format(
 		stats.count, misses, stats.mean, stats.meanAbsolute)
 end
 
@@ -17,9 +17,9 @@ function postCreate()
 	refresh()
 end
 
-function goodNoteHit(note)
+function goodNoteHit(note, rating, time)
 	if note.parent ~= state.playerNotefield or note.sustain then return end
-	samples:add((state.playerNotefield.time - note.time) * 1000)
+	samples:add(((time or state.playerNotefield.time) - note.time) * 1000)
 	refresh()
 end
 

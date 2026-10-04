@@ -69,7 +69,7 @@ function codename.parse(data, events, meta)
 	Parser.pset(chart, "stage", data.stage)
 	Parser.pset(chart, "speed", data.scrollSpeed)
 
-	local timeChanges = {}
+	local timeChanges = {Parser.newTimeChange(0, chart.bpm)}
 	if events then
 		for _, e in ipairs(events.events) do
 			if e.name == "BPM Change" then
@@ -77,6 +77,7 @@ function codename.parse(data, events, meta)
 			end
 		end
 	end
+	table.sort(timeChanges, function(a, b) return a.t < b.t end)
 	chart.timeChanges = timeChanges
 
 	chart.notes, chart.events = getStuff(data, events, chart)

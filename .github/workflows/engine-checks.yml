@@ -13,11 +13,6 @@ on:
       - 'android/**'
       - '.gitignore'
       - 'tests/**'
-      - 'tests/engine/**'
-      - 'tests/desktop-packaging.py'
-      - 'tests/android-manifest.py'
-      - 'tests/android-assets.py'
-      - 'tests/fixtures/**'
       - 'tools/**'
       - 'examples/**'
       - 'separate-addons/**'
@@ -111,7 +106,7 @@ jobs:
           python3 -m pip install -r separate-addons/screen-overlay/desktop/requirements.txt
           python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_policy.py
           python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_installer.py
-          xvfb-run -a python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
+          QT_DEBUG_PLUGINS=1 xvfb-run -a python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
 
       - name: Upload Linux test logs
         if: always()

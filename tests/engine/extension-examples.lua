@@ -41,9 +41,9 @@ function love.load()
 		trainer:call('postCreate')
 		assert(#state.members == 1)
 		local note = {time = 0.5, parent = state.playerNotefield, sustain = false}
-		trainer:call('goodNoteHit', note, {name = 'good'})
+		trainer:call('goodNoteHit', note, {name = 'good'}, 0.54)
 		assert(state.members[1].content:find('1 hits', 1, true), state.members[1].content)
-		assert(state.members[1].content:find('+30.0 ms', 1, true), state.members[1].content)
+		assert(state.members[1].content:find('+40.0 ms', 1, true), state.members[1].content)
 		note.sustain = true
 		trainer:call('goodNoteHit', note, {name = 'good'})
 		trainer:call('noteMiss', note)
