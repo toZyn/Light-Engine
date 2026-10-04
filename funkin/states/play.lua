@@ -1096,7 +1096,7 @@ end
 
 function PlayState:goodNoteHit(note, time)
 	local rating = self:getRating(note.time, time)
-	self.scripts:call("goodNoteHit", note, rating)
+	self.scripts:call("goodNoteHit", note, rating, time)
 
 	local notefield, dir, isSustain =
 		note.parent, note.direction, note.sustain

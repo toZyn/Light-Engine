@@ -1,0 +1,5 @@
+{
+  "name": "Beat Meter",
+  "description": "A small HUD pulse that follows tempo changes. Enable Tempo Tools first.",
+  "version": "1.0.0"
+}

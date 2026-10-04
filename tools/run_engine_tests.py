@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run native LÖVE engine regressions in temporary, isolated game directories.
 Usage: python3 tools/run_engine_tests.py --love /path/to/love [suite ...]
-A working graphics/audio backend is required; see docs/engine-stability.md.
+A working graphics/audio backend is required.
 """
 import argparse
 import os
@@ -12,9 +12,12 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-STANDALONE = {'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
-DEFAULT = ['syntax', 'property-setters', 'render-lifecycle', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
+STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
+DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
 SUCCESS = {
+    'extension-examples': r'EXTENSION EXAMPLES PASSED:',
+    'chart-timing': r'CHART TIMING: \d+ passed, 0 failed',
+    'core-utilities': r'CORE UTILITIES: \d+ passed, 0 failed',
     'audio': r'AUDIO TESTS: \d+ passed, 0 failed',
     'timer-lifecycle': r'TIMER/TWEEN TESTS: \d+ passed, 0 failed',
     'compat': r'COMPAT PASS:', 'diagnostics': r'DIAGNOSTICS PASSED:',
@@ -63,24 +66,31 @@ def main():
     parser.add_argument('--copy',action='store_true',help='Copy runtime once instead of using symlinks (Windows/CI)')
     parser.add_argument('--logs',type=Path,default=ROOT/'test-results')
     parser.add_argument('suites',nargs='*',choices=DEFAULT)
-    args=parser.parse_args();args.logs.mkdir(parents=True,exist_ok=True)
+    args=parser.parse_args()
+    suites=args.suites or DEFAULT
+    missing=[suite for suite in suites if not (ROOT/'tests'/'engine'/(suite+'.lua')).is_file()]
+    if missing:
+        parser.error('Missing engine fixtures: '+', '.join(missing)+'. Restore the tracked tests/engine directory.')
+    if not shutil.which(args.love):
+        parser.error('LÖVE runtime not found: '+args.love+'. Install LÖVE 11.5 or pass --love /path/to/love.')
+    args.logs.mkdir(parents=True,exist_ok=True)
     failures=[]
     with tempfile.TemporaryDirectory(prefix='light-engine-test-') as directory:
         runner=Path(directory)
         for entry in ROOT.iterdir():
-            if entry.name not in {'.git','main.lua','conf.lua','test-results','release','android','docs','tools','.github'}:
+            if entry.name not in {'.git','main.lua','conf.lua','test-results','release','android','docs','tools','.github','.ci','.superpowers','mods','addons','__pycache__'}:
                 if args.copy:
                     if entry.is_dir(): shutil.copytree(entry,runner/entry.name)
                     else: shutil.copy2(entry,runner/entry.name)
                 else:
                     (runner/entry.name).symlink_to(entry,target_is_directory=entry.is_dir())
-        for suite in args.suites or DEFAULT:
+        for suite in suites:
             fixture=ROOT/'tests'/'engine'/(suite+'.lua')
             if suite in STANDALONE:
                 (runner/'main.lua').write_text(fixture.read_text(encoding='utf-8'),encoding='utf-8')
             else:
                 (runner/'main.lua').write_text(BOOT % (lua_string(ROOT/'main.lua'),lua_string(suite)),encoding='utf-8')
-            window='t.window.width=64;t.window.height=64' if suite in {'audio','menu-audio','timer-lifecycle','async'} else 't.modules.window=false'
+            window='t.window.width=64;t.window.height=64' if suite in {'core-utilities','audio','menu-audio','timer-lifecycle','async'} else 't.modules.window=false'
             (runner/'conf.lua').write_text(CONF % (lua_string(suite),lua_string(suite),window),encoding='utf-8')
             env=os.environ.copy();env['ENGINE_ROOT']=str(ROOT)
             logfile=args.logs/(suite+'.log')

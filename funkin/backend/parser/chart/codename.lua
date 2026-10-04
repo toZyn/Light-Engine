@@ -71,11 +71,15 @@ function codename.parse(data, events, meta)
 
 	local timeChanges = {}
 	if events then
-		for _, e in ipairs(events) do
+		for _, e in ipairs(events.events) do
 			if e.name == "BPM Change" then
 				table.insert(timeChanges, Parser.newTimeChange(e.time, e.params[1]))
 			end
 		end
+	end
+	table.sort(timeChanges, Parser.sortByTime)
+	if not timeChanges[1] or timeChanges[1].t > 0 then
+		table.insert(timeChanges, 1, Parser.newTimeChange(0, chart.bpm))
 	end
 	chart.timeChanges = timeChanges
 

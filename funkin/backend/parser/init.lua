@@ -47,7 +47,7 @@ function Parser.getChart(name, diff)
 
 		if data.song == nil then data.song = name end
 
-		chartCache[cacheKey] = parsed
+		chartCache[cacheKey] = data
 
 		Logger.log("debug", "[ PARSER ] Chart \"" .. (data.song or "unknown") ..
 			"\" parsed as " .. (parser.name or "unknown"))

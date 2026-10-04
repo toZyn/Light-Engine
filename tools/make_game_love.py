@@ -21,6 +21,8 @@ SKIP_DIRS = {
     ".git",
     ".github",
     ".vscode",
+    ".ci",
+    ".superpowers",
     "android",
     "tools",
     "release",
@@ -41,10 +43,12 @@ SKIP_FILES = {
     "actionlint",
     "game.love",
     "Boon.toml",
+    ".DS_Store",
+    "Thumbs.db",
 }
 
 # Archives and other build outputs.
-SKIP_SUFFIXES = (".love", ".zip", ".tar.gz", ".apk", ".lnk", ".fla")
+SKIP_SUFFIXES = (".love", ".zip", ".tar.gz", ".apk", ".idsig", ".pyc", ".lnk", ".fla")
 
 REQUIRED_ENTRIES = (
     "main.lua",
@@ -62,6 +66,8 @@ REQUIRED_ENTRIES = (
 def is_excluded(rel: str) -> bool:
     """`rel` is a POSIX style path relative to the repository root."""
     parts = rel.split("/")
+    if "__pycache__" in parts:
+        return True
     # These names are root-level build/content directories. Matching every
     # path component would also remove runtime modules such as funkin/ui/mods.
     if parts and parts[0] in SKIP_DIRS:
@@ -88,7 +94,7 @@ def collect_files() -> list[str]:
         if not rel_dir:
             dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         else:
-            dirs[:] = sorted(dirs)
+            dirs[:] = sorted(d for d in dirs if d != "__pycache__")
         for name in sorted(files):
             rel = f"{rel_dir}/{name}".lstrip("/") if rel_dir else name
             if not is_excluded(rel):
@@ -100,6 +106,11 @@ def build(output: str) -> int:
     files = collect_files()
     if not files:
         print("No files found to pack.", file=sys.stderr)
+        return 1
+
+    missing = [entry for entry in REQUIRED_ENTRIES if entry not in files]
+    if missing:
+        print(f"game.love is incomplete, missing: {', '.join(missing)}", file=sys.stderr)
         return 1
 
     tmp = output + ".tmp"
@@ -114,11 +125,6 @@ def build(output: str) -> int:
 
     with zipfile.ZipFile(output) as archive:
         names = set(archive.namelist())
-    missing = [entry for entry in REQUIRED_ENTRIES if entry not in names]
-    if missing:
-        print(f"game.love is incomplete, missing: {', '.join(missing)}", file=sys.stderr)
-        return 1
-
     size = os.path.getsize(output)
     print(f"{output}: {len(names)} files, {size / (1024 * 1024):.1f} MiB")
     return 0

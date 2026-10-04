@@ -21,11 +21,11 @@ function Conductor:getBPM(initial)
 	return self.curTimeChange and self.curTimeChange.bpm or self.startBPM
 end
 
-function Conductor:getSemiquaver() return (self.crotchet or 1000) / (self.timeSignNum or 4) end
+function Conductor:getSemiquaver() return self.crotchet / 4 end
 
 function Conductor:getCrotchet() return (60 / self.bpm) * 1000 end
 
-function Conductor:getSemibreve() return self.crotchet * self.timeSignNum end
+function Conductor:getSemibreve() return self.crotchet * self.beatsPerMeasure end
 
 function Conductor:getTimeSign(num)
 	return num and (self.curTimeChange and self.curTimeChange.n or 4) or
@@ -50,18 +50,19 @@ function Conductor:update(songPos)
 
 	local oldm, oldb, olds = self.measure.i, self.beat.i, self.step.i
 
+	local previousTimeChange = self.curTimeChange
 	self.curTimeChange = self.timeChanges[1]
 	if songPos > 0 then
 		for i = 1, #self.timeChanges do
 			if songPos >= self.timeChanges[i].t then
 				self.curTimeChange = self.timeChanges[i]
-				self.onTimeChange:dispatch()
 			end
 			if songPos < self.timeChanges[i].t then
 				break
 			end
 		end
 	end
+	if self.curTimeChange ~= previousTimeChange then self.onTimeChange:dispatch() end
 
 	if self.curTimeChange and songPos > 0 then
 		self.step.f = ((self.curTimeChange.b or 0) * 4) +
@@ -113,7 +114,7 @@ function Conductor:getTimeInSteps(ms)
 				break
 			end
 		end
-		local lastStepCrotchet = ((60 / lastTimeChange.bpm) * 1000) / self.timeSignNum
+		local lastStepCrotchet = ((60 / lastTimeChange.bpm) * 1000) / 4
 		local resultFracStep = (ms - lastTimeChange.t) / lastStepCrotchet
 		resultStep = resultStep + resultFracStep
 
@@ -136,7 +137,7 @@ function Conductor:getStepTimeInMs(stepTime)
 				break
 			end
 		end
-		local lastStepCrotchet = ((60 / lastTimeChange.bpm) * 1000) / self.timeSignNum
+		local lastStepCrotchet = ((60 / lastTimeChange.bpm) * 1000) / 4
 		resultMs = resultMs + (stepTime - lastTimeChange.b * 4) * lastStepCrotchet
 
 		return resultMs
@@ -159,7 +160,7 @@ function Conductor:getBeatTimeInMs(beatTime)
 			end
 		end
 
-		local lastStepCrotchet = ((60 / lastTimeChange.bpm) * 1000) / self.timeSignNum
+		local lastStepCrotchet = ((60 / lastTimeChange.bpm) * 1000) / 4
 		resultMs = resultMs + (beatTime - lastTimeChange.b) * lastStepCrotchet * 4
 
 		return resultMs

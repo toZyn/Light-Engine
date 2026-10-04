@@ -159,7 +159,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists, reusing it."
           else
-            gh release create "$TAG" --draft --target main \
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" \
               --title "$RELEASE_NAME" --notes-file notes.md
           fi
           gh release edit "$TAG" --notes-file notes.md

@@ -21,7 +21,7 @@ local closedEnv = setmetatable({}, {
 -- this looks unclean i know -kaoy
 local function errformat(s, thread)
 	local i = debug.getinfo(thread or 3, "Sln")
-	Logger.log("warn", ("%i: %s not allowed"):format(i.short_src, i.currentline, s), 4)
+	Logger.log("warn", ("%s:%i: %s not allowed"):format(i and i.short_src or "script", i and i.currentline or 0, s), 4)
 end
 
 local n = function() end
@@ -29,7 +29,9 @@ local nindex = setmetatable({}, {__call = n, __index = n, __newindex = n})
 
 local function deny(name, toReturn)
 	return function()
-		errformat(name); return toReturn or nindex
+		errformat(name)
+		if toReturn ~= nil then return toReturn end
+		return nindex
 	end
 end
 local function noindex(module)
@@ -128,7 +130,7 @@ Script.Event_Cancel = 2
 function Script:new(path, notFoundMsg, noLink, fullPath)
 	self.path = path
 	self.variables = {}
-	self.notFoundMsg = (notFoundMsg == nil and true or false)
+	self.notFoundMsg = notFoundMsg ~= false
 	self.closed = false
 	self.chunk = nil
 	self.__failedfunc = {}
@@ -139,7 +141,13 @@ function Script:new(path, notFoundMsg, noLink, fullPath)
 	local s, err = xpcall(function()
 		local p, vars = path, self.variables
 
-		local chunk = fullPath and love.filesystem.load(p) or paths.getLua(p)
+		local chunk, loadError
+		if fullPath then
+			if love.filesystem.getInfo(p, "file") then chunk, loadError = love.filesystem.load(p) end
+		else
+			chunk, loadError = paths.getLua(p)
+		end
+		if not chunk and loadError then error(loadError, 0) end
 		if chunk then
 			if not p:endsWith("/") then p = p .. "/" end
 			self:set("close", function() self:close() end)
@@ -177,7 +185,7 @@ function Script:new(path, notFoundMsg, noLink, fullPath)
 			return
 		end
 
-		self.chunk = chunk
+		if not self.closed then self.chunk = chunk end
 	end, captureError)
 
 	if not s then

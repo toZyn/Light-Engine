@@ -10,11 +10,9 @@ on:
       - 'loxel/**'
       - 'lib/**'
       - 'assets/**'
-      - 'tests/engine/**'
-      - 'tests/desktop-packaging.py'
-      - 'tests/android-manifest.py'
-      - 'tests/android-assets.py'
-      - 'tests/fixtures/**'
+      - 'android/**'
+      - '.gitignore'
+      - 'tests/**'
       - 'tools/**'
       - 'examples/**'
       - 'separate-addons/**'
@@ -46,7 +44,18 @@ jobs:
       - name: Install graphics test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libgl1 libopengl0 libegl1 libasound2 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0
+          sudo apt-get install -y -qq xvfb libgl1 libopengl0 libegl1 libasound2 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 libxcb-sync1
+
+      - name: Validate workflow syntax and expressions
+        run: |
+          mkdir -p .ci
+          curl --fail --location --retry 3 -o .ci/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar -xzf .ci/actionlint.tar.gz -C .ci actionlint
+          .ci/actionlint -shellcheck=""
+
+      - name: Test build and runner utilities
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
       - name: Download the official LÖVE runtime
         run: |
