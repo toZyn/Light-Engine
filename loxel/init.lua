@@ -277,7 +277,7 @@ function game.init(app, state, ...)
 	local width, height = app.width, app.height
 	if app.adaptableWidth then
 		local sw, sh = love.graphics.getDimensions()
-		if sw > 0 and sh > 0 then width = math.max(1, math.floor(height * sw / sh)) end
+		if sw > 0 and sh > 0 and sw >= sh then width = math.max(1, math.floor(height * sw / sh)) end
 	end
 	game.width, game.height = width, height
 	Display.refresh()
@@ -405,7 +405,7 @@ function game.resize(w, h)
 	if Project.adaptableWidth then
 		local oldWidth, oldHeight = game.width, game.height
 		if oldHeight > 0 then
-			game.width = math.max(1, math.floor(oldHeight * w / h))
+			game.width = w < h and Project.width or math.max(1, math.floor(oldHeight * w / h))
 			for _, camera in ipairs(game.cameras.list) do
 				if camera.x == 0 and camera.y == 0 and camera.width == oldWidth and camera.height == oldHeight then
 					camera:resize(game.width, oldHeight, camera.resolutionX, camera.resolutionY)

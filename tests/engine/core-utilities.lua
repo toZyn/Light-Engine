@@ -13,6 +13,25 @@ local function check(name, test)
 end
 
 function love.load()
+	check('destroyed navigation throttles can be reused', function()
+		local throttle = require 'funkin.backend.throttle'
+		local first = throttle:make({function() return false end})
+		local destroy = first.destroy
+		first:destroy()
+		assert(not table.find(throttle.list, first), 'destroyed throttle remained active')
+		local second = throttle:make({function() return true end})
+		assert(second == first, 'destroyed throttle was not recycled')
+		second:update(0.016)
+		assert(second:check(), 'recycled throttle lost its methods or input')
+		second:destroy()
+		-- A repeated destroy must not insert the same object into the pool twice.
+		destroy(second)
+		local third = throttle:make({function() return false end})
+		local fourth = throttle:make({function() return false end})
+		assert(third ~= fourth, 'repeated destruction recycled one throttle twice')
+		third:destroy()
+		fourth:destroy()
+	end)
 	check('keyboard taps keep both edges until the frame ends', function()
 		local keyboard = require 'loxel.input.keyboard'
 		keyboard.onPressed('a')

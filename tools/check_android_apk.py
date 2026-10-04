@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import re
+import struct
 import subprocess
 import time
 
@@ -79,6 +80,20 @@ def main():
         time.sleep(1)
         adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.MAIN', '-n', LAUNCHER)
         wait_state('TitleState')
+        screenshot('portrait-viewport')
+        # SDL requests FULL_SENSOR for resizable windows, overriding user_rotation.
+        # Rotate the emulated device itself so both viewport shapes are exercised.
+        adb('emu', 'sensor', 'set', 'acceleration', '9.8:0:0')
+        rotation_deadline = time.monotonic() + 30
+        while True:
+            pixels = adb('exec-out', 'screencap', '-p', binary=True)
+            width, height = struct.unpack('>II', pixels[16:24])
+            if width > height:
+                (args.output / 'landscape-viewport.png').write_bytes(pixels)
+                break
+            if time.monotonic() >= rotation_deadline:
+                raise RuntimeError('Android did not rotate after the emulator sensor changed')
+            time.sleep(1)
         root = '/sdcard/Android/media/' + PACKAGE
         for name in ('.nomedia', 'mods', 'addons', 'saves'):
             adb('shell', 'test', '-e', root + '/' + name)
