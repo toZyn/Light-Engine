@@ -318,7 +318,7 @@ function Player:_pressControls(names, source, type, ...)
 		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
 		control.down = true
 		control.pressed = true
-		control.released = false
+		control.released = control.debounce and control.released or false
 		control.debounce = true
 		for _, bind in pairs(control.pressBinds) do
 			bind(...)
@@ -338,7 +338,7 @@ function Player:_releaseControls(names, source, type, ...)
 		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
 		control.downPrevious = true
 		control.down = false
-		control.pressed = false
+		control.pressed = control.debounce and control.pressed or false
 		control.released = true
 		control.debounce = true
 		for _, bind in pairs(control.releaseBinds) do

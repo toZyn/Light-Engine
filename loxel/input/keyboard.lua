@@ -220,7 +220,6 @@ end
 function Keyboard.onPressed(key)
 	Keyboard.loveInput.justPressed[key] = true
 	Keyboard.loveInput.pressed[key] = true
-	Keyboard.loveInput.justReleased[key] = nil
 	Keyboard.loveInput.released[key] = nil
 
 	if not table.find(invalidKeys, key) then
@@ -236,7 +235,6 @@ function Keyboard.onPressed(key)
 
 		Keyboard.input.justPressed[key] = true
 		Keyboard.input.pressed[key] = true
-		Keyboard.input.justReleased[key] = nil
 		Keyboard.input.released[key] = nil
 	end
 
@@ -251,21 +249,18 @@ function Keyboard.onPressed(key)
 	if not value then return end
 	Keyboard.justPressed[value] = true
 	Keyboard.pressed[value] = true
-	Keyboard.justReleased[value] = nil
 	Keyboard.released[value] = nil
 
 	Keyboard.onPress:dispatch(value)
 
 	Keyboard.justPressed.ANY = true
 	Keyboard.pressed.ANY = true
-	Keyboard.justReleased.ANY = nil
 	Keyboard.released.ANY = nil
 end
 
 function Keyboard.onReleased(key)
 	Keyboard.loveInput.justReleased[key] = true
 	Keyboard.loveInput.released[key] = true
-	Keyboard.loveInput.justPressed[key] = nil
 	Keyboard.loveInput.pressed[key] = nil
 
 	if not table.find(invalidKeys, key) then
@@ -281,7 +276,6 @@ function Keyboard.onReleased(key)
 
 		Keyboard.input.justReleased[key] = true
 		Keyboard.input.released[key] = true
-		Keyboard.input.justPressed[key] = nil
 		Keyboard.input.pressed[key] = nil
 	end
 
@@ -294,14 +288,12 @@ function Keyboard.onReleased(key)
 
 	local value = Keyboard.keyValues[key]
 	if not value then return end
-	Keyboard.justPressed[value] = nil
 	Keyboard.pressed[value] = nil
 	Keyboard.justReleased[value] = true
 	Keyboard.released[value] = true
 
 	Keyboard.onRelease:dispatch(value)
 
-	Keyboard.justPressed.ANY = nil
 	Keyboard.pressed.ANY = nil
 	Keyboard.justReleased.ANY = true
 	Keyboard.released.ANY = true
