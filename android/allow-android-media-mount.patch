@@ -1,0 +1,43 @@
+diff --git a/src/modules/filesystem/physfs/Filesystem.cpp b/src/modules/filesystem/physfs/Filesystem.cpp
+index d3c6502..7d3c148 100644
+--- a/src/modules/filesystem/physfs/Filesystem.cpp
++++ b/src/modules/filesystem/physfs/Filesystem.cpp
+@@ -90,6 +90,16 @@ namespace
+ 		return out.str();
+ 	}
+ 
++#ifdef LOVE_ANDROID
++	bool isAndroidMediaPath(const std::string &path)
++	{
++		const bool androidMedia = path.find("/Android/media/") != std::string::npos;
++		const bool primaryStorage = path.compare(0, 8, "/sdcard/") == 0
++			|| path.compare(0, 9, "/storage/") == 0;
++		return androidMedia && primaryStorage && path.find("..") == std::string::npos;
++	}
++#endif
++
+ }
+ 
+ namespace love
+@@ -393,6 +403,10 @@ bool Filesystem::mount(const char *archive, const char *mountpoint, bool appendToPath
+ 
+ 	if (it != allowedMountPaths.end())
+ 		realPath = *it;
++#ifdef LOVE_ANDROID
++	else if (isAndroidMediaPath(archive))
++		realPath = archive;
++#endif
+ 	else if (isFused() && sourceBase.compare(archive) == 0)
+ 	{
+ 		// Special case: if the game is fused and the archive is the source's
+@@ -461,6 +475,10 @@ bool Filesystem::unmount(const char *archive)
+ 
+ 	if (it != allowedMountPaths.end())
+ 		realPath = *it;
++#ifdef LOVE_ANDROID
++	else if (isAndroidMediaPath(archive))
++		realPath = archive;
++#endif
+ 	else if (isFused() && sourceBase.compare(archive) == 0)
+ 	{
+ 		// Special case: if the game is fused and the archive is the source's

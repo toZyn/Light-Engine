@@ -1,0 +1,30 @@
+{
+	"animations": [
+		["idle", "Parent Christmas Idle", [], 24, false, [670, 450]],
+		["singUP", "Parent Up Note Dad", [], 24, false, [0, 0]],
+		["singDOWN", "Parent Down Note Dad", [], 24, false, [0, 0]],
+		["singLEFT", "Parent Left Note Dad", [], 24, false, [0, 0]],
+		["singRIGHT", "Parent Right Note Dad", [], 24, false, [0, 0]],
+		["singRIGHT-alt", "Parent Right Note Mom", [], 24, false, [0, 0]],
+		["singDOWN-alt", "Parent Down Note Mom", [], 24, false, [0, 0]],
+		["singLEFT-alt", "Parent Left Note Mom", [], 24, false, [0, 0]],
+		["singUP-alt", "Parent Up Note Mom", [], 24, false, [0, 0]],
+		["idle-loop", "Parent Christmas Idle", [10, 11, 12, 13], 24, true, [670, 450]],
+		["singUP-loop", "Parent Up Note Dad", [10, 11, 12, 13], 24, true, [0, 0]],
+		["singLEFT-loop", "Parent Left Note Dad", [12, 13, 14, 15], 24, true, [0, 0]],
+		["singDOWN-loop", "Parent Down Note Dad", [11, 12, 13, 14], 24, true, [0, 0]],
+		["singRIGHT-loop", "Parent Right Note Dad", [12, 13, 14, 15], 24, true, [0, 0]],
+		["singRIGHT-alt-loop", "Parent Right Note Mom", [11, 12, 13, 14], 24, true, [0, 0]],
+		["singUP-alt-loop", "Parent Up Note Mom", [10, 11, 12, 13], 24, true, [0, 0]],
+		["singLEFT-alt-loop", "Parent Left Note Mom", [11, 12, 13, 14], 24, true, [0, 0]],
+		["singDOWN-alt-loop", "Parent Down Note Mom", [11, 12, 13, 14], 24, true, [0, 0]]
+	],
+	"position": [260, 450],
+	"camera_points": [-260, 32],
+	"flip_x": false,
+	"icon": "parents",
+	"sprite": "characters/mom_dad_christmas_assets",
+	"antialiasing": true,
+	"sing_duration": 8,
+	"scale": 1
+}

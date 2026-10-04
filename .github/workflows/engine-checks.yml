@@ -1,0 +1,181 @@
+name: Engine checks
+
+on:
+  pull_request:
+    paths:
+      - 'project.lua'
+      - 'main.lua'
+      - 'conf.lua'
+      - 'funkin/**'
+      - 'loxel/**'
+      - 'lib/**'
+      - 'assets/**'
+      - 'tests/engine/**'
+      - 'tests/desktop-packaging.py'
+      - 'tests/android-manifest.py'
+      - 'tests/android-assets.py'
+      - 'tests/fixtures/**'
+      - 'tools/**'
+      - 'examples/**'
+      - 'separate-addons/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  LOVE_VERSION: '11.5'
+  ALSOFT_DRIVERS: 'null'
+
+jobs:
+  linux:
+    name: Linux LÖVE 11.5 and mobile policy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install graphics test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1 libopengl0 libegl1 libasound2 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0
+
+      - name: Download the official LÖVE runtime
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/love-linux
+          cd .ci/love-linux
+          curl --fail --location --retry 3 -o love.AppImage \
+            "https://github.com/love2d/love/releases/download/${LOVE_VERSION}/love-${LOVE_VERSION}-x86_64.AppImage"
+          chmod +x love.AppImage
+          ./love.AppImage --appimage-extract > extract.log
+          echo "LOVE_BINARY=$PWD/squashfs-root/AppRun" >> "$GITHUB_ENV"
+
+      - name: Run the full native engine suite
+        run: |
+          xvfb-run -a python3 tools/run_engine_tests.py \
+            --love "$LOVE_BINARY" --logs test-results/linux
+
+      - name: Exercise mobile loader policy on Linux
+        env:
+          ASYNC_MOBILE: '1'
+        run: |
+          xvfb-run -a python3 tools/run_engine_tests.py \
+            --love "$LOVE_BINARY" --logs test-results/mobile-policy async
+
+      - name: Verify portable desktop packaging
+        run: |
+          curl --fail --location --retry 3 -o .ci/love-win64.zip \
+            "https://github.com/love2d/love/releases/download/${LOVE_VERSION}/love-${LOVE_VERSION}-win64.zip"
+          LOVE_WIN64_RUNTIME="$PWD/.ci/love-win64.zip" python3 tests/desktop-packaging.py
+
+      - name: Verify Android split-screen manifest patch
+        run: python3 tests/android-manifest.py
+
+      - name: Verify direct Android assets and original byte preservation
+        run: python3 tests/android-assets.py
+
+      - name: Set up Java for overlay policy tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Test Android overlay consent and cancellation policy
+        run: |
+          mkdir -p .ci/overlay-classes
+          OVERLAY_SOURCE=separate-addons/screen-overlay/android
+          javac --release 8 -d .ci/overlay-classes \
+            "$OVERLAY_SOURCE/src/com/zyn/lightengine/overlay/OverlayRequest.java" \
+            "$OVERLAY_SOURCE/src/com/zyn/lightengine/overlay/OverlaySession.java" \
+            "$OVERLAY_SOURCE/src/com/zyn/lightengine/overlay/OverlayGeometry.java" \
+            "$OVERLAY_SOURCE/tests/OverlayPolicyTest.java"
+          java -cp .ci/overlay-classes com.zyn.lightengine.overlay.OverlayPolicyTest
+
+      - name: Test desktop overlay transport and native window
+        run: |
+          python3 -m pip install -r separate-addons/screen-overlay/desktop/requirements.txt
+          python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_policy.py
+          python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_installer.py
+          xvfb-run -a python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
+
+      - name: Upload Linux test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-checks-linux
+          path: |
+            test-results/
+            .ci/love-linux/extract.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows:
+    name: Windows LÖVE 11.5
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      GALLIUM_DRIVER: llvmpipe
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download the official LÖVE runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .ci/love-windows | Out-Null
+          Invoke-WebRequest "https://github.com/love2d/love/releases/download/${env:LOVE_VERSION}/love-${env:LOVE_VERSION}-win64.zip" -OutFile .ci/love-windows/love.zip
+          Expand-Archive .ci/love-windows/love.zip .ci/love-windows/runtime
+          $Love = Get-ChildItem .ci/love-windows/runtime -Recurse -Filter lovec.exe | Select-Object -First 1
+          if (-not $Love) { $Love = Get-ChildItem .ci/love-windows/runtime -Recurse -Filter love.exe | Select-Object -First 1 }
+          if (-not $Love) { throw "LÖVE executable missing from the official archive" }
+          "LOVE_BINARY=$($Love.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install a software OpenGL renderer for the hosted runner
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/pal1000/mesa-dist-win/releases/download/25.0.7/mesa3d-25.0.7-release-msvc.7z" -OutFile .ci/love-windows/mesa.7z
+          7z x -y .ci/love-windows/mesa.7z "-o.ci/love-windows/mesa"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $Mesa = Get-ChildItem .ci/love-windows/mesa -Recurse -Filter opengl32.dll | Where-Object { $_.Directory.Name -eq 'x64' } | Select-Object -First 1
+          if (-not $Mesa) { throw "64-bit Mesa OpenGL DLL missing from the pinned archive" }
+          $LoveDirectory = Split-Path $env:LOVE_BINARY
+          Copy-Item (Join-Path $Mesa.Directory.FullName '*.dll') $LoveDirectory
+          "SDL_OPENGL_LIBRARY=$(Join-Path $LoveDirectory 'opengl32.dll')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run the full native engine suite
+        shell: pwsh
+        run: |
+          python tools/run_engine_tests.py --copy --love "$env:LOVE_BINARY" --logs test-results/windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test desktop overlay transport and protocol installer
+        shell: pwsh
+        run: |
+          python -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_policy.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_installer.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-checks-windows
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14

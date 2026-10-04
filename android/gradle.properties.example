@@ -1,0 +1,13 @@
+app.name=Light Engine
+app.application_id=com.zyn.lightengine
+app.orientation=landscape
+app.version_code=2
+app.version_name=0.1.1
+
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+
+android.enableJetifier=false
+android.useAndroidX=true
+android.defaults.buildfeatures.buildconfig=true
+android.nonTransitiveRClass=true
+android.nonFinalResIds=true
