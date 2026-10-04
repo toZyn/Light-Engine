@@ -43,9 +43,14 @@ def main():
     def wait_state(state, timeout=150, previous_log=None):
         nonlocal diagnostic
         deadline = time.monotonic() + timeout
+        seen_process = previous_log is not None
         while time.monotonic() < deadline:
             if not adb('shell', 'pidof', PACKAGE, check=False).strip():
-                raise RuntimeError('Release APK process exited while waiting for ' + state)
+                if seen_process:
+                    raise RuntimeError('Release APK process exited while waiting for ' + state)
+                time.sleep(2)
+                continue
+            seen_process = True
             if not diagnostic:
                 found = adb('shell', 'find /data/data/' + PACKAGE + ' /sdcard/Android/data/' + PACKAGE
                             + ' -name engine.log 2>/dev/null', check=False)
@@ -67,9 +72,10 @@ def main():
         adb('shell', 'am', 'start', '-W', '-n', LAUNCHER)
         time.sleep(3)
         screenshot('storage-permission')
-        adb('shell', 'appops', 'set', PACKAGE, 'MANAGE_EXTERNAL_STORAGE', 'allow')
-        adb('shell', 'am', 'force-stop', PACKAGE)
-        adb('shell', 'am', 'start', '-W', '-n', LAUNCHER)
+        adb('shell', 'appops', 'set', '--uid', PACKAGE, 'MANAGE_EXTERNAL_STORAGE', 'allow')
+        key('KEYCODE_BACK')
+        time.sleep(1)
+        adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.MAIN', '-n', LAUNCHER)
         wait_state('TitleState')
         key('KEYCODE_ENTER')
         time.sleep(1)

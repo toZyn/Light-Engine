@@ -44,11 +44,16 @@ class Desktop:
         self.focus()
         if self.windows:
             value = {'Return': 0x0D, 'Down': 0x28, 'BackSpace': 0x08}.get(key, ord(key.upper()[0]))
-            ctypes.windll.user32.keybd_event(value, 0, 0, 0)
-            time.sleep(0.1)
-            ctypes.windll.user32.keybd_event(value, 0, 2, 0)
+            user = ctypes.windll.user32
+            scan = user.MapVirtualKeyW(value, 0)
+            extended = 1 if key == 'Down' else 0
+            user.keybd_event(value, scan, extended, 0)
+            time.sleep(0.25)
+            user.keybd_event(value, scan, extended | 2, 0)
         else:
-            subprocess.run(['xdotool', 'key', '--clearmodifiers', key], check=True)
+            subprocess.run(['xdotool', 'keydown', '--clearmodifiers', key], check=True)
+            time.sleep(0.25)
+            subprocess.run(['xdotool', 'keyup', key], check=True)
 
     def close(self):
         if self.windows:
