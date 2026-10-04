@@ -13,6 +13,16 @@ local function mode(w,h)
 end
 local function near(a,b) assert(math.abs(a-b)<.001, tostring(a)..' ~= '..tostring(b)) end
 function love.load()
+ check('portrait adaptive resize retains a usable game viewport',function()
+  mode(360,640);Project.adaptableWidth=true
+  game.resize(360,640)
+  assert(game.width==Project.width and game.height==Project.height,'portrait orientation cropped the logical game screen')
+  local view=game.display.getViewport()
+  near(view.width,360);near(view.height,202.5)
+  local x,y=game.display.gameToWindow(640,360)
+  near(x,180);near(y,320)
+  Project.adaptableWidth=false
+ end)
  check('adaptive OS resize preserves native size and project configuration',function()
   mode(640,480); local original=Project.width; Project.adaptableWidth=true
   game.resize(640,480)

@@ -1,3 +1,29 @@
+check('quick menu taps move once and accept the selected item', function()
+	for _, navigation in ipairs({{'vertical', 's'}, {'horizontal', 'd'}}) do
+		local menu = MenuList(nil, false, navigation[1])
+		for _ = 1, 3 do menu:add(Sprite()) end
+		controls:onKeyPress(navigation[2])
+		controls:onKeyRelease(navigation[2])
+		controls:update()
+		Throttle:update(0.016)
+		menu:update(0.016)
+		assert(menu.curSelected == 2, 'a quick direction tap did not move the menu')
+		controls:update()
+		Throttle:update(0.016)
+		menu:update(0.016)
+		assert(menu.curSelected == 2, 'one direction tap moved twice')
+		local selected, calls = nil, 0
+		menu.selectCallback = function(item) selected = item; calls = calls + 1 end
+		controls:onKeyPress('return')
+		controls:onKeyRelease('return')
+		controls:update()
+		menu:update(0.016)
+		assert(selected == menu.members[2] and calls == 1, 'a quick accept tap did not select the second item')
+		for _, throttle in pairs(menu.throttles) do throttle:destroy() end
+		menu:destroy()
+	end
+end)
+
 check('keyboard hits, misses and pause preserve a native song and mod HUD', function()
 	ClientPrefs.data.botplayMode = false
 	ClientPrefs.data.ghostTap = false
