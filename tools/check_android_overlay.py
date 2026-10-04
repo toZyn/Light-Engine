@@ -55,7 +55,8 @@ def main():
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             for node in nodes():
-                if text in (node.get('text'), node.get('content-desc')):
+                if any(value.casefold() == text.casefold() for value in
+                       (node.get('text', ''), node.get('content-desc', ''))):
                     return node
             time.sleep(0.5)
         raise RuntimeError('Android UI did not expose: ' + text)
