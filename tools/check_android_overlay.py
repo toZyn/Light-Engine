@@ -44,12 +44,11 @@ def main():
         (args.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
 
     def nodes():
-        adb('shell', 'uiautomator', 'dump', '/sdcard/overlay-window.xml', check=False)
-        text = adb('shell', 'cat', '/sdcard/overlay-window.xml', check=False)
-        try:
-            return list(ET.fromstring(text).iter('node'))
-        except ET.ParseError:
-            return []
+        adb('shell', 'rm', '-f', '/sdcard/overlay-window.xml')
+        adb('shell', 'uiautomator', 'dump', '/sdcard/overlay-window.xml')
+        adb('shell', 'test', '-s', '/sdcard/overlay-window.xml')
+        text = adb('shell', 'cat', '/sdcard/overlay-window.xml')
+        return list(ET.fromstring(text).iter('node'))
 
     def find(text, timeout=30):
         deadline = time.monotonic() + timeout
@@ -77,14 +76,31 @@ def main():
         uri = 'lightengine-overlay://' + ('hide' if hide else 'show') + '?' + urlencode(fields)
         adb('shell', 'am start -W -a android.intent.action.VIEW -n ' + ACTIVITY + ' -d ' + shlex.quote(uri))
 
-    def active():
-        return any(n.get('content-desc') == 'Close image overlay' for n in nodes())
+    def overlay_bounds():
+        windows = adb('shell', 'dumpsys', 'window', 'windows')
+        for block in re.split(r'\n\s*Window #\d+', windows):
+            if ('package=' + PACKAGE) not in block or 'ty=APPLICATION_OVERLAY' not in block:
+                continue
+            if 'mHasSurface=true' not in block or 'isVisible=true' not in block or 'mDrawState=HAS_DRAWN' not in block:
+                continue
+            frame = re.search(r'\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]', block)
+            if frame:
+                return tuple(map(int, frame.groups()))
+
+    def wait_visible():
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            bounds = overlay_bounds()
+            if bounds:
+                return bounds
+            time.sleep(0.5)
+        raise RuntimeError('Android did not draw the native overlay window')
 
     def wait_closed():
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             services = adb('shell', 'dumpsys', 'activity', 'services', PACKAGE)
-            if not active() and 'ServiceRecord{' not in services:
+            if not overlay_bounds() and 'ServiceRecord{' not in services:
                 return
             time.sleep(0.5)
         raise RuntimeError('Android overlay or foreground service did not stop')
@@ -104,34 +120,34 @@ def main():
         adb('shell', 'appops', 'set', '--uid', PACKAGE, 'SYSTEM_ALERT_WINDOW', 'allow')
         request()
         find('Show this image?')
-        if active():
+        if overlay_bounds():
             raise RuntimeError('Existing permission bypassed image consent')
         tap('Show image')
-        find('Close image overlay')
+        wait_visible()
         adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
-        close = find('Close image overlay')
+        bounds = wait_visible()
         screenshot('above-home')
-        x, y = center(close)
-        adb('shell', 'input', 'swipe', str(x - 100), str(y + 80), str(x + 100), str(y + 180), '600')
-        moved = center(find('Close image overlay'))
-        if moved == (x, y):
+        x, y = bounds[0] + 30, (bounds[1] + bounds[3]) // 2
+        adb('shell', 'input', 'swipe', str(x), str(y), str(x + 200), str(y + 100), '600')
+        moved = wait_visible()
+        if moved[:2] == bounds[:2]:
             raise RuntimeError('Dragging did not move the native overlay window')
         screenshot('dragged')
-        tap('Close image overlay')
+        adb('shell', 'input', 'tap', str(moved[2] - 16), str(moved[1] + 16))
         wait_closed()
         screenshot('closed')
 
         request()
         tap('Show image')
-        find('Close image overlay')
+        wait_visible()
         request(hide=True, token='cd' * 32)
-        find('Close image overlay')
+        wait_visible()
         request(hide=True)
         wait_closed()
 
         request()
         tap('Show image')
-        find('Close image overlay')
+        wait_visible()
         adb('shell', 'appops', 'set', '--uid', PACKAGE, 'SYSTEM_ALERT_WINDOW', 'deny')
         wait_closed()
         screenshot('permission-revoked')
