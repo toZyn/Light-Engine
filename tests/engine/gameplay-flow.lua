@@ -1,5 +1,6 @@
 check('quick menu taps move once and accept the selected item', function()
 	for _, navigation in ipairs({{'vertical', 's'}, {'horizontal', 'd'}}) do
+		local throttleCount = #Throttle.list
 		local menu = MenuList(nil, false, navigation[1])
 		for _ = 1, 3 do menu:add(Sprite()) end
 		controls:onKeyPress(navigation[2])
@@ -19,9 +20,46 @@ check('quick menu taps move once and accept the selected item', function()
 		controls:update()
 		menu:update(0.016)
 		assert(selected == menu.members[2] and calls == 1, 'a quick accept tap did not select the second item')
-		for _, throttle in pairs(menu.throttles) do throttle:destroy() end
 		menu:destroy()
+		assert(#Throttle.list == throttleCount, 'destroyed menu retained its repeat controls')
 	end
+end)
+
+check('menu owners release named repeat controls on leaving', function()
+	for _, path in ipairs({'funkin.states.mainmenu', 'funkin.states.freeplay',
+		'funkin.states.storymenu', 'funkin.states.credits', 'funkin.states.mods',
+		'funkin.ui.options', 'funkin.ui.editor.editormenu'}) do
+		local class = require(path)
+		local count = #Throttle.list
+		local script = Script('tests/engine/compat-fixture.lua', false, true, true)
+		local owner = setmetatable({script = script, grpText = SpriteGroup(), grpIcon = SpriteGroup(),
+			throttles = {up = Throttle:make({function() return false end}),
+				down = Throttle:make({function() return false end})}}, class)
+		assert(type(owner.leave) == 'function', path .. ' has no cleanup hook')
+		owner:leave()
+		assert(#Throttle.list == count, path .. ' retained repeat controls after leaving')
+		assert(not owner.throttles or next(owner.throttles) == nil, path .. ' retained recycled controls')
+		script:close()
+		owner.grpText:destroy(); owner.grpIcon:destroy()
+	end
+end)
+
+check('a fully disabled menu cannot hang navigation or accept', function()
+	local menu = MenuList(nil, false, 'vertical')
+	for _ = 1, 3 do menu:add(Sprite()) end
+	for _, item in ipairs(menu.members) do item.unselectable = true end
+	local selected = menu.curSelected
+	debug.sethook(function() error('disabled menu navigation did not terminate') end, '', 10000)
+	local ok, message = pcall(menu.changeSelection, menu, 1)
+	debug.sethook()
+	assert(ok, message)
+	assert(menu.curSelected == selected, 'disabled navigation changed the selection')
+	local accepted = false
+	menu.selectCallback = function() accepted = true end
+	controls:onKeyPress('return'); controls:onKeyRelease('return'); controls:update()
+	menu:update(0.016)
+	assert(not accepted, 'a disabled item was accepted')
+	menu:destroy()
 end)
 
 check('keyboard hits, misses and pause preserve a native song and mod HUD', function()
