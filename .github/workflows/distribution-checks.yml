@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: distribution-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   SOURCE_COMMIT: ${{ inputs.source_commit || github.event.pull_request.base.sha || github.sha }}
@@ -178,5 +182,39 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: distribution-android-${{ matrix.kind }}
+          path: test-results/
+          retention-days: 14
+
+  android-overlay:
+    name: Android 15 overlay companion APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify the signed companion APK
+        run: python3 tools/fetch_release_package.py Light-Engine-screen-overlay-android.apk .ci/overlay.apk --commit "$SOURCE_COMMIT"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise consent and native overlay windows
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -memory 4096
+          script: python3 tools/check_android_overlay.py .ci/overlay.apk --output test-results/distribution-android-overlay
+      - name: Upload companion screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-android-overlay
           path: test-results/
           retention-days: 14
