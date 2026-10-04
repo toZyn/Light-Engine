@@ -128,7 +128,7 @@ while true do
     if success then code,body,reason=a,b,c else code,body,reason=nil,'',a end
    end
    local pending=((connecting and code and code>=200 and code<300)or code==403)and body:find('"pending"%s*:%s*true')
-   local startup=code==nil and love.timer.getTime()-started<3
+   local startup=code==nil and reason~='timeout' and love.timer.getTime()-started<3
    if not pending and not startup then break end
    if task.close or cancel:peek() or tasks:peek() or love.timer.getTime()-started>=30 then break end
    local untilTime=love.timer.getTime()+.5

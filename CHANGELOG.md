@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.16-advanced.8] - 2026-10-04
 
 ### Fixed
+- Destroyed menu-repeat controls are removed and safely recycled.
+- Desktop overlay HTTP timeouts end the request without a second retry.
 - Menu navigation consumes a quick direction tap once, including presses that
   end before an update. Held keys retain the existing repeat delay.
 - Portrait windows retain the full logical game viewport and letterbox it,

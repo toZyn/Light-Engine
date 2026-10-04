@@ -92,8 +92,7 @@ function love.load()
   assert(state.camHUD.__shakeDuration==0 and state.camHUD.__fadeDuration==0,'owned camera effects survived disposal')
   assert(not pcall(cleanupFont.getHeight,cleanupFont) and pcall(cachedFont.getHeight,cachedFont),'font ownership cleanup incorrect')
   local destroyedCamera=Camera();state.camOther=destroyedCamera
-  local weakContext
-  do
+  local function disposedContext()
    local abandonedScript=Script('tests/engine/compat-fixture.lua',false,true,true)
    local abandoned=Script.createCompatibility(state,abandonedScript)
    abandonedScript.variables.requestAsset('image','test-controls','abandoned')
@@ -101,8 +100,11 @@ function love.load()
    destroyedCamera:destroy()
    abandoned:dispose();abandonedScript:close()
    assert(destroyedCamera.__flashComplete==nil,'destroyed camera retained owned completion closure')
-   weakContext=setmetatable({abandoned},{__mode='v'})
+   return setmetatable({abandoned},{__mode='v'})
   end
+  -- End the allocating stack frame before checking reachability; LuaJIT may
+  -- retain registers from a lexical block until its enclosing function returns.
+  local weakContext=disposedContext()
   collectgarbage('collect')
   assert(weakContext[1]==nil,'pending callback retained a disposed context/state')
   while paths.async.getProgress()<1 do assert(love.timer.getTime()<deadline);paths.async.update(.01);love.timer.sleep(.002) end
