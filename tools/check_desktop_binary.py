@@ -56,17 +56,23 @@ class Desktop:
             subprocess.run(['xdotool', 'keyup', key], check=True)
 
     def close(self):
+        self.focus()
         if self.windows:
             ctypes.windll.user32.PostMessageW(self.window, 0x0010, 0, 0)
         else:
             from Xlib import display, protocol
             connection = display.Display()
             window = connection.create_resource_object('window', int(self.window))
+            protocols = window.get_wm_protocols() or []
+            delete_window = connection.intern_atom('WM_DELETE_WINDOW')
+            if delete_window not in protocols:
+                raise RuntimeError('Native window does not advertise WM_DELETE_WINDOW')
+            print('Closing native X11 window: ' + str(self.window), flush=True)
             event = protocol.event.ClientMessage(window=window,
                 client_type=connection.intern_atom('WM_PROTOCOLS'),
-                data=(32, [connection.intern_atom('WM_DELETE_WINDOW'), 0, 0, 0, 0]))
+                data=(32, [delete_window, 0, 0, 0, 0]))
             window.send_event(event, event_mask=0)
-            connection.flush()
+            connection.sync()
             connection.close()
 
 

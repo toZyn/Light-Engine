@@ -5,6 +5,15 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16-advanced.7] - 2026-10-04
+
+### Fixed
+- Quick keyboard taps now retain both press and release events until the next
+  update, so menu and pause actions are not lost between frames.
+- Release archives exclude downloaded build icons and nested editor settings.
+
+Android version code: 123.
+
 ## [0.1.16-advanced.6] - 2026-10-04
 
 ### Added

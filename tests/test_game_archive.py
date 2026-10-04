@@ -21,7 +21,8 @@ class GameArchiveTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'original fixture')
             junk = ['.ci/love/AppRun', '.superpowers/session.json',
-                    'funkin/__pycache__/cached.pyc', 'assets/.DS_Store', 'old.apk.idsig']
+                    'funkin/__pycache__/cached.pyc', 'assets/.DS_Store', 'old.apk.idsig',
+                    'inputs/icon.ico', 'loxel/.vscode/settings.json']
             for name in junk:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
