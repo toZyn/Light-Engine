@@ -1,6 +1,10 @@
 local MenuList = SpriteGroup:extend("MenuList")
 MenuList.selectionCache = {}
 
+local function navigationInput(name)
+	return controls:pressed(name) or controls:down(name)
+end
+
 local defaultScrolls = {
 	default = function(self, obj, dt, time)
 		obj.y = self:lerp(dt, obj, "y", time)
@@ -83,11 +87,11 @@ function MenuList:new(sound, cache, scroll, hover)
 
 	self.throttles = {}
 	if self.scroll ~= "horizontal" and not self.isMobile then
-		self.throttles[-1] = Throttle:make({controls.down, controls, "ui_up"})
-		self.throttles[1] = Throttle:make({controls.down, controls, "ui_down"})
+		self.throttles[-1] = Throttle:make({navigationInput, "ui_up"})
+		self.throttles[1] = Throttle:make({navigationInput, "ui_down"})
 	elseif self.scroll == "horizontal" and not self.isMobile then
-		self.throttles[-1] = Throttle:make({controls.down, controls, "ui_left"})
-		self.throttles[1] = Throttle:make({controls.down, controls, "ui_right"})
+		self.throttles[-1] = Throttle:make({navigationInput, "ui_left"})
+		self.throttles[1] = Throttle:make({navigationInput, "ui_right"})
 	end
 end
 
