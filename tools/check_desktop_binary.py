@@ -2,6 +2,7 @@
 """Exercise a packaged desktop game through native keyboard and window events."""
 import argparse
 import ctypes
+from ctypes import wintypes
 import os
 from pathlib import Path
 import subprocess
@@ -34,6 +35,14 @@ class Desktop:
             if not found:
                 raise RuntimeError('Native game window was not created')
             self.window = found[0]
+            bounds = wintypes.RECT()
+            user.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)]
+            user.MoveWindow.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+            user.GetWindowRect(self.window, ctypes.byref(bounds))
+            width, height = user.GetSystemMetrics(0), user.GetSystemMetrics(1)
+            if bounds.left < 0 or bounds.top < 0 or bounds.right > width or bounds.bottom > height:
+                user.MoveWindow(self.window, 20, 20, min(bounds.right - bounds.left, width - 40),
+                                min(bounds.bottom - bounds.top, height - 80), True)
             user.SetForegroundWindow(self.window)
         else:
             result = subprocess.check_output(['xdotool', 'search', '--onlyvisible', '--name', '^Light Engine'], text=True)

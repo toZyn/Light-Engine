@@ -31,6 +31,8 @@ def main():
     adb('wait-for-device')
     adb('install', '-r', '--abi', args.abi, str(args.apk), timeout=300)
     adb('shell', 'pm', 'clear', PACKAGE)
+    adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
+    adb('shell', 'settings', 'put', 'system', 'user_rotation', '1')
     adb('logcat', '-c')
     diagnostic = None
 
@@ -77,6 +79,9 @@ def main():
         time.sleep(1)
         adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.MAIN', '-n', LAUNCHER)
         wait_state('TitleState')
+        root = '/sdcard/Android/media/' + PACKAGE
+        for name in ('.nomedia', 'mods', 'addons', 'saves'):
+            adb('shell', 'test', '-e', root + '/' + name)
         key('KEYCODE_ENTER')
         time.sleep(1)
         key('KEYCODE_ENTER')
