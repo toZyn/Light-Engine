@@ -44,6 +44,6 @@ actionlint
 /test-results/
 __pycache__/
 *.pyc
-separate-addons/
-tests/
 docs/superpowers/
+/.ci/
+/.superpowers/

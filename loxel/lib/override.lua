@@ -169,7 +169,7 @@ function string:ltrim()
 end
 
 function string:rtrim()
-	local r = #self - 1
+	local r = #self
 	while r > 0 and self:isSpace(r) do r = r - 1 end
 	return self:sub(1, r)
 end

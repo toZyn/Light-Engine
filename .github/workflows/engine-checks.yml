@@ -10,6 +10,9 @@ on:
       - 'loxel/**'
       - 'lib/**'
       - 'assets/**'
+      - 'android/**'
+      - '.gitignore'
+      - 'tests/**'
       - 'tests/engine/**'
       - 'tests/desktop-packaging.py'
       - 'tests/android-manifest.py'
@@ -47,6 +50,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb libgl1 libopengl0 libegl1 libasound2 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0
+
+      - name: Test build and runner utilities
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
       - name: Download the official LÖVE runtime
         run: |
