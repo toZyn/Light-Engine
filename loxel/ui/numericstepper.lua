@@ -299,6 +299,7 @@ function NumericStepper:input(char)
 	if not (isDigit or isDot or isMinus) then return end
 
 	self.value = self.value:sub(1, self.cursorPos) .. char .. self.value:sub(self.cursorPos + 1)
+	self.text = self.value
 	self.cursorPos = self.cursorPos + 1
 	local parsed = tonumber(self.value)
 	if parsed then
@@ -310,6 +311,7 @@ end
 function NumericStepper:backspace()
 	if self.cursorPos > 0 then
 		self.value = self.value:sub(1, self.cursorPos - 1) .. self.value:sub(self.cursorPos + 1)
+		self.text = self.value
 		self.cursorPos = self.cursorPos - 1
 		local parsed = tonumber(self.value)
 		if parsed then
@@ -322,6 +324,7 @@ end
 function NumericStepper:delete()
 	if self.cursorPos < #self.value then
 		self.value = self.value:sub(1, self.cursorPos) .. self.value:sub(self.cursorPos + 2)
+		self.text = self.value
 		local parsed = tonumber(self.value)
 		if parsed then
 			self.numValue = math.clamp(parsed, self.min, self.max)
