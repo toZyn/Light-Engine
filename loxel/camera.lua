@@ -271,6 +271,72 @@ function Camera:getZoomXY()
 	return self.__zoom.x, self.__zoom.y
 end
 
+function Camera:worldToScreen(worldX, worldY, sfx, sfy)
+	sfx = sfx == nil and 1 or sfx
+	sfy = sfy == nil and 1 or sfy
+	local w, h = self.width, self.height
+	local w2, h2 = w / 2, h / 2
+	local zoomX, zoomY = self:getZoomXY()
+
+	local dx = (worldX - self.scroll.x * sfx) - w2
+	local dy = (worldY - self.scroll.y * sfy) - h2
+
+	local totalDeg = (self.angle or 0) + (self.rotation or 0)
+	if totalDeg ~= 0 then
+		local r = math.rad(totalDeg)
+		local c, s = math.cos(r), math.sin(r)
+		dx, dy = dx * c - dy * s, dx * s + dy * c
+	end
+
+	local scx, scy, pScale = 1, 1, 1
+	if self.pixelPerfect and w > 0 and h > 0 then
+		scx, scy = game.width / w, game.height / h
+		pScale = math.min(scx, scy)
+	end
+
+	local cx = ((self.clipCam ~= false) and (w2 + self.x) or w2) * scx
+	local cy = ((self.clipCam ~= false) and (h2 + self.y) or h2) * scy
+
+	return cx + dx * zoomX * self.scale.x * pScale,
+		cy + dy * zoomY * self.scale.y * pScale
+end
+
+function Camera:screenToWorld(gameX, gameY, sfx, sfy)
+	sfx = sfx == nil and 1 or sfx
+	sfy = sfy == nil and 1 or sfy
+	local w, h = self.width, self.height
+	local w2, h2 = w / 2, h / 2
+	local zoomX, zoomY = self:getZoomXY()
+
+	local scx, scy, pScale = 1, 1, 1
+	if self.pixelPerfect and w > 0 and h > 0 then
+		scx, scy = game.width / w, game.height / h
+		pScale = math.min(scx, scy)
+	end
+
+	local cx = ((self.clipCam ~= false) and (w2 + self.x) or w2) * scx
+	local cy = ((self.clipCam ~= false) and (h2 + self.y) or h2) * scy
+
+	local ex = zoomX * self.scale.x * pScale
+	local ey = zoomY * self.scale.y * pScale
+	if ex == 0 or ey == 0 then
+		return gameX + self.scroll.x * sfx, gameY + self.scroll.y * sfy
+	end
+
+	local dx = (gameX - cx) / ex
+	local dy = (gameY - cy) / ey
+
+	local totalDeg = (self.angle or 0) + (self.rotation or 0)
+	if totalDeg ~= 0 then
+		local r = -math.rad(totalDeg)
+		local c, s = math.cos(r), math.sin(r)
+		dx, dy = dx * c - dy * s, dx * s + dy * c
+	end
+
+	return w2 + dx + self.scroll.x * sfx,
+		h2 + dy + self.scroll.y * sfy
+end
+
 function Camera:canDraw()
 	self:getZoomXY()
 

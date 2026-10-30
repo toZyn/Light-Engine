@@ -14,6 +14,12 @@ function create(_, kind)
 	kindb = kind
 end
 
+function resize()
+	if bgFade then
+		bgFade.width, bgFade.height = game.width, game.height
+	end
+end
+
 function postCreate()
 	local dlg = self
 	Timer.wait(kindb == "angry" and 1.5 or 2, function()

@@ -531,8 +531,6 @@ function PlayState:enter()
 	end
 	self:positionText()
 
-	if self.buttons then self:add(self.buttons) end
-
 	if Recorder then
 		Recorder.onGameplayEnter(PlayState.SONG and PlayState.SONG.song)
 	end
@@ -543,6 +541,9 @@ function PlayState:enter()
 			self:executeCutscene(name, type, function(event)
 				local skipCountdown = event and event.params[1] or false
 				if skipCountdown then
+					if self.buttons and not table.find(self.members, self.buttons) then
+						self:add(self.buttons)
+					end
 					self:playSong(self.startPos)
 					self:fadeReceptors()
 				else
@@ -692,8 +693,20 @@ function PlayState:getRating(a, b)
 	end
 end
 
+function PlayState:hasActiveDialogue()
+	if not self.members or not DialogueBox then return false end
+	for _, m in ipairs(self.members) do
+		if m and not m._closed and m.exists ~= false and m.is and m:is(DialogueBox) then
+			return true
+		end
+	end
+	return false
+end
+
 function PlayState:startCountdown()
-	if self.buttons then self:add(self.buttons) end
+	if self.buttons and not table.find(self.members, self.buttons) then
+		self:add(self.buttons)
+	end
 
 	local event = self.scripts:call("startCountdown")
 	if event == Script.Event_Cancel then return end
@@ -1126,8 +1139,28 @@ function PlayState:update(dt)
 		end
 	end
 
+	local hadDialogue = self:hasActiveDialogue()
+	if hadDialogue then
+		self._dialogueStunnedPads = true
+		if self.buttons then self.buttons:set({stunned = true}) end
+		if self.pauseButton and self.pauseButton.pauseButton and self.pauseButton.pauseButton.button then
+			self.pauseButton.pauseButton.button.stunned = true
+		end
+	end
+
 	self.scripts:call("update", dt)
 	PlayState.super.update(self, dt)
+
+	local inDialogue = hadDialogue or self:hasActiveDialogue()
+	if not inDialogue and self._dialogueStunnedPads then
+		self._dialogueStunnedPads = false
+		if self.buttons and table.find(self.members, self.buttons) and not self.buttons.pendingEnable then
+			self.buttons:set({stunned = false})
+		end
+		if self.pauseButton and self.pauseButton.pauseButton and self.pauseButton.pauseButton.button then
+			self.pauseButton.pauseButton.button.stunned = false
+		end
+	end
 
 	local time = PlayState.conductor.time / 1000
 	local missOffset = time - Note.safeZoneOffset / 1.25
@@ -1202,7 +1235,7 @@ function PlayState:update(dt)
 	self.camHUD.zoom = util.coolLerp(self.camHUD.zoom, 1, 3, dt * self.camZoomSpeed)
 	self.camNotes.zoom = self.camHUD.zoom
 
-	if self.startedCountdown and controls:pressed("pause") then
+	if self.startedCountdown and not inDialogue and controls:pressed("pause") then
 		self:tryPause()
 	end
 
@@ -1545,6 +1578,7 @@ end
 function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 	if isrepeat then return end
 	if self.substate and not self.persistentUpdate then return end
+	if self:hasActiveDialogue() then return end
 	local boundControls = controls:getControlsFromSource(type .. ":" .. key)
 	local ghostTap = ClientPrefs.data.ghostTap and self.ghostTime <= 0
 
@@ -1621,7 +1655,9 @@ function PlayState:closeSubstate()
 		if Discord then self:updateDiscordRPC() end
 	end
 
-	if self.buttons then self:add(self.buttons) end
+	if self.buttons and not table.find(self.members, self.buttons) then
+		self:add(self.buttons)
+	end
 	self:reconcileReceptors()
 
 	self.scripts:call("postSubstateClosed")

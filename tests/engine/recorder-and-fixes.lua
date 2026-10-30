@@ -499,5 +499,89 @@ check("B3: Receptors and baton release cleanly across dual-key spam, holdTime ex
 	controls:reset({controls = table.clone(ClientPrefs.controls)})
 end)
 
+check("B4: DialogueBox hitboxes, Camera world/screen projection, Mouse/Touch overlaps, and VirtualPad Z-order work across normal/pixel modes and zooms", function()
+	local host = State()
+	game.switchState(host, true)
+	game.update(1 / 60)
+
+	-- 1) Pixel dialogue box: enter -> loop, rejects transparent headroom, accepts visible speech box click
+	local pixDlg = DialogueBox("pixel", "default", "senpai")
+	host:add(pixDlg)
+	for _ = 1, 30 do
+		Timer.globalManager:update(1 / 60)
+		pixDlg:update(1 / 60)
+	end
+	assert(pixDlg.boxSpr.animation.curAnim.name == "loop",
+		"Pixel DialogueBox must transition from enter to loop")
+	assert(not pixDlg:overlapsPoint(640, 200),
+		"Pixel DialogueBox must reject transparent headroom above speech box")
+	assert(pixDlg:overlapsPoint(640, 560),
+		"Pixel DialogueBox must accept clicks inside visible speech box")
+
+	-- 2) Normal dialogue box + zoomed camera (0.5x) + scroll (300, 200)
+	local zCam = Camera(0, 0, 1280, 720)
+	zCam.scroll:set(300, 200)
+	zCam.zoom = 0.5
+	zCam:update(0)
+	local normDlg = DialogueBox("default", "default", "senpai")
+	normDlg.cameras = {zCam}
+	host:add(normDlg)
+	for _ = 1, 50 do
+		Timer.globalManager:update(1 / 60)
+		normDlg:update(1 / 60)
+	end
+	assert(normDlg.boxSpr.animation.curAnim.name == "loop",
+		"Normal DialogueBox must transition from enter to loop")
+	assert(not normDlg:overlapsPoint(640, 620, zCam),
+		"Zoomed 0.5x DialogueBox must reject points outside shrunk screen bounds")
+	assert(normDlg:overlapsPoint(640, 450, zCam),
+		"Zoomed 0.5x DialogueBox must accept points inside shrunk screen bounds")
+	normDlg.text:forceEnd()
+	game.mousemoved(640, 450)
+	game.mousepressed(640, 450, 1)
+	normDlg:update(1 / 60)
+	game.mousereleased(640, 450, 1)
+	game.mouse.reset()
+	assert(normDlg.curDialogue == 2,
+		"Mouse click inside zoomed normal DialogueBox must advance curDialogue")
+
+	-- 3) PixelPerfect (213x120) camera projection in Mouse.overlaps
+	local pCam = Camera(0, 0, 213, 120)
+	pCam.pixelPerfect = true
+	local pObj = Graphic(20, 70, 170, 40, Color.WHITE)
+	pObj.scrollFactor:set(0, 0)
+	pObj.cameras = {pCam}
+	game.mousemoved(640, 540)
+	assert(Mouse.overlaps(pObj), "Mouse.overlaps must project through pixelPerfect 213x120 camera")
+	game.mousemoved(640, 100)
+	assert(not Mouse.overlaps(pObj), "Mouse.overlaps must reject points outside pixelPerfect bounds")
+
+	-- 4) VirtualPad reverse Z-order: top-most overlay receives touch over underlying full-screen pad
+	local bottomPad = VirtualPad("left", 0, 0, 1280, 720)
+	local topPad = VirtualPad("return", 200, 400, 800, 250)
+	bottomPad:enter()
+	topPad:enter()
+	local topHits, bottomHits = 0, 0
+	bottomPad.onPress:add(function() bottomHits = bottomHits + 1 end)
+	topPad.onPress:add(function() topHits = topHits + 1 end)
+	local winW, winH = love.graphics.getDimensions()
+	local sc = math.min(winW / game.width, winH / game.height)
+	local sx = (winW - sc * game.width) / 2 + 640 * sc
+	local sy = (winH - sc * game.height) / 2 + 520 * sc
+	VirtualPad.press("b4_z", sx, sy, 1, 0)
+	VirtualPad.release("b4_z", sx, sy, 1, 0)
+	assert(topHits == 1 and bottomHits == 0,
+		"Top-most VirtualPad must receive touch ahead of underlying pad")
+
+	bottomPad:destroy()
+	topPad:destroy()
+	pixDlg:closeDialogue()
+	normDlg:closeDialogue()
+	zCam:destroy()
+	pCam:destroy()
+	paths.async.stop()
+end)
+
+
 
 

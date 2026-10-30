@@ -231,31 +231,59 @@ function Touch.getTouchCount()
 	return count
 end
 
-function Touch.overlaps(obj, cam)
-	local camera = cam or game.camera
+local function pointOverlapsObject(gameX, gameY, obj, cam, parentX, parentY, parentSfx, parentSfy)
+	if not obj or obj.exists == false then return false end
+	parentX, parentY = parentX or 0, parentY or 0
+	parentSfx = parentSfx == nil and 1 or parentSfx
+	parentSfy = parentSfy == nil and 1 or parentSfy
 
+	local camera = cam or (obj.cameras and obj.cameras[1]) or game.camera
+	if type(obj.overlapsPoint) == "function" then
+		return obj:overlapsPoint(gameX, gameY, camera)
+	end
+
+	if SpriteGroup and obj.is and obj:is(SpriteGroup) then
+		local ox = parentX + (obj.x or 0) + (obj.offset and obj.offset.x or 0)
+		local oy = parentY + (obj.y or 0) + (obj.offset and obj.offset.y or 0)
+		local sfx = parentSfx * (obj.scrollFactor and obj.scrollFactor.x or 1)
+		local sfy = parentSfy * (obj.scrollFactor and obj.scrollFactor.y or 1)
+		for _, o in ipairs(obj.members) do
+			if o and pointOverlapsObject(gameX, gameY, o, camera, ox, oy, sfx, sfy) then
+				return true
+			end
+		end
+		return false
+	elseif Group and obj.is and obj:is(Group) then
+		for _, o in ipairs(obj.members) do
+			if o and pointOverlapsObject(gameX, gameY, o, cam, parentX, parentY, parentSfx, parentSfy) then
+				return true
+			end
+		end
+		return false
+	elseif Object and obj.is and obj:is(Object) then
+		local sfx = parentSfx * (obj.scrollFactor and obj.scrollFactor.x or 1)
+		local sfy = parentSfy * (obj.scrollFactor and obj.scrollFactor.y or 1)
+		local wx, wy
+		if camera and camera.screenToWorld then
+			wx, wy = camera:screenToWorld(gameX, gameY, sfx, sfy)
+		else
+			wx = gameX + (camera and camera.scroll and camera.scroll.x or 0) * sfx
+			wy = gameY + (camera and camera.scroll and camera.scroll.y or 0) * sfy
+		end
+		local x = (obj.x or 0) + parentX
+		local y = (obj.y or 0) + parentY
+		local w = obj.width or 0
+		local h = obj.height or 0
+		return wx >= x and wx <= x + w and wy >= y and wy <= y + h
+	end
+	return false
+end
+
+function Touch.overlaps(obj, cam)
 	for i = 0, Touch.maxTouches - 1 do
 		local touch = Touch.touches[i]
-		if touch.active and touch.pressed then
-			local touchX = touch.x + camera.scroll.x
-			local touchY = touch.y + camera.scroll.y
-			if obj then
-				if obj:is(Group) then
-					for _, o in ipairs(obj.members) do
-						if o and (o.x and o.y and o.width and o.height) then
-							if touchX >= o.x and touchX <= o.x + o.width and 
-							   touchY >= o.y and touchY <= o.y + o.height then
-								return true, touch
-							end
-						end
-					end
-				elseif obj:is(Object) then
-					if touchX >= obj.x and touchX <= obj.x + obj.width and 
-					   touchY >= obj.y and touchY <= obj.y + obj.height then
-						return true, touch
-					end
-				end
-			end
+		if touch.active and touch.pressed and pointOverlapsObject(touch.x, touch.y, obj, cam) then
+			return true, touch
 		end
 	end
 	return false, nil
@@ -263,27 +291,7 @@ end
 
 function Touch.touchOverlaps(touch, obj, cam)
 	if not touch or not touch.active or not touch.pressed then return false end
-
-	local camera = cam or game.camera
-	local touchX = touch.x + camera.scroll.x
-	local touchY = touch.y + camera.scroll.y
-
-	if obj then
-		if obj:is(Group) then
-			for _, o in ipairs(obj.members) do
-				if o and (o.x and o.y and o.width and o.height) then
-					if touchX >= o.x and touchX <= o.x + o.width and 
-					   touchY >= o.y and touchY <= o.y + o.height then
-						return true
-					end
-				end
-			end
-		elseif obj:is(Object) then
-			return touchX >= obj.x and touchX <= obj.x + obj.width and 
-				   touchY >= obj.y and touchY <= obj.y + obj.height
-		end
-	end
-	return false
+	return pointOverlapsObject(touch.x, touch.y, obj, cam)
 end
 
 function Touch:updateGestures()

@@ -87,8 +87,9 @@ function VirtualPad.updatePress()
 		local active = VirtualPad.active[id]
 		local found = false
 
-		for _, button in ipairs(VirtualPad.instances) do
-			if button:check(x, y) and not found then
+		for i = #VirtualPad.instances, 1, -1 do
+			local button = VirtualPad.instances[i]
+			if button and button:check(x, y) and not found then
 				found = true
 				if not active then
 					press(button, id)
@@ -117,8 +118,9 @@ end
 function VirtualPad.press(id, x, y, p, time)
 	x, y = VirtualPad.remap(x, y)
 	local active = VirtualPad.active[id]
-	for _, button in ipairs(VirtualPad.instances) do
-		if button:check(x, y) and not active then
+	for i = #VirtualPad.instances, 1, -1 do
+		local button = VirtualPad.instances[i]
+		if button and button:check(x, y) and not active then
 			press(button, id, time)
 			break
 		end
@@ -159,7 +161,7 @@ function VirtualPad:destroy()
 end
 
 function VirtualPad:check(x, y)
-	if not self.stunned and x >= self.x and x <= self.x + self.width
+	if self.exists ~= false and not self.stunned and x >= self.x and x <= self.x + self.width
 		and y >= self.y and y <= self.y + self.height then
 		return self
 	end
