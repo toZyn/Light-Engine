@@ -1,9 +1,12 @@
 local PauseButton = SpriteGroup:extend("PauseButton")
 
-function PauseButton:new(x, y, skin)
+function PauseButton:new(x, y, skin, onPause)
 	PauseButton.super.new(self, x, y)
+	self.onPause = onPause
 
-	local pauseButton = SpriteButton(0, 0, "return", skin:get("pauseButton", "atlas"))
+	local pauseButton = SpriteButton(0, 0, "return", skin:get("pauseButton", "atlas"), function()
+		if self.onPause then self.onPause() end
+	end)
 
 	pauseButton.animation:addByIndices('idle', 'pause', {0}, "", 24, false);
 	pauseButton.animation:addByIndices('hold', 'pause', {5}, "", 24, false);
@@ -33,6 +36,40 @@ function PauseButton:new(x, y, skin)
 
 	self:add(pauseButton)
 	self:add(pauseCircle)
+end
+
+function PauseButton:setPadStunned(stunned)
+	if self.pauseButton and self.pauseButton.button then
+		self.pauseButton.button.stunned = stunned == true
+	end
+end
+
+function PauseButton:promotePad()
+	if self.pauseButton and self.pauseButton.button then
+		local pad = self.pauseButton.button
+		pad.stunned = false
+		table.delete(VirtualPad.instances, pad)
+		table.insert(VirtualPad.instances, pad)
+	end
+end
+
+function PauseButton:enter()
+	if self.pauseButton and self.pauseButton.enter then
+		self.pauseButton:enter()
+	end
+end
+
+function PauseButton:leave()
+	if self.pauseButton and self.pauseButton.leave then
+		self.pauseButton:leave()
+	end
+end
+
+function PauseButton:destroy()
+	if self.pauseButton and self.pauseButton.leave then
+		self.pauseButton:leave()
+	end
+	PauseButton.super.destroy(self)
 end
 
 return PauseButton

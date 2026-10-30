@@ -447,8 +447,130 @@ check("PlayState:preload and LoadScreen resolve default, pixel, mod skins, and p
 		paths.async.stop()
 	end
 
+	if Timer and Timer.globalManager then Timer.globalManager:clear() end
 	Mods.currentMod = prevMod
 	Parser.clearCache()
 	paths.clearCache()
+	paths.async.stop()
+end)
+
+check("B6: Pause & resume work across keyboard, gamepad, and mobile touch in normal gameplay, post-dialogue, post-cutscene, and post-alt-tab", function()
+	local origGetDevice = love.system.getDevice
+	local origJoystick = controls.config.joystick
+
+	-- Mock connected gamepad for baton
+	local padState = {}
+	local mockJoy = {
+		isConnected = function() return true end,
+		isGamepad = function() return true end,
+		isGamepadDown = function(_, btn) return padState[btn] == true end,
+		isDown = function() return false end,
+		getGamepadAxis = function() return 0 end,
+		getAxis = function() return 0 end,
+		getHat = function() return "c" end
+	}
+	controls.config.joystick = mockJoy
+
+	local function stepFrame(dt)
+		dt = dt or (1 / 60)
+		controls:update()
+		game.update(dt)
+	end
+
+	-- Boot PlayState under Mobile device mode so VirtualPad + PauseButton + lane pads are all active
+	love.system.getDevice = function() return "Mobile" end
+	PlayState.storyMode = false
+	assert(PlayState.loadSong("fresh", "normal"))
+	local ps = PlayState(false, nil, "normal")
+	game.switchState(ps, true)
+	for _ = 1, 8 do
+		stepFrame()
+	end
+	assert(ps.startedCountdown and ps.pauseButton ~= nil and ps.buttons ~= nil,
+		"Mobile PlayState must create both pauseButton and 4-lane VirtualPad buttons")
+
+	local pausePad = ps.pauseButton.pauseButton.button
+	local px = pausePad.x + pausePad.width * 0.5
+	local py = pausePad.y + pausePad.height * 0.5
+
+	local function verifyAllThreeInputs(phaseLabel)
+		-- 1) Mobile touch on top-right PauseButton pauses, and Mobile 'B' button resumes
+		assert(ps.substate == nil, phaseLabel .. ": expected unpaused before mobile touch")
+		game.touchpressed("b6_mob", px, py, 0, 0, 1, 0)
+		stepFrame()
+		game.touchreleased("b6_mob", px, py, 0, 0, 1, 0)
+		assert(ps.substate ~= nil and ps.substate:is(PauseSubstate),
+			phaseLabel .. ": Mobile touch on PauseButton must open PauseSubstate")
+		for _ = 1, 14 do stepFrame() end
+		local bBtn = ps.substate.buttons and ps.substate.buttons.members[1]
+		assert(bBtn ~= nil, phaseLabel .. ": PauseSubstate on Mobile must create 'B' back button")
+		local bx, by = bBtn.x + bBtn.width * 0.5, bBtn.y + bBtn.height * 0.5
+		game.touchpressed("b6_back", bx, by, 0, 0, 1, 0)
+		stepFrame()
+		game.touchreleased("b6_back", bx, by, 0, 0, 1, 0)
+		stepFrame()
+		assert(ps.substate == nil, phaseLabel .. ": Mobile 'B' button must resume gameplay from PauseSubstate")
+
+		-- 2) Gamepad 'start' pauses and Gamepad 'start' resumes
+		padState.start = true
+		controls:onGamepadPress(mockJoy, "start")
+		stepFrame()
+		padState.start = false
+		controls:onGamepadRelease(mockJoy, "start")
+		stepFrame()
+		assert(ps.substate ~= nil and ps.substate:is(PauseSubstate),
+			phaseLabel .. ": Gamepad Start must open PauseSubstate")
+		padState.start = true
+		controls:onGamepadPress(mockJoy, "start")
+		stepFrame()
+		padState.start = false
+		controls:onGamepadRelease(mockJoy, "start")
+		stepFrame()
+		assert(ps.substate == nil, phaseLabel .. ": Gamepad Start must resume from PauseSubstate")
+
+		-- 3) Keyboard Return pauses and Keyboard Escape resumes
+		controls:onKeyPress("return", "return", false)
+		controls:onKeyRelease("return", "return")
+		stepFrame()
+		assert(ps.substate ~= nil and ps.substate:is(PauseSubstate),
+			phaseLabel .. ": Keyboard Return must open PauseSubstate")
+		stepFrame()
+		controls:onKeyPress("escape", "escape", false)
+		controls:onKeyRelease("escape", "escape")
+		stepFrame()
+		assert(ps.substate == nil, phaseLabel .. ": Keyboard Escape must resume from PauseSubstate")
+	end
+
+	-- Phase 1: Normal gameplay
+	verifyAllThreeInputs("Normal gameplay")
+
+	-- Phase 2: Right after dialogue closes
+	local dlg = DialogueBox("pixel", "normal", "senpai")
+	ps:add(dlg)
+	stepFrame()
+	assert(ps:hasActiveDialogue(), "DialogueBox must be active during dialogue")
+	dlg._closed = true
+	if dlg.button and dlg.button.leave then dlg.button:leave() end
+	ps:remove(dlg)
+	stepFrame() -- clears hadDialogue latching frame cleanly
+	verifyAllThreeInputs("Right after dialogue")
+
+	-- Phase 3: Right after cutscene completion (both startCountdown and skipCountdown paths)
+	ps:remove(ps.buttons)
+	ps:startCountdown()
+	stepFrame()
+	verifyAllThreeInputs("Right after cutscene")
+
+	-- Phase 4: Right after alt-tab (focus lost -> focus regained)
+	if funkin and funkin.releaseStuckInputs then funkin.releaseStuckInputs(true) end
+	game.focus(false)
+	stepFrame()
+	game.focus(true)
+	stepFrame()
+	verifyAllThreeInputs("After alt-tab")
+
+	ps:pauseSong()
+	controls.config.joystick = origJoystick
+	love.system.getDevice = origGetDevice
 	paths.async.stop()
 end)

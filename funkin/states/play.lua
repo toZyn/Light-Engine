@@ -507,7 +507,12 @@ function PlayState:enter()
 		local w, h = (game.width - pad * 2) / 4, game.height
 
 		self.buttons = VirtualPadGroup()
-		self.pauseButton = PauseButton(game.width - 130 - ClientPrefs.data.margin, 20, skin)
+		self.pauseButton = PauseButton(game.width - 130 - ClientPrefs.data.margin, 20, skin, function()
+			if self.startedCountdown and self.canPause and not self.isDead
+				and not self.substate and not self:hasActiveDialogue() then
+				self:tryPause()
+			end
+		end)
 		self:add(self.pauseButton)
 		self.buttons.cameras = {self.camOther}
 		self.pauseButton.cameras = self.buttons.cameras
@@ -528,6 +533,7 @@ function PlayState:enter()
 			releasedAlpha = 0,
 			config = {round = {0, 0}}
 		})
+		self.pauseButton:promotePad()
 	end
 	if self.buttons then self.buttons:disable() end
 
@@ -558,6 +564,9 @@ function PlayState:enter()
 				if skipCountdown then
 					if self.buttons and not table.find(self.members, self.buttons) then
 						self:add(self.buttons)
+					end
+					if self.pauseButton and self.pauseButton.promotePad then
+						self.pauseButton:promotePad()
 					end
 					self:playSong(self.startPos)
 					self:fadeReceptors()
@@ -721,6 +730,9 @@ end
 function PlayState:startCountdown()
 	if self.buttons and not table.find(self.members, self.buttons) then
 		self:add(self.buttons)
+	end
+	if self.pauseButton and self.pauseButton.promotePad then
+		self.pauseButton:promotePad()
 	end
 
 	local event = self.scripts:call("startCountdown")
@@ -1672,6 +1684,9 @@ function PlayState:closeSubstate()
 
 	if self.buttons and not table.find(self.members, self.buttons) then
 		self:add(self.buttons)
+	end
+	if self.pauseButton and self.pauseButton.promotePad then
+		self.pauseButton:promotePad()
 	end
 	self:reconcileReceptors()
 

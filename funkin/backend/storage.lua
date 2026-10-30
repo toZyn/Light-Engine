@@ -453,6 +453,9 @@ function Storage.installSave(save)
 		if ClientPrefs then
 			pcall(table.merge, ClientPrefs.data, data.prefs)
 			pcall(table.merge, ClientPrefs.controls, data.controls)
+			if ClientPrefs.ensureDefaultBinds then
+				ClientPrefs.ensureDefaultBinds(ClientPrefs.controls)
+			end
 			if controls then controls:reset({controls = table.clone(ClientPrefs.controls)}) end
 		end
 		if Highscore then Highscore.scores = data.scores or {songs = {}, weeks = {}} end

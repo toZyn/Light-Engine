@@ -251,7 +251,7 @@ function Player:_setActiveDevice()
 		end
 	end
 	for _, control in pairs(self._controls) do
-		for _, source in ipairs(control.sources) do
+		for _, source in pairs(control.sources) do
 			local type, value = parseSource(source)
 			if type and value then
 				if sourceFunction.keyboardMouse[type] then
@@ -276,7 +276,7 @@ end
 function Player:_getControlRawValue(control, ignoredType, ignoredValue)
 	local rawValue = 0
 	local joyConnected = isJoystickConnected(self.config.joystick)
-	for _, source in ipairs(control.sources) do
+	for _, source in pairs(control.sources) do
 		local type, value = parseSource(source)
 		if type and value and not (type == ignoredType and value == ignoredValue) then
 			if sourceFunction.keyboardMouse[type] then
