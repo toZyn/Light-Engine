@@ -60,6 +60,24 @@ function HealthIcon:updateAnimation()
 	end
 end
 
+function HealthIcon.resolveIconPath(icon)
+	if icon and icon ~= "" then
+		local candidates = {"icons/" .. icon}
+		if icon:sub(1, 5) == "icon-" then
+			candidates[#candidates + 1] = "icons/" .. icon:sub(6)
+		else
+			candidates[#candidates + 1] = "icons/icon-" .. icon
+		end
+		for _, candidate in ipairs(candidates) do
+			if paths.images[paths.getPath("images/" .. candidate .. ".png")]
+				or paths.exists(paths.getPath("images/" .. candidate .. ".png"), "file") then
+				return candidate, icon
+			end
+		end
+	end
+	return "icons/" .. HealthIcon.defaultIcon, HealthIcon.defaultIcon
+end
+
 function HealthIcon:changeIcon(icon)
 	if icon and icon ~= "" then
 		self.active, self.visible = true, true
@@ -68,9 +86,9 @@ function HealthIcon:changeIcon(icon)
 		return false
 	end
 
-	local path = "icons/" .. icon
+	local path, resolvedChar = HealthIcon.resolveIconPath(icon)
 	if paths.getImage(path) then
-		self.char = icon
+		self.char = resolvedChar
 	else
 		path = "icons/" .. HealthIcon.defaultIcon
 		self.char = HealthIcon.defaultIcon

@@ -24,6 +24,19 @@ local data = {
 		ClientPrefs.data.margin = value
 	end},
 
+	{"RECORDING"},
+	{"screenRecording", "Screen recording", "boolean", function(add, optionsUI)
+		if add ~= 0 then
+			ClientPrefs.data.screenRecording = not ClientPrefs.data.screenRecording
+		end
+		if not ClientPrefs.data.screenRecording and Recorder and Recorder.active then
+			Recorder.stop(true)
+		end
+		if optionsUI and optionsUI.syncRecordingTab then
+			optionsUI:syncRecordingTab()
+		end
+	end},
+
 	{"WINDOW"},
 	{"fullscreen", "Fullscreen", "boolean", function()
 		local value = not ClientPrefs.data.fullscreen

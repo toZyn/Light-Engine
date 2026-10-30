@@ -1,15 +1,26 @@
 ---@class Options:SpriteGroup
 local Options = SpriteGroup:extend("Options")
 
-local settings = table.new(0, 3)
+local settings = table.new(0, 4)
 settings.Gameplay = require "funkin.ui.options.gameplay"
 settings.Display = require "funkin.ui.options.display"
+settings.Recording = require "funkin.ui.options.recording"
 settings.Controls = require "funkin.ui.options.controls"
+
+function Options.getTabList(recordingEnabled)
+	if recordingEnabled == nil then
+		recordingEnabled = ClientPrefs and ClientPrefs.data and ClientPrefs.data.screenRecording == true
+	end
+	if recordingEnabled then
+		return {"Gameplay", "Display", "Recording", "Controls"}
+	end
+	return {"Gameplay", "Display", "Controls"}
+end
 
 function Options:new(showBG, completionCallback)
 	Options.super.new(self)
 
-	self.settingsNames = {"Gameplay", "Display", "Controls"}
+	self.settingsNames = Options.getTabList()
 
 	self.showBG = showBG
 	self.completionCallback = completionCallback
@@ -86,6 +97,7 @@ function Options:enter(parent)
 	end
 
 	self:revive()
+	self:syncRecordingTab()
 	self:changeTab()
 	self.visible = true
 
@@ -96,12 +108,49 @@ function Options:enter(parent)
 end
 
 function Options:resetTabs()
+	self.settingsNames = Options.getTabList()
 	self.tabGroup:destroy()
 	self.tabGroup:revive()
 	self.curTab = 1
 
 	for _, name in ipairs(self.settingsNames) do
 		self.tabGroup:add(settings[name]:make(self))
+	end
+end
+
+function Options:syncRecordingTab()
+	local wantRecording = ClientPrefs and ClientPrefs.data and ClientPrefs.data.screenRecording == true
+	local existingIdx = table.find(self.settingsNames, "Recording")
+
+	if wantRecording and not existingIdx then
+		local insertIdx = (table.find(self.settingsNames, "Display") or 2) + 1
+		table.insert(self.settingsNames, insertIdx, "Recording")
+		local recTab = settings.Recording:make(self)
+		recTab.visible = false
+		table.insert(self.tabGroup.members, insertIdx, recTab)
+		if self.curTab >= insertIdx then
+			self.curTab = self.curTab + 1
+		end
+	elseif not wantRecording and existingIdx then
+		if Recorder and Recorder.active then
+			Recorder.stop(true)
+		end
+		table.remove(self.settingsNames, existingIdx)
+		local removedTab = table.remove(self.tabGroup.members, existingIdx)
+		if removedTab then
+			if self.selectedTab == removedTab then
+				self.selectedTab = nil
+				self.onTab = false
+				self.changingOption = false
+				self.optionsCursor.visible = false
+			end
+			removedTab:destroy()
+		end
+		if self.curTab > #self.settingsNames then
+			self.curTab = #self.settingsNames
+		elseif self.curTab > existingIdx then
+			self.curTab = self.curTab - 1
+		end
 	end
 end
 
@@ -196,6 +245,7 @@ function Options:acceptOption(dont)
 
 	self.prevVal = nil
 	self.changingOption = false
+	self:syncRecordingTab()
 
 	if not dont and not self.dontPlaySound then util.playSfx(paths.getSound("scrollMenu")) end
 	self.dontPlaySound = false
@@ -203,6 +253,7 @@ end
 
 function Options:cancelChanges()
 	self.selectedTab.data:cancel(self.curSelect, self.prevVal)
+	self:syncRecordingTab()
 	if self.applySettings then
 		self.applySettings(self.settingsNames[self.curTab]:lower(),
 			self.selectedTab.data.settings[self.curSelect][1])

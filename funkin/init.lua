@@ -92,8 +92,11 @@ ChartingNote = require "funkin.ui.editor.charting.chartingnote"
 Shader = require "funkin.shaders"
 RGBShader = require "funkin.shaders.rgb"
 Video = require "funkin.backend.video"
+Recorder = require "funkin.backend.recorder"
 
 local TransitionFade = loxreq "transition.transitionfade"
+local _lastSurfaceW, _lastSurfaceH = 0, 0
+local _mobileOrientationRetry = 0
 
 function funkin.load()
 	local res, isMobile = math.abs(ClientPrefs.data.resolution),
@@ -103,10 +106,13 @@ function funkin.load()
 	love.window.setTitle(Project.title)
 	love.window.setIcon(love.image.newImageData(Project.icon))
 
+	-- On mobile, resizable=true makes SDL2/LÖVE unlock SCREEN_ORIENTATION_FULL_SENSOR
+	-- (allowing Portrait). Keeping resizable=false with landscape dimensions (1280x720)
+	-- enforces SCREEN_ORIENTATION_SENSOR_LANDSCAPE while immersive fullscreen stays active.
 	love.window.setMode(Project.width * res, Project.height * res, {
-		fullscreen = not isMobile and ClientPrefs.data.fullscreen,
+		fullscreen = isMobile or ClientPrefs.data.fullscreen,
 		fullscreentype = "desktop",
-		resizable = true,
+		resizable = not isMobile,
 		usedpiscale = false
 	})
 
@@ -166,6 +172,10 @@ function funkin.load()
 	game:add(SoundTray)
 
 	game.init(Project, TitleState)
+	_lastSurfaceW, _lastSurfaceH = love.graphics.getDimensions()
+	if isMobile and _lastSurfaceW > 0 and _lastSurfaceW < _lastSurfaceH then
+		_mobileOrientationRetry = 0.25
+	end
 
 	if ClientPrefs.data.resolution == -1 then
 		Camera.defaultResolution = love.graphics.getFixedScale()
@@ -195,15 +205,37 @@ function funkin.load()
 end
 
 function funkin.update(dt)
+	local sw, sh = love.graphics.getDimensions()
+	if sw > 0 and sh > 0 then
+		if sw ~= _lastSurfaceW or sh ~= _lastSurfaceH then
+			_lastSurfaceW, _lastSurfaceH = sw, sh
+			game.resize(sw, sh)
+		end
+		if love.system.getDevice() == "Mobile" and sw < sh then
+			_mobileOrientationRetry = _mobileOrientationRetry - (dt or 0)
+			if _mobileOrientationRetry <= 0 then
+				_mobileOrientationRetry = 1.0
+				local res = math.abs(ClientPrefs.data.resolution or 1)
+				pcall(love.window.updateMode, Project.width * res, Project.height * res, {
+					fullscreen = true,
+					fullscreentype = "desktop",
+					resizable = false,
+					usedpiscale = false
+				})
+			end
+		end
+	end
+
 	Storage.update(dt)
 	paths.update(dt)
 
 	controls:update()
 	Throttle:update(dt)
 	Shader.updateTime(dt)
+	if Recorder then Recorder.update(dt) end
 
 	if Discord then Discord.update() end
-	if controls:pressed("fullscreen") then
+	if controls:pressed("fullscreen") and love.system.getDevice() ~= "Mobile" then
 		love.window.setFullscreen(not love.window.getFullscreen())
 	end
 
@@ -215,6 +247,7 @@ function funkin.fullscreen(f)
 end
 
 function funkin.quit()
+	if Recorder then Recorder.shutdown() end
 	ClientPrefs.saveData()
 	if Discord then Discord.shutdown() end
 end

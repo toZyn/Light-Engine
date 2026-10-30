@@ -87,7 +87,7 @@ function TankmenGroup:recycle(x, y, time, right)
 
 	tankman.time = time
 	tankman.endingOffset = math.random() + math.random(50, 200)
-	tankman.runSpeed = math.random() + math.random(0.6, 1)
+	tankman.runSpeed = 0.6 + math.random() * 0.4
 	tankman.right = right
 end
 

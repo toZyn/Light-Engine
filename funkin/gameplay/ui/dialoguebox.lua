@@ -241,7 +241,7 @@ function DialogueBox:resetCharacters(chars)
 			spr:setGraphicSize(spr.width * char.scale)
 		end
 		spr:updateHitbox()
-		spr.antialiasing = not char.antialiasing == false
+		spr.antialiasing = char.antialiasing ~= false
 	end
 end
 

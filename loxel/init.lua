@@ -417,6 +417,9 @@ function game.resize(w, h)
 		local oldWidth, oldHeight = game.width, game.height
 		if oldHeight > 0 then
 			game.width = w < h and Project.width or math.max(1, math.floor(oldHeight * w / h))
+			if Transition then
+				Transition.width, Transition.height = game.width, oldHeight
+			end
 			for _, camera in ipairs(game.cameras.list) do
 				if camera.x == 0 and camera.y == 0 and camera.width == oldWidth and camera.height == oldHeight then
 					camera:resize(game.width, oldHeight, camera.resolutionX, camera.resolutionY)

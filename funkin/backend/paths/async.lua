@@ -153,7 +153,7 @@ local function findImagePath(key)
 	return paths.getPath(base .. "png")
 end
 
-function async.getImage(key, callback)
+function async.getImage(key, callback, silent)
 	if isUrl(key) then
 		local cache = "online:" .. key
 		local obj = paths.images[cache]
@@ -174,14 +174,14 @@ function async.getImage(key, callback)
 			async.queueTask("image", path, callback)
 			return true
 		else
-			log('image not found: ' .. key)
+			if not silent then log('image not found: ' .. key) end
 			if callback then callback(nil) end
 		end
 	end
 	return nil
 end
 
-function async.getAudio(key, stream, callback)
+function async.getAudio(key, stream, callback, silent)
 	if isUrl(key) then
 		local cache = "online:" .. key
 		local obj = paths.audio[cache]
@@ -202,7 +202,7 @@ function async.getAudio(key, stream, callback)
 			async.queueTask(stream and "audio" or "sound", path, callback)
 			return true
 		else
-			log('audio not found: ' .. key)
+			if not silent then log('audio not found: ' .. key) end
 			if callback then callback(nil) end
 		end
 	end
@@ -219,22 +219,22 @@ function async.getTextFromURL(url, callback)
 	return true
 end
 
-function async.getMusic(key, callback)
-	return async.getAudio("music/" .. key, true, callback)
+function async.getMusic(key, callback, silent)
+	return async.getAudio("music/" .. key, true, callback, silent)
 end
 
-function async.getSound(key, callback)
-	return async.getAudio("sounds/" .. key, false, callback)
+function async.getSound(key, callback, silent)
+	return async.getAudio("sounds/" .. key, false, callback, silent)
 end
 
-function async.getInst(song, suffix, callback)
+function async.getInst(song, suffix, callback, silent)
 	return async.getAudio("songs/" .. paths.formatToSongPath(song) .. "/Inst" ..
-		(suffix and "-" .. suffix or ""), true, callback)
+		(suffix and "-" .. suffix or ""), true, callback, silent)
 end
 
-function async.getVoices(song, suffix, callback)
+function async.getVoices(song, suffix, callback, silent)
 	return async.getAudio("songs/" .. paths.formatToSongPath(song) .. "/Voices" ..
-		(suffix and "-" .. suffix or ""), true, callback)
+		(suffix and "-" .. suffix or ""), true, callback, silent)
 end
 
 local function loadAtlas(key, kind, callback)
@@ -324,18 +324,18 @@ end
 
 function async.loadBatch(files)
 	local loaders = {
-		image = function(path) async.getImage(path) end,
-		sound = function(path) async.getSound(path) end,
-		audio = function(path) async.getAudio(path, true) end,
-		inst = function(path, suffix) async.getInst(path, suffix) end,
-		voices = function(path, suffix) async.getVoices(path, suffix) end,
+		image = function(path, _, silent) async.getImage(path, nil, silent) end,
+		sound = function(path, _, silent) async.getSound(path, nil, silent) end,
+		audio = function(path, _, silent) async.getAudio(path, true, nil, silent) end,
+		inst = function(path, suffix, silent) async.getInst(path, suffix, nil, silent) end,
+		voices = function(path, suffix, silent) async.getVoices(path, suffix, nil, silent) end,
 		animate = function(path) async.getAnimateAtlas(path) end
 	}
 
 	for _, file in ipairs(files) do
-		local type, path, suffix = unpack(file)
+		local type, path, suffix, silent = file[1], file[2], file[3], file[4] or file.silent
 		local loader = loaders[type]
-		if loader then loader(path, suffix) end
+		if loader then loader(path, suffix, silent) end
 	end
 end
 

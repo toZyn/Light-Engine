@@ -15,6 +15,7 @@ function Puddle:new(x, y, texture, copy)
 	Puddle.super.new(self, x, y, texture)
 
 	self.copyFrom = copy or game.camera
+	self.copyFrom.simple = false
 	self.copyFrom.isSimple = false
 
 	if self.texture then
@@ -31,7 +32,7 @@ function Puddle:update(dt)
 	if self.elapsed >= self.framerate then
 		self.elapsed = 0
 
-		if self.canvas and self.copyFrom then
+		if self.canvas and self.copyFrom and self.copyFrom.canvas then
 			self.canvas:renderTo(function()
 				love.graphics.push("all")
 				love.graphics.clear()
@@ -91,6 +92,7 @@ function Puddle:destroy()
 	Puddle.super.destroy(self)
 	if self.canvas then
 		self.canvas:release()
+		self.canvas = nil
 	end
 end
 

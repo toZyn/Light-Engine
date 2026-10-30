@@ -64,8 +64,12 @@ function ABot:new(x, y)
 	self.stereoBG = Sprite(x + 160, y + 30, paths.getImage('characters/abot/stereoBG'))
 	self:add(self.stereoBG)
 
-	local path = "songs/" .. paths.formatToSongPath(PlayState.SONG.song) .. "/Inst.ogg"
-	local fft = FFT(7, path, game.sound.music._source)
+	local songFolder = "songs/" .. paths.formatToSongPath(PlayState.SONG.song)
+	local diff = PlayState.songDifficulty and PlayState.songDifficulty:lower() or ""
+	local instDiff = diff ~= "" and (songFolder .. "/Inst-" .. diff .. ".ogg") or nil
+	local path = (instDiff and paths.exists(paths.getPath(instDiff), "file"))
+		and instDiff or (songFolder .. "/Inst.ogg")
+	local fft = FFT(7, path, game.sound.music and game.sound.music._source or nil)
 	fft.fftSize = 256
 	self.visualizer = Visualizer(x + 200, y + 80, fft)
 	self:add(self.visualizer)
@@ -91,9 +95,10 @@ function ABot:update(dt)
 end
 
 function ABot:setEyeDirection(n)
-	if n == 1 and self.abot.animation.curAnim.name ~= "pupilRight" then
+	local curName = self.pupil.animation.curAnim and self.pupil.animation.curAnim.name
+	if n == 1 and curName ~= "pupilRight" then
 		return self.pupil.animation:play("pupilRight")
-	elseif self.pupil.animation.curAnim.name ~= "pupilLeft" then
+	elseif n ~= 1 and curName ~= "pupilLeft" then
 		return self.pupil.animation:play("pupilLeft")
 	end
 end

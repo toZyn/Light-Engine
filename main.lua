@@ -23,7 +23,9 @@ end
 function love.resize(w, h) game.resize(w, h) end
 
 function love.keypressed(key, ...)
-	if key == "f5" and not game.getState():is(PlayState) then
+	if key == "f9" and Recorder and Recorder.isFeatureEnabled() then
+		Recorder.toggle()
+	elseif key == "f5" and not game.getState():is(PlayState) then
 		game.resetState(true)
 	elseif Project.DEBUG_MODE and love.keyboard.isDown("lctrl", "rctrl") then
 		if key == "f4" then error("force crash") end
@@ -61,7 +63,11 @@ function love.update(dt)
 	game.update(dt)
 end
 
-function love.draw() game.draw() end
+function love.draw()
+	if Recorder then Recorder.preDraw() end
+	game.draw()
+	if Recorder then Recorder.postDraw() end
+end
 
 function love.focus(f)
 	if f and Storage then Storage.refreshNow(false) end

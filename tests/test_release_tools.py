@@ -16,8 +16,10 @@ class ReleaseToolsTests(unittest.TestCase):
     def test_current_project_lua_has_valid_release_version(self):
         source = (ROOT / "project.lua").read_text(encoding="utf-8")
         version, code = srv.parse_project_lua(source)
-        self.assertEqual(version, "0.2.0")
-        self.assertGreaterEqual(code, 200)
+        self.assertRegex(version, r"^\d+\.\d+\.\d+")
+        self.assertGreaterEqual(code, 201)
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(f"## [{version}]", changelog)
 
     def test_choose_release_version_keeps_base_when_new_or_same_sha(self):
         self.assertEqual(
