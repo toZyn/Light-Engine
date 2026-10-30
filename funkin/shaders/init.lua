@@ -44,10 +44,14 @@ function Shader:new(source)
 	local vertPath, vertExists = fileExists(tostring(source) .. ".vert")
 
 	local ok, compiled
-	if fragExists or vertExists then
-		local fragSrc = readOrIdentity(fragPath, fragExists)
-		local vertSrc = readOrIdentity(vertPath, vertExists)
-		ok, compiled = pcall(love.graphics.newShader, fragSrc, vertSrc)
+	if fragExists and vertExists then
+		ok, compiled = pcall(love.graphics.newShader,
+			readOrIdentity(fragPath, true),
+			readOrIdentity(vertPath, true))
+	elseif fragExists then
+		ok, compiled = pcall(love.graphics.newShader, readOrIdentity(fragPath, true))
+	elseif vertExists then
+		ok, compiled = pcall(love.graphics.newShader, readOrIdentity(vertPath, true))
 	else
 		local src = type(source) == "string" and Shader.sanitizeGLSL(source) or source
 		ok, compiled = pcall(love.graphics.newShader, src)

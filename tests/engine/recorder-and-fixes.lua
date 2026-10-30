@@ -153,12 +153,22 @@ check("GLSL ES 3.0 shaders (rain, wiggle) and Weekend 1 AnimateAtlas / icon path
 	wiggleShader:destroy()
 
 	-- Verify AnimateAtlas characters carry Animation.json under images/<sprite>/Animation.json
-	for _, charName in ipairs({"nene", "darnell", "pico-playable"}) do
+	for _, charName in ipairs({"darnell-blazin", "pico-blazin"}) do
 		local data = Parser.getCharacter(charName)
 		assert(data and data.sprite, "Missing character data for " .. charName)
 		assert(paths.exists(paths.getPath("images/" .. data.sprite .. "/Animation.json"), "file"),
-			"AnimateAtlas detection path failed for " .. charName)
+			"AnimateAtlas detection path failed for " .. charName .. " (" .. tostring(data.sprite) .. ")")
 	end
+
+	-- Verify multisparrow Nene carries secondary animation assetPath (anim[7])
+	local neneData = Parser.getCharacter("nene")
+	local foundSecondary = false
+	for _, anim in pairs(neneData.animations or {}) do
+		if type(anim) == "table" and anim[7] == "characters/Nene_Hair_Blowing" then
+			foundSecondary = true
+		end
+	end
+	assert(foundSecondary, "Expected Nene multisparrow secondary atlas in anim[7]")
 
 	-- Verify HealthIcon resolves missing icon names to default face without crashing
 	local resolvedPath = HealthIcon.resolveIconPath("nene")

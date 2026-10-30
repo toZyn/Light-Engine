@@ -28,10 +28,9 @@ end
 
 local function ensureDir(path)
 	if not path or path == "" then return false end
-	if Storage and Storage.ensureDir then
-		Storage.ensureDir(path)
-	elseif love.system.getOS() == "Windows" then
-		os.execute('mkdir "' .. path .. '" 2>nul')
+	if love.system.getOS() == "Windows" then
+		local winPath = path:gsub("/", "\\")
+		os.execute('if not exist "' .. winPath .. '" mkdir "' .. winPath .. '" >nul 2>nul')
 	else
 		os.execute('mkdir -p "' .. path .. '" 2>/dev/null')
 	end
