@@ -1,12 +1,28 @@
 local Video = Object:extend("Video")
+Video._active = setmetatable({}, {__mode = "k"})
 
 function Video:new(x, y, source, screenAdjust, autoDestroy, looped)
 	Video.super.new(self, x, y)
+	local resolvedPath = nil
 	if type(source) == "string" then
 		source = paths.getPath("videos/" .. source .. ".ogv")
+		resolvedPath = source
+	elseif type(source) == "table" and source.typeOf then
+		if source:typeOf("VideoStream") and source.getFilename then
+			resolvedPath = source:getFilename()
+		elseif source:typeOf("Video") and source.getStream and source:getStream() then
+			resolvedPath = source:getStream():getFilename()
+		end
 	end
+	self._sourcePath = resolvedPath
 	self.video = source.typeOf and source or
 		love.graphics.newVideo(source)
+	if not self._sourcePath and self.video and self.video.getStream and self.video:getStream() then
+		local okFn, fn = pcall(function() return self.video:getStream():getFilename() end)
+		if okFn and type(fn) == "string" and fn ~= "" then
+			self._sourcePath = fn
+		end
+	end
 	self.width, self.height = self.video:getDimensions()
 
 	if screenAdjust then
@@ -17,10 +33,13 @@ function Video:new(x, y, source, screenAdjust, autoDestroy, looped)
 	self.paused = false
 	self._started = false
 	self._wasPlaying = false
+	self._playSeq = 0
+	self._seekSeq = 0
 	self.__volume = 1
 	self.__source = self.video:getSource()
 	self.__lastVolume = self:getActualVolume()
 	self.autoDestroy = autoDestroy
+	Video._active[self] = true
 
 	self:setVolume()
 	self.video:rewind()
@@ -54,6 +73,7 @@ end
 
 function Video:seek(time)
 	if not self.video then return end
+	self._seekSeq = (self._seekSeq or 0) + 1
 	return self.video:seek(time)
 end
 
@@ -79,6 +99,8 @@ end
 
 function Video:play()
 	if not self.video then return end
+	self._playSeq = (self._playSeq or 0) + 1
+	Video._active[self] = true
 	self.video:play()
 	self.paused = false
 	self._started = true
@@ -100,6 +122,7 @@ end
 function Video:destroy()
 	-- A playing audio Source remains in LÖVE's pool even after its drawable is
 	-- discarded. Stop it while we still have the reference.
+	Video._active[self] = nil
 	if self.video then self.video:pause() end
 	if self.__source then self.__source:stop() end
 	self.__source = nil

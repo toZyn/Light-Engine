@@ -582,6 +582,114 @@ check("B4: DialogueBox hitboxes, Camera world/screen projection, Mouse/Touch ove
 	paths.async.stop()
 end)
 
+check("Recorder Phase 1: native 48kHz ALAC, frame-drop prior-frame hold, muted stem cursor lock, <0 dBFS limiter, and Video._active tracking", function()
+	local Mp4Muxer = require "funkin.backend.mp4_muxer"
 
+	-- 1) Verify Video._active weak registry & lifecycle cleanup
+	assert(type(Video._active) == "table", "Video._active registry must exist")
+	if love.graphics.newVideo then
+		local okV, vid = pcall(Video, 0, 0, "stressCutscene", false)
+		if okV and vid then
+			assert(Video._active[vid] == true, "Created Video must register in Video._active")
+			assert(type(vid._sourcePath) == "string" and vid._sourcePath:find("stressCutscene%.ogv") ~= nil,
+				"Video._sourcePath must resolve .ogv path for recorder audio capture")
+			vid:play()
+			assert((vid._playSeq or 0) >= 1, "Video:play() must increment _playSeq")
+			vid:destroy()
+			assert(Video._active[vid] == nil, "Destroyed Video must be removed from Video._active")
+		end
+	end
 
+	-- 2) Verify recorder_thread: 48kHz ALAC header, prior-frame duplication across a 5-frame hitch,
+	--    muted stem cursor advancement, and stereo soft-limiter (< 0 dBFS, zero clipped samples)
+	local sdA = love.sound.newSoundData(4800, 48000, 16, 2)
+	local sdB = love.sound.newSoundData(4800, 48000, 16, 2)
+	for i = 0, 4799 do
+		local s = math.sin(i * 0.25) * 0.98
+		sdA:setSample(i, 1, s)
+		sdA:setSample(i, 2, s)
+		sdB:setSample(i, 1, s)
+		sdB:setSample(i, 2, s)
+	end
 
+	local tmpMp4 = love.filesystem.getSaveDirectory() .. "/phase1_sync_test.mp4"
+	local th = love.thread.newThread("funkin/backend/recorder_thread.lua")
+	local cmdName, muxName, stName = "p1_cmd", "p1_mux", "p1_st"
+	local cmdCh = love.thread.getChannel(cmdName)
+	local muxCh = love.thread.getChannel(muxName)
+	local stCh = love.thread.getChannel(stName)
+	cmdCh:clear(); muxCh:clear(); stCh:clear()
+	th:start(cmdName, muxName, stName)
+
+	cmdCh:push({
+		type = "start", session = 77, path = tmpMp4,
+		width = 64, height = 64, fps = 60, fourcc = "MJPG",
+		recordAudio = true, audioRate = 48000
+	})
+	local stStart = stCh:demand(3.0)
+	assert(stStart and stStart.status == "started", "Expected recorder_thread started")
+
+	local frameA = "FRAME_A_JPEG_BYTES_PAYLOAD"
+	local frameB = "FRAME_B_JPEG_BYTES_PAYLOAD_AFTER_DROP"
+	-- Frame 0 at t=0.000s (both stems full-scale -> raw sum ~1.96 > 0 dBFS!)
+	muxCh:push({
+		type = "encoded", session = 77, seq = 1, targetFrame = 0, ptsUs = 0,
+		payload = frameA,
+		audio = {
+			{uid = "stemA", playSeq = 1, seekSeq = 0, soundData = sdA, time = 0, volume = 1.0, pitch = 1.0, looped = true},
+			{uid = "stemB", playSeq = 1, seekSeq = 0, soundData = sdB, time = 0, volume = 1.0, pitch = 1.0, looped = true}
+		}
+	})
+	-- Simulate 5 dropped frames (0..5 = 6 frame intervals of frameA held!), frameB arrives at targetFrame = 6
+	muxCh:push({
+		type = "encoded", session = 77, seq = 2, targetFrame = 6, ptsUs = 100000,
+		payload = frameB,
+		audio = {
+			{uid = "stemA", playSeq = 1, seekSeq = 0, soundData = sdA, time = 0.1, volume = 1.0, pitch = 1.0, looped = true},
+			{uid = "stemB", playSeq = 1, seekSeq = 0, soundData = sdB, time = 0.1, volume = 0.0, pitch = 1.0, looped = true}
+		}
+	})
+	cmdCh:push({type = "quit", session = 77, lastSeq = 2, stopFrames = 8})
+	local stSaved = stCh:demand(5.0)
+	th:wait()
+	assert(stSaved and stSaved.status == "saved", "Expected saved MP4 from recorder_thread")
+	assert(stSaved.frames == 8, "Expected 8 total video frames (6 held frameA + 2 held frameB), got " .. tostring(stSaved.frames))
+	assert(stSaved.audioSamples == 6400, "Expected 8 * 800 = 6400 stereo samples at 48kHz/60fps, got " .. tostring(stSaved.audioSamples))
+
+	local f = assert(io.open(tmpMp4, "rb"), "Expected phase1_sync_test.mp4 on disk")
+	local raw = f:read("*a")
+	f:close()
+	os.remove(tmpMp4)
+
+	-- Verify 48000 Hz big-endian (0x0000BB80) present in ALAC sample entry / mdhd
+	assert(raw:find("\0\0\187\128", 1, true) ~= nil, "Expected 48000 Hz (0x0000BB80) in MP4 ALAC metadata")
+	-- Verify frameA was duplicated 6 times before frameB (never shifting frameB early to PTS=16.7ms!)
+	local countA = 0
+	local pos = 1
+	while true do
+		local found = raw:find(frameA, pos, true)
+		if not found then break end
+		countA = countA + 1
+		pos = found + #frameA
+	end
+	local firstB = raw:find(frameB, 1, true)
+	local lastA = raw:find(frameA, 1, true)
+	assert(countA == 6 and firstB ~= nil and lastA < firstB,
+		"Expected 6 copies of frameA written prior to frameB across 5-frame drop, got countA=" .. tostring(countA))
+
+	-- Verify uncompressed ALAC payload samples stay strictly below 0 dBFS (no +/-32767 clipping)
+	-- Uncompressed ALAC 4096-frame CPE packet starts with 0x20,0x00,0x12,0x00,0x00,0x20 (55-bit header)
+	local hdrPos = raw:find("\32\0\18\0\0\32", 1, true)
+	assert(hdrPos ~= nil, "Expected uncompressed stereo ALAC 4096-frame packet header")
+	local maxSampleAbs = 0
+	for sIdx = 0, 1599 do
+		local p = hdrPos + 6 + sIdx * 2
+		local b0, b1, b2 = raw:byte(p, p + 2)
+		local u = ((b0 % 2) * 32768) + (b1 * 128) + math.floor(b2 / 2)
+		local signed = (u >= 32768) and (u - 65536) or u
+		local a = math.abs(signed)
+		if a > maxSampleAbs then maxSampleAbs = a end
+	end
+	assert(maxSampleAbs > 20000 and maxSampleAbs <= 29500,
+		"Expected soft-limited full-scale duet peak around -1.0 dBFS (<=29500, >20000), got " .. tostring(maxSampleAbs))
+end)

@@ -38,8 +38,8 @@
 
 #define LR_PBO_COUNT 3
 #define LR_VIDEO_RING 10
-#define LR_AUDIO_CAP_FRAMES (44100 * 6)
-#define LR_EARLY_PKT_MAX 192
+#define LR_AUDIO_CAP_FRAMES (48000 * 6)
+#define LR_EARLY_PKT_MAX 256
 
 #define LR_GL_PIXEL_PACK_BUFFER 0x88EB
 #define LR_GL_STREAM_READ       0x88E1
@@ -80,6 +80,7 @@ typedef struct {
     int fps;
     int bitrate;
     int record_audio;
+    int audio_rate;
     int color_format;
 
     /* GLES3 async PBO state (owned exclusively by GL thread) */
@@ -96,6 +97,7 @@ typedef struct {
     /* Video ring buffer (GL thread -> Encoder thread) */
     pthread_mutex_t mtx;
     pthread_cond_t cv;
+    pthread_cond_t space_cv;
     lr_video_slot_t v_ring[LR_VIDEO_RING];
     int v_head;
     int v_tail;
@@ -118,6 +120,10 @@ typedef struct {
     ssize_t v_track;
     ssize_t a_track;
     int muxer_started;
+    int has_pts_origin;
+    int64_t pts_origin_us;
+    int has_prev_yuv;
+    int64_t prev_yuv_pts_us;
     int64_t last_v_pts_us;
     int64_t last_a_pts_us;
 
@@ -316,13 +322,33 @@ static int lr_drain_codec(lr_ctx_t *ctx, AMediaCodec *codec, int is_audio, int w
     return saw_eos;
 }
 
+static void lr_queue_yuv_frame(lr_ctx_t *ctx, int64_t pts_us) {
+    if (!ctx->v_codec || !ctx->yuv_buf) return;
+    ssize_t in_idx = AMediaCodec_dequeueInputBuffer(ctx->v_codec, 15000);
+    if (in_idx >= 0) {
+        size_t cap = 0;
+        uint8_t *dst = AMediaCodec_getInputBuffer(ctx->v_codec, (size_t)in_idx, &cap);
+        size_t copy_bytes = ctx->yuv_bytes <= cap ? ctx->yuv_bytes : cap;
+        if (dst && copy_bytes > 0) {
+            memcpy(dst, ctx->yuv_buf, copy_bytes);
+            AMediaCodec_queueInputBuffer(ctx->v_codec, (size_t)in_idx, 0, copy_bytes,
+                                         (uint64_t)(pts_us < 0 ? 0 : pts_us), 0);
+        }
+    }
+    lr_drain_codec(ctx, ctx->v_codec, 0, 0);
+}
+
 static void *lr_worker_main(void *arg) {
     lr_ctx_t *ctx = (lr_ctx_t *)arg;
     int16_t a_chunk[1024 * 2];
+    int64_t a_rate = ctx->audio_rate > 0 ? ctx->audio_rate : 44100;
+    int64_t frame_dur_us = 1000000LL / (ctx->fps > 0 ? ctx->fps : 60);
+    if (frame_dur_us < 1000) frame_dur_us = 16667;
 
     while (1) {
         int have_video = 0;
-        int64_t v_pts = 0;
+        int64_t v_raw_pts = 0;
+        const uint8_t *v_rgba_src = NULL;
         int a_frames_popped = 0;
         int64_t a_pts_sample_start = 0;
         int should_stop = 0;
@@ -336,11 +362,8 @@ static void *lr_worker_main(void *arg) {
 
         if (ctx->v_count > 0) {
             lr_video_slot_t *slot = &ctx->v_ring[ctx->v_tail];
-            v_pts = slot->pts_us;
-            lr_rgba_to_yuv420(slot->rgba, ctx->yuv_buf, ctx->width, ctx->height,
-                              ctx->color_format == LR_COLOR_FMT_NV12);
-            ctx->v_tail = (ctx->v_tail + 1) % LR_VIDEO_RING;
-            ctx->v_count--;
+            v_raw_pts = slot->pts_us;
+            v_rgba_src = slot->rgba;
             have_video = 1;
         }
 
@@ -357,25 +380,49 @@ static void *lr_worker_main(void *arg) {
             ctx->a_count -= take;
             ctx->a_pts_samples += take;
             a_frames_popped = take;
+            pthread_cond_broadcast(&ctx->space_cv);
         }
 
-        should_stop = (ctx->stopping && ctx->v_count == 0 &&
+        should_stop = (ctx->stopping && (ctx->v_count - have_video) <= 0 &&
                        (!ctx->record_audio || ctx->a_count == 0));
         pthread_mutex_unlock(&ctx->mtx);
 
-        if (have_video && ctx->v_codec) {
-            ssize_t in_idx = AMediaCodec_dequeueInputBuffer(ctx->v_codec, 15000);
-            if (in_idx >= 0) {
-                size_t cap = 0;
-                uint8_t *dst = AMediaCodec_getInputBuffer(ctx->v_codec, (size_t)in_idx, &cap);
-                size_t copy_bytes = ctx->yuv_bytes <= cap ? ctx->yuv_bytes : cap;
-                if (dst && copy_bytes > 0) {
-                    memcpy(dst, ctx->yuv_buf, copy_bytes);
-                    AMediaCodec_queueInputBuffer(ctx->v_codec, (size_t)in_idx, 0, copy_bytes,
-                                                 (uint64_t)(v_pts < 0 ? 0 : v_pts), 0);
+        if (have_video && ctx->v_codec && v_rgba_src) {
+            if (!ctx->has_pts_origin) {
+                ctx->pts_origin_us = v_raw_pts;
+                ctx->has_pts_origin = 1;
+            }
+            int64_t v_pts = v_raw_pts - ctx->pts_origin_us;
+            if (v_pts < 0) v_pts = 0;
+
+            /* Duplicate the previous YUV frame across dropped-frame PTS gaps before overwriting yuv_buf */
+            if (ctx->has_prev_yuv && (v_pts - ctx->prev_yuv_pts_us) >= (frame_dur_us * 2)) {
+                int dup_emitted = 0;
+                int64_t dup_pts = ctx->prev_yuv_pts_us + frame_dur_us;
+                while ((dup_pts + (frame_dur_us / 2)) < v_pts && dup_emitted < 60) {
+                    lr_queue_yuv_frame(ctx, dup_pts);
+                    ctx->prev_yuv_pts_us = dup_pts;
+                    dup_pts += frame_dur_us;
+                    dup_emitted++;
                 }
             }
-            lr_drain_codec(ctx, ctx->v_codec, 0, 0);
+
+            lr_rgba_to_yuv420(v_rgba_src, ctx->yuv_buf, ctx->width, ctx->height,
+                              ctx->color_format == LR_COLOR_FMT_NV12);
+
+            pthread_mutex_lock(&ctx->mtx);
+            ctx->v_tail = (ctx->v_tail + 1) % LR_VIDEO_RING;
+            ctx->v_count--;
+            should_stop = (ctx->stopping && ctx->v_count == 0 &&
+                           (!ctx->record_audio || ctx->a_count == 0));
+            pthread_mutex_unlock(&ctx->mtx);
+
+            if (ctx->has_prev_yuv && v_pts <= ctx->prev_yuv_pts_us) {
+                v_pts = ctx->prev_yuv_pts_us + 1000;
+            }
+            lr_queue_yuv_frame(ctx, v_pts);
+            ctx->has_prev_yuv = 1;
+            ctx->prev_yuv_pts_us = v_pts;
         }
 
         if (a_frames_popped > 0 && ctx->a_codec) {
@@ -387,7 +434,7 @@ static void *lr_worker_main(void *arg) {
                 if (pcm_bytes > cap) pcm_bytes = cap;
                 if (dst && pcm_bytes > 0) {
                     memcpy(dst, a_chunk, pcm_bytes);
-                    uint64_t a_pts_us = (uint64_t)((a_pts_sample_start * 1000000LL) / 44100LL);
+                    uint64_t a_pts_us = (uint64_t)((a_pts_sample_start * 1000000LL) / a_rate);
                     AMediaCodec_queueInputBuffer(ctx->a_codec, (size_t)in_idx, 0, pcm_bytes, a_pts_us, 0);
                 }
             }
@@ -406,15 +453,32 @@ static void *lr_worker_main(void *arg) {
                     if (dst && sz > 0) {
                         memcpy(dst, a_chunk, sz);
                         AMediaCodec_queueInputBuffer(ctx->a_codec, (size_t)in_idx, 0, sz, 0, 0);
+                        ctx->a_pts_samples = (int64_t)(sz / 4);
                     }
                 }
             }
 
             if (ctx->v_codec) {
+                int64_t target_end_us = (ctx->record_audio && ctx->a_pts_samples > 0)
+                    ? ((ctx->a_pts_samples * 1000000LL) / a_rate)
+                    : (ctx->prev_yuv_pts_us + frame_dur_us);
+                if (ctx->has_prev_yuv && (target_end_us - ctx->prev_yuv_pts_us) >= (frame_dur_us * 2)) {
+                    int dup_emitted = 0;
+                    int64_t dup_pts = ctx->prev_yuv_pts_us + frame_dur_us;
+                    while ((dup_pts + (frame_dur_us / 2)) < target_end_us && dup_emitted < 60) {
+                        lr_queue_yuv_frame(ctx, dup_pts);
+                        ctx->prev_yuv_pts_us = dup_pts;
+                        dup_pts += frame_dur_us;
+                        dup_emitted++;
+                    }
+                }
+
                 ssize_t in_idx = AMediaCodec_dequeueInputBuffer(ctx->v_codec, 30000);
                 if (in_idx >= 0) {
-                    uint64_t eos_pts = (uint64_t)(ctx->last_v_pts_us > 0 ? ctx->last_v_pts_us + 16666 : 0);
-                    AMediaCodec_queueInputBuffer(ctx->v_codec, (size_t)in_idx, 0, 0, eos_pts, LR_FLAG_END_OF_STREAM);
+                    int64_t eos_v = target_end_us > (ctx->last_v_pts_us + 1000)
+                        ? target_end_us
+                        : (ctx->last_v_pts_us > 0 ? ctx->last_v_pts_us + frame_dur_us : 0);
+                    AMediaCodec_queueInputBuffer(ctx->v_codec, (size_t)in_idx, 0, 0, (uint64_t)eos_v, LR_FLAG_END_OF_STREAM);
                 }
                 lr_drain_codec(ctx, ctx->v_codec, 0, 1);
             }
@@ -422,7 +486,7 @@ static void *lr_worker_main(void *arg) {
             if (ctx->record_audio && ctx->a_codec) {
                 ssize_t in_idx = AMediaCodec_dequeueInputBuffer(ctx->a_codec, 30000);
                 if (in_idx >= 0) {
-                    uint64_t eos_pts = (uint64_t)((ctx->a_pts_samples * 1000000LL) / 44100LL);
+                    uint64_t eos_pts = (uint64_t)((ctx->a_pts_samples * 1000000LL) / a_rate);
                     AMediaCodec_queueInputBuffer(ctx->a_codec, (size_t)in_idx, 0, 0, eos_pts, LR_FLAG_END_OF_STREAM);
                 }
                 lr_drain_codec(ctx, ctx->a_codec, 1, 1);
@@ -459,7 +523,7 @@ LR_EXPORT int lightrecorder_is_available(void) {
 #endif
 }
 
-LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int fps, int bitrate, int record_audio) {
+LR_EXPORT int lightrecorder_start_ex(const char *path, int width, int height, int fps, int bitrate, int record_audio, int audio_rate) {
 #ifdef __ANDROID__
     if (!path || !path[0] || width < 64 || height < 64) return -1;
     if (g_lr.active) return -2;
@@ -471,6 +535,7 @@ LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int f
     g_lr.fps = fps > 0 ? fps : 60;
     g_lr.bitrate = bitrate > 500000 ? bitrate : 6000000;
     g_lr.record_audio = record_audio ? 1 : 0;
+    g_lr.audio_rate = (audio_rate == 48000) ? 48000 : 44100;
     g_lr.v_track = -1;
     g_lr.a_track = -1;
     g_lr.last_v_pts_us = -1;
@@ -549,7 +614,7 @@ LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int f
         if (g_lr.a_codec) {
             AMediaFormat *afmt = AMediaFormat_new();
             AMediaFormat_setString(afmt, "mime", "audio/mp4a-latm");
-            AMediaFormat_setInt32(afmt, "sample-rate", 44100);
+            AMediaFormat_setInt32(afmt, "sample-rate", g_lr.audio_rate);
             AMediaFormat_setInt32(afmt, "channel-count", 2);
             AMediaFormat_setInt32(afmt, "bitrate", 192000);
             AMediaFormat_setInt32(afmt, "aac-profile", 2); /* AACObjectLC */
@@ -613,6 +678,7 @@ LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int f
 
     pthread_mutex_init(&g_lr.mtx, NULL);
     pthread_cond_init(&g_lr.cv, NULL);
+    pthread_cond_init(&g_lr.space_cv, NULL);
     g_lr.active = 1;
     if (pthread_create(&g_lr.worker, NULL, lr_worker_main, &g_lr) == 0) {
         g_lr.worker_running = 1;
@@ -621,13 +687,17 @@ LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int f
         return -7;
     }
 
-    LR_LOGI("Started H.264 MP4 recording %dx%d@%dfps pbo=%d audio=%d -> %s",
-            g_lr.width, g_lr.height, g_lr.fps, g_lr.use_pbo, g_lr.record_audio, g_lr.path);
+    LR_LOGI("Started H.264 MP4 recording %dx%d@%dfps pbo=%d audio=%d@%dHz -> %s",
+            g_lr.width, g_lr.height, g_lr.fps, g_lr.use_pbo, g_lr.record_audio, g_lr.audio_rate, g_lr.path);
     return 0;
 #else
-    (void)path; (void)width; (void)height; (void)fps; (void)bitrate; (void)record_audio;
+    (void)path; (void)width; (void)height; (void)fps; (void)bitrate; (void)record_audio; (void)audio_rate;
     return -1;
 #endif
+}
+
+LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int fps, int bitrate, int record_audio) {
+    return lightrecorder_start_ex(path, width, height, fps, bitrate, record_audio, 44100);
 }
 
 LR_EXPORT int lightrecorder_capture_gl_frame(int64_t pts_us) {
@@ -701,21 +771,31 @@ LR_EXPORT int lightrecorder_push_audio_pcm(const int16_t *pcm, int num_stereo_fr
     if (!g_lr.active || g_lr.stopping || !g_lr.record_audio || !pcm || num_stereo_frames <= 0) {
         return 0;
     }
+    int total_written = 0;
     pthread_mutex_lock(&g_lr.mtx);
-    int space = LR_AUDIO_CAP_FRAMES - g_lr.a_count;
-    int to_write = num_stereo_frames <= space ? num_stereo_frames : space;
-    for (int i = 0; i < to_write; i++) {
-        int idx = (g_lr.a_head + i) % LR_AUDIO_CAP_FRAMES;
-        g_lr.a_fifo[idx * 2] = pcm[i * 2];
-        g_lr.a_fifo[idx * 2 + 1] = pcm[i * 2 + 1];
-    }
-    g_lr.a_head = (g_lr.a_head + to_write) % LR_AUDIO_CAP_FRAMES;
-    g_lr.a_count += to_write;
-    if (g_lr.a_count >= 1024) {
-        pthread_cond_signal(&g_lr.cv);
+    while (total_written < num_stereo_frames && g_lr.active && !g_lr.stopping && g_lr.record_audio) {
+        int space = LR_AUDIO_CAP_FRAMES - g_lr.a_count;
+        if (space <= 0) {
+            pthread_cond_wait(&g_lr.space_cv, &g_lr.mtx);
+            continue;
+        }
+        int rem = num_stereo_frames - total_written;
+        int to_write = rem <= space ? rem : space;
+        const int16_t *src = pcm + (size_t)total_written * 2;
+        for (int i = 0; i < to_write; i++) {
+            int idx = (g_lr.a_head + i) % LR_AUDIO_CAP_FRAMES;
+            g_lr.a_fifo[idx * 2] = src[i * 2];
+            g_lr.a_fifo[idx * 2 + 1] = src[i * 2 + 1];
+        }
+        g_lr.a_head = (g_lr.a_head + to_write) % LR_AUDIO_CAP_FRAMES;
+        g_lr.a_count += to_write;
+        total_written += to_write;
+        if (g_lr.a_count >= 1024) {
+            pthread_cond_signal(&g_lr.cv);
+        }
     }
     pthread_mutex_unlock(&g_lr.mtx);
-    return to_write;
+    return total_written;
 #else
     (void)pcm; (void)num_stereo_frames;
     return 0;
@@ -729,6 +809,7 @@ LR_EXPORT int lightrecorder_stop(void) {
     pthread_mutex_lock(&g_lr.mtx);
     g_lr.stopping = 1;
     pthread_cond_broadcast(&g_lr.cv);
+    pthread_cond_broadcast(&g_lr.space_cv);
     pthread_mutex_unlock(&g_lr.mtx);
 
     if (g_lr.worker_running) {
@@ -783,6 +864,7 @@ LR_EXPORT int lightrecorder_stop(void) {
     free(g_lr.a_fifo);
     free(g_lr.gl_scratch);
 
+    pthread_cond_destroy(&g_lr.space_cv);
     pthread_cond_destroy(&g_lr.cv);
     pthread_mutex_destroy(&g_lr.mtx);
 

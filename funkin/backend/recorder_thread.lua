@@ -1,9 +1,11 @@
 -- Dedicated ISO-BMFF (.mp4) Audio+Video Muxer & Native Audio Feeder Thread
 -- In software mode: receives parallel-encoded JPEG/PNG frames in sequence order,
--- mixes active game audio (Inst, Voices, Music, SFX) into 44.1 kHz 16-bit Stereo,
--- and writes a spec-compliant .mp4 container (mp4v + lossless stereo ALAC) off-thread.
--- In Android hardware mode: mixes frame-locked 44.1 kHz Stereo PCM off-thread and
--- feeds `liblightrecorder.so` (`AMediaCodec` AAC + `AMediaMuxer` .mp4).
+-- mixes active game audio (Inst, Voices, Video cutscenes, Music, SFX) at native
+-- 44.1 / 48 kHz 16-bit Stereo with headroom + smooth peak limiting (< 0 dBFS),
+-- duplicates prior frames across frame drops so PTS stays locked, and writes a
+-- spec-compliant .mp4 container (mp4v + lossless stereo ALAC) off-thread.
+-- In Android hardware mode: mixes frame-locked Stereo PCM off-thread and feeds
+-- `liblightrecorder.so` (`AMediaCodec` H.264 + AAC-LC + `AMediaMuxer` .mp4).
 
 require "love.filesystem"
 require "love.data"
@@ -32,17 +34,39 @@ if USE_FFI then
 	end
 end
 
-local AUDIO_RATE = 44100
-local AUDIO_CHANNELS = 2
-local AUDIO_BLOCK_ALIGN = AUDIO_CHANNELS * 2
-
+local DEFAULT_AUDIO_RATE = 44100
 local MAX_MIX_SAMPLES = 8192
-local mixL = USE_FFI and ffi.new("int32_t[?]", MAX_MIX_SAMPLES) or {}
-local mixR = USE_FFI and ffi.new("int32_t[?]", MAX_MIX_SAMPLES) or {}
+
+-- Multi-stem headroom (-2.85 dB) + stereo-linked smooth peak limiter ceiling (-1.00 dBFS)
+local HEADROOM_GAIN = 0.72
+local LIMIT_THRESH = 0.80
+local LIMIT_CEIL = 0.89125 -- -1.00 dBFS (max PCM ~29204 << 32767, zero hard clipping)
+local LIMIT_KNEE = LIMIT_CEIL - LIMIT_THRESH
+
+local mixL = USE_FFI and ffi.new("double[?]", MAX_MIX_SAMPLES) or {}
+local mixR = USE_FFI and ffi.new("double[?]", MAX_MIX_SAMPLES) or {}
 local pcmOut = USE_FFI and ffi.new("int16_t[?]", MAX_MIX_SAMPLES * 2) or nil
 
 local streamTracks = {}
 local sfxTracks = {}
+
+local function softKneeGain(peak)
+	if peak <= LIMIT_THRESH then
+		return 1.0
+	end
+	local x = (peak - LIMIT_THRESH) / LIMIT_KNEE
+	-- Rational/tanh soft-knee saturation asymptotically bounded by LIMIT_CEIL
+	local e2x = math.exp(-2.0 * math.min(20.0, x))
+	local th = (1.0 - e2x) / (1.0 + e2x)
+	return (LIMIT_THRESH + LIMIT_KNEE * th) / peak
+end
+
+local function hermite4(ym1, y0, y1, y2, frac)
+	local c1 = 0.5 * (y1 - ym1)
+	local c2 = ym1 - 2.5 * y0 + 2.0 * y1 - 0.5 * y2
+	local c3 = 0.5 * (y2 - ym1) + 1.5 * (y0 - y1)
+	return ((c3 * frac + c2) * frac + c1) * frac + y0
+end
 
 local function releaseChunk(sd)
 	if sd and sd.release then
@@ -77,6 +101,33 @@ local function decodeRawChunk(tr)
 	return nil, 0
 end
 
+local function readChunkFrameNorm(sd, channels, bits, relIdx)
+	if relIdx < 0 then relIdx = 0 end
+	if USE_FFI and sd.getFFIPointer then
+		if bits == 16 then
+			local ptr = ffi.cast("const int16_t*", sd:getFFIPointer())
+			if channels >= 2 then
+				local base = relIdx * channels
+				return ptr[base] * (1.0 / 32768.0), ptr[base + 1] * (1.0 / 32768.0)
+			else
+				local v = ptr[relIdx] * (1.0 / 32768.0)
+				return v, v
+			end
+		elseif bits == 8 then
+			local ptr = ffi.cast("const uint8_t*", sd:getFFIPointer())
+			local base = relIdx * channels
+			local l = (ptr[base] - 128) * (1.0 / 128.0)
+			local r = channels >= 2 and ((ptr[base + 1] - 128) * (1.0 / 128.0)) or l
+			return l, r
+		end
+	elseif sd.getSample then
+		local l = sd:getSample(relIdx, 1) or 0
+		local r = channels >= 2 and (sd:getSample(relIdx, 2) or 0) or l
+		return l, r
+	end
+	return 0, 0
+end
+
 local function ensurePeekChunk(tr)
 	if not tr.peekChunk then
 		tr.peekChunk, tr.peekLen = decodeRawChunk(tr)
@@ -85,6 +136,14 @@ local function ensurePeekChunk(tr)
 end
 
 local function advanceStreamChunk(tr)
+	if tr.chunk and tr.chunkLen and tr.chunkLen > 0 then
+		if tr.chunkLen >= 2 then
+			tr.tailM2L, tr.tailM2R = readChunkFrameNorm(tr.chunk, tr.channels, tr.bits, tr.chunkLen - 2)
+		else
+			tr.tailM2L, tr.tailM2R = tr.tailM1L or 0, tr.tailM1R or 0
+		end
+		tr.tailM1L, tr.tailM1R = readChunkFrameNorm(tr.chunk, tr.channels, tr.bits, tr.chunkLen - 1)
+	end
 	releaseChunk(tr.chunk)
 	tr.chunk = nil
 	local sd, cnt
@@ -105,15 +164,23 @@ local function advanceStreamChunk(tr)
 	return false
 end
 
-local function seekStreamTrack(tr, timeSec)
+local function seekStreamTrack(tr, timeSec, withCrossfade)
 	if not tr.decoder then return false end
+	if withCrossfade then
+		tr.fadeFromL = tr.lastOutL or 0
+		tr.fadeFromR = tr.lastOutR or 0
+		tr.fadeTotal = 64
+		tr.fadePos = 0
+	end
 	timeSec = math.max(0, tonumber(timeSec) or 0)
 	releaseChunk(tr.chunk)
 	releaseChunk(tr.peekChunk)
 	tr.chunk = nil
 	tr.peekChunk, tr.peekLen = nil, 0
+	tr.tailM1L, tr.tailM1R = 0, 0
+	tr.tailM2L, tr.tailM2R = 0, 0
 	pcall(tr.decoder.seek, tr.decoder, timeSec)
-	local samplePos = timeSec * tr.rate
+	local samplePos = (timeSec <= 0.000001) and 0 or (timeSec * tr.rate)
 	local alignedStart = math.floor(samplePos)
 	tr.cursor = samplePos
 	tr.chunkStart = alignedStart
@@ -167,266 +234,209 @@ local function getOrCreateStreamTrack(item)
 		chunkStart = 0,
 		chunkLen = 0,
 		nextChunkStart = 0,
+		tailM1L = 0, tailM1R = 0,
+		tailM2L = 0, tailM2R = 0,
+		lastOutL = 0, lastOutR = 0,
+		fadeFromL = 0, fadeFromR = 0,
+		fadeTotal = 0, fadePos = 0,
 		lastUsedFrame = 0
 	}
-	if (tonumber(item.time) or 0) > 0.02 then
-		seekStreamTrack(tr, item.time)
+	local initTime = item.songMasterSec ~= nil and tonumber(item.songMasterSec) or tonumber(item.time) or 0
+	initTime = math.max(0, initTime)
+	if initTime > 0.002 then
+		seekStreamTrack(tr, initTime, false)
 	else
 		advanceStreamChunk(tr)
-		tr.cursor = math.max(0, (tonumber(item.time) or 0) * rate)
+		tr.cursor = math.max(0, initTime * rate)
 	end
 	streamTracks[uid] = tr
 	return tr
 end
 
-local function mixSoundDataBuffer(sd, sampleCount, channels, bits, startCursor, step, looped, volQ8, nSamples)
+local function sampleStreamAtRel(tr, rel)
+	local len = tr.chunkLen
+	if rel >= 0 and rel < len then
+		return readChunkFrameNorm(tr.chunk, tr.channels, tr.bits, rel)
+	elseif rel == -1 then
+		return tr.tailM1L, tr.tailM1R
+	elseif rel <= -2 then
+		return tr.tailM2L, tr.tailM2R
+	else
+		local over = rel - len
+		local pk, pkLen = ensurePeekChunk(tr)
+		if pk and pkLen > over then
+			return readChunkFrameNorm(pk, tr.channels, tr.bits, over)
+		elseif len > 0 then
+			return readChunkFrameNorm(tr.chunk, tr.channels, tr.bits, len - 1)
+		end
+	end
+	return 0, 0
+end
+
+local function mixSoundDataBuffer(sd, sampleCount, channels, bits, startCursor, step, looped, gain, nSamples)
 	local cursor = startCursor
-	if USE_FFI and sd.getFFIPointer then
-		if bits == 16 then
-			local ptr = ffi.cast("const int16_t*", sd:getFFIPointer())
-			if channels >= 2 then
-				for i = 0, nSamples - 1 do
-					local idx = math.floor(cursor)
-					if idx >= sampleCount then
-						if looped and sampleCount > 0 then
-							cursor = cursor % sampleCount
-							idx = math.floor(cursor)
-						else
-							break
-						end
-					end
-					if idx >= 0 then
-						local frac = cursor - idx
-						local idx1 = idx + 1
-						if idx1 >= sampleCount then
-							idx1 = looped and 0 or idx
-						end
-						local b0 = idx * channels
-						local b1 = idx1 * channels
-						local l = ptr[b0] + (ptr[b1] - ptr[b0]) * frac
-						local r = ptr[b0 + 1] + (ptr[b1 + 1] - ptr[b0 + 1]) * frac
-						mixL[i] = mixL[i] + math.floor(l * volQ8 + 0.5)
-						mixR[i] = mixR[i] + math.floor(r * volQ8 + 0.5)
-					end
-					cursor = cursor + step
-				end
+	if gain <= 0.0001 then
+		cursor = cursor + nSamples * step
+		if looped and sampleCount > 0 then
+			cursor = cursor % sampleCount
+		end
+		return cursor
+	end
+
+	local needCubic = math.abs(step - 1.0) > 1e-6
+	local baseIdx = USE_FFI and 0 or 1
+
+	for i = 0, nSamples - 1 do
+		local idx = math.floor(cursor)
+		if idx >= sampleCount then
+			if looped and sampleCount > 0 then
+				cursor = cursor % sampleCount
+				idx = math.floor(cursor)
 			else
-				for i = 0, nSamples - 1 do
-					local idx = math.floor(cursor)
-					if idx >= sampleCount then
-						if looped and sampleCount > 0 then
-							cursor = cursor % sampleCount
-							idx = math.floor(cursor)
-						else
-							break
-						end
-					end
-					if idx >= 0 then
-						local frac = cursor - idx
-						local idx1 = idx + 1
-						if idx1 >= sampleCount then
-							idx1 = looped and 0 or idx
-						end
-						local s = math.floor((ptr[idx] + (ptr[idx1] - ptr[idx]) * frac) * volQ8 + 0.5)
-						mixL[i] = mixL[i] + s
-						mixR[i] = mixR[i] + s
-					end
-					cursor = cursor + step
-				end
-			end
-		elseif bits == 8 then
-			local ptr = ffi.cast("const uint8_t*", sd:getFFIPointer())
-			for i = 0, nSamples - 1 do
-				local idx = math.floor(cursor)
-				if idx >= sampleCount then
-					if looped and sampleCount > 0 then
-						cursor = cursor % sampleCount
-						idx = math.floor(cursor)
-					else
-						break
-					end
-				end
-				if idx >= 0 then
-					local base = idx * channels
-					local l = (ptr[base] - 128) * 256 * volQ8
-					local r = channels >= 2 and ((ptr[base + 1] - 128) * 256 * volQ8) or l
-					mixL[i] = mixL[i] + l
-					mixR[i] = mixR[i] + r
-				end
-				cursor = cursor + step
+				break
 			end
 		end
-	elseif sd.getSample then
-		for i = 1, nSamples do
-			local idx = math.floor(cursor)
-			if idx >= sampleCount then
-				if looped and sampleCount > 0 then
-					cursor = cursor % sampleCount
-					idx = math.floor(cursor)
-				else
-					break
-				end
+		if idx >= 0 then
+			local frac = cursor - idx
+			local l, r
+			if not needCubic and frac < 1e-6 then
+				l, r = readChunkFrameNorm(sd, channels, bits, idx)
+			else
+				local i0 = idx - 1
+				if i0 < 0 then i0 = looped and (sampleCount - 1) or 0 end
+				local i1 = idx
+				local i2 = idx + 1
+				if i2 >= sampleCount then i2 = looped and (i2 % sampleCount) or (sampleCount - 1) end
+				local i3 = idx + 2
+				if i3 >= sampleCount then i3 = looped and (i3 % sampleCount) or (sampleCount - 1) end
+				local lm1, rm1 = readChunkFrameNorm(sd, channels, bits, i0)
+				local l0, r0 = readChunkFrameNorm(sd, channels, bits, i1)
+				local l1, r1 = readChunkFrameNorm(sd, channels, bits, i2)
+				local l2, r2 = readChunkFrameNorm(sd, channels, bits, i3)
+				l = hermite4(lm1, l0, l1, l2, frac)
+				r = (channels >= 2) and hermite4(rm1, r0, r1, r2, frac) or l
 			end
-			if idx >= 0 then
-				local frac = cursor - idx
-				local idx1 = idx + 1
-				if idx1 >= sampleCount then
-					idx1 = looped and 0 or idx
-				end
-				local l0 = sd:getSample(idx, 1) or 0
-				local l1 = sd:getSample(idx1, 1) or l0
-				local l = (l0 + (l1 - l0) * frac) * 32767 * volQ8
-				local r = l
-				if channels >= 2 then
-					local r0 = sd:getSample(idx, 2) or 0
-					local r1 = sd:getSample(idx1, 2) or r0
-					r = (r0 + (r1 - r0) * frac) * 32767 * volQ8
-				end
-				mixL[i] = (mixL[i] or 0) + l
-				mixR[i] = (mixR[i] or 0) + r
-			end
-			cursor = cursor + step
+			local dst = baseIdx + i
+			mixL[dst] = (mixL[dst] or 0) + l * gain
+			mixR[dst] = (mixR[dst] or 0) + r * gain
 		end
+		cursor = cursor + step
 	end
 	return cursor
 end
 
-local function mixStreamTrack(tr, item, volQ8, nSamples, checkDrift, curFrameIdx)
+local function mixStreamTrack(tr, item, gain, nSamples, checkDrift, curFrameIdx, outRate)
 	tr.lastUsedFrame = curFrameIdx
 	local pitch = math.max(0.1, math.min(4.0, tonumber(item.pitch) or 1.0))
-	local step = (tr.rate * pitch) / AUDIO_RATE
+	local step = (tr.rate * pitch) / outRate
 	local curPlaySeq = item.playSeq or 0
 	local curSeekSeq = item.seekSeq or 0
 
-	if tr.playSeq ~= curPlaySeq or tr.seekSeq ~= curSeekSeq then
+	if item.songMasterSec ~= nil then
+		-- Active PlayState song stem (Inst / Voices): keep sample-locked to PlayState.conductor.time
+		-- across startup OpenAL latency adjustments, misses (gain == 0), and explicit seeks.
 		tr.playSeq = curPlaySeq
 		tr.seekSeq = curSeekSeq
-		local targetTime = math.max(0, tonumber(item.time) or 0)
-		local curTime = tr.cursor / tr.rate
-		-- Re-seek on genuine restart (to ~0s) or real seek (>250ms), ignoring PlayState:resyncSong() 9-60ms OpenAL micro-nudges
-		if (targetTime <= 0.03 and curTime > 0.08) or math.abs(curTime - targetTime) > 0.25 then
-			seekStreamTrack(tr, targetTime)
+		if checkDrift then
+			local masterSec = math.max(0, tonumber(item.songMasterSec) or 0)
+			local driftSec = math.abs((tr.cursor / tr.rate) - masterSec)
+			if driftSec > 0.014 then
+				seekStreamTrack(tr, masterSec, gain > 0.0001)
+			end
 		end
-	elseif checkDrift and item.time ~= nil then
-		-- OpenAL Source:tell() advances in 46-93ms hardware buffer blocks; only re-seek
-		-- on genuine large desync (> 350ms), never on normal mixer buffer granularity.
-		local expected = math.max(0, (tonumber(item.time) or 0) * tr.rate)
-		local driftSec = math.abs(tr.cursor - expected) / tr.rate
-		if driftSec > 0.35 then
-			seekStreamTrack(tr, item.time)
+	else
+		if tr.playSeq ~= curPlaySeq or tr.seekSeq ~= curSeekSeq then
+			tr.playSeq = curPlaySeq
+			tr.seekSeq = curSeekSeq
+			local targetTime = math.max(0, tonumber(item.time) or 0)
+			local curTime = tr.cursor / tr.rate
+			if (targetTime <= 0.02 and curTime > 0.06) or math.abs(curTime - targetTime) > 0.12 then
+				seekStreamTrack(tr, targetTime, gain > 0.0001)
+			end
+		elseif checkDrift and item.time ~= nil then
+			local targetTime = math.max(0, tonumber(item.time) or 0)
+			local driftSec = math.abs((tr.cursor / tr.rate) - targetTime)
+			if driftSec > 0.12 then
+				seekStreamTrack(tr, targetTime, gain > 0.0001)
+			end
 		end
 	end
 
-	local channels = tr.channels
-	local bits = tr.bits
-
-	if not USE_FFI then
-		for i = 1, nSamples do
-			local idx = math.floor(tr.cursor)
-			while not tr.chunk or idx >= (tr.chunkStart + tr.chunkLen) do
-				if not advanceStreamChunk(tr) then
-					if item.looped and seekStreamTrack(tr, 0) then
-						idx = math.floor(tr.cursor)
-					else
-						return
-					end
-				end
-			end
-			local rel = idx - tr.chunkStart
-			if rel >= 0 and rel < tr.chunkLen and tr.chunk.getSample then
-				local frac = tr.cursor - idx
-				local l0 = tr.chunk:getSample(rel, 1) or 0
-				local r0 = channels >= 2 and (tr.chunk:getSample(rel, 2) or 0) or l0
-				local l1, r1 = l0, r0
-				if rel + 1 < tr.chunkLen then
-					l1 = tr.chunk:getSample(rel + 1, 1) or l0
-					r1 = channels >= 2 and (tr.chunk:getSample(rel + 1, 2) or r0) or l1
+	-- Muted stream (e.g. Voices-bf while missed note sets volume=0): advance cursor & decoder
+	-- chunks in exact lockstep without adding samples into the mix bus.
+	if gain <= 0.0001 and tr.fadePos >= tr.fadeTotal then
+		tr.cursor = tr.cursor + nSamples * step
+		local targetIdx = math.floor(tr.cursor)
+		while not tr.chunk or targetIdx >= (tr.chunkStart + tr.chunkLen) do
+			if not advanceStreamChunk(tr) then
+				if item.looped and seekStreamTrack(tr, 0, false) then
+					targetIdx = math.floor(tr.cursor)
 				else
-					local pk, pkLen = ensurePeekChunk(tr)
-					if pk and pkLen > 0 and pk.getSample then
-						l1 = pk:getSample(0, 1) or l0
-						r1 = channels >= 2 and (pk:getSample(0, 2) or r0) or l1
-					end
+					break
 				end
-				mixL[i] = (mixL[i] or 0) + (l0 + (l1 - l0) * frac) * 32767 * volQ8
-				mixR[i] = (mixR[i] or 0) + (r0 + (r1 - r0) * frac) * 32767 * volQ8
 			end
-			tr.cursor = tr.cursor + step
 		end
+		tr.lastOutL, tr.lastOutR = 0, 0
 		return
 	end
+
+	local needCubic = math.abs(step - 1.0) > 1e-6
+	local baseIdx = USE_FFI and 0 or 1
 
 	for i = 0, nSamples - 1 do
 		local idx = math.floor(tr.cursor)
 		while not tr.chunk or idx >= (tr.chunkStart + tr.chunkLen) do
 			if not advanceStreamChunk(tr) then
-				if item.looped then
-					if not seekStreamTrack(tr, 0) then
-						return
-					end
+				if item.looped and seekStreamTrack(tr, 0, false) then
 					idx = math.floor(tr.cursor)
 				else
+					tr.lastOutL, tr.lastOutR = 0, 0
 					return
 				end
 			end
 		end
 
 		local rel = idx - tr.chunkStart
+		local l, r = 0, 0
 		if rel >= 0 and rel < tr.chunkLen then
 			local frac = tr.cursor - idx
-			if bits == 16 then
-				local ptr = ffi.cast("const int16_t*", tr.chunk:getFFIPointer())
-				if channels >= 2 then
-					local base = rel * channels
-					local l0, r0 = ptr[base], ptr[base + 1]
-					local l1, r1 = l0, r0
-					if rel + 1 < tr.chunkLen then
-						l1, r1 = ptr[base + channels], ptr[base + channels + 1]
-					else
-						local pk, pkLen = ensurePeekChunk(tr)
-						if pk and pkLen > 0 then
-							local pkp = ffi.cast("const int16_t*", pk:getFFIPointer())
-							l1, r1 = pkp[0], pkp[1]
-						end
-					end
-					mixL[i] = mixL[i] + math.floor((l0 + (l1 - l0) * frac) * volQ8 + 0.5)
-					mixR[i] = mixR[i] + math.floor((r0 + (r1 - r0) * frac) * volQ8 + 0.5)
-				else
-					local s0 = ptr[rel]
-					local s1 = s0
-					if rel + 1 < tr.chunkLen then
-						s1 = ptr[rel + 1]
-					else
-						local pk, pkLen = ensurePeekChunk(tr)
-						if pk and pkLen > 0 then
-							local pkp = ffi.cast("const int16_t*", pk:getFFIPointer())
-							s1 = pkp[0]
-						end
-					end
-					local s = math.floor((s0 + (s1 - s0) * frac) * volQ8 + 0.5)
-					mixL[i] = mixL[i] + s
-					mixR[i] = mixR[i] + s
-				end
-			elseif bits == 8 then
-				local ptr = ffi.cast("const uint8_t*", tr.chunk:getFFIPointer())
-				local base = rel * channels
-				local l = (ptr[base] - 128) * 256 * volQ8
-				local r = channels >= 2 and ((ptr[base + 1] - 128) * 256 * volQ8) or l
-				mixL[i] = mixL[i] + l
-				mixR[i] = mixR[i] + r
+			if not needCubic and frac < 1e-6 then
+				l, r = readChunkFrameNorm(tr.chunk, tr.channels, tr.bits, rel)
+			else
+				local lm1, rm1 = sampleStreamAtRel(tr, rel - 1)
+				local l0, r0 = sampleStreamAtRel(tr, rel)
+				local l1, r1 = sampleStreamAtRel(tr, rel + 1)
+				local l2, r2 = sampleStreamAtRel(tr, rel + 2)
+				l = hermite4(lm1, l0, l1, l2, frac)
+				r = (tr.channels >= 2) and hermite4(rm1, r0, r1, r2, frac) or l
 			end
 		end
+
+		local outL = l * gain
+		local outR = r * gain
+		if tr.fadePos < tr.fadeTotal then
+			local alpha = tr.fadePos / tr.fadeTotal
+			outL = tr.fadeFromL * (1.0 - alpha) + outL * alpha
+			outR = tr.fadeFromR * (1.0 - alpha) + outR * alpha
+			tr.fadePos = tr.fadePos + 1
+		end
+		tr.lastOutL, tr.lastOutR = outL, outR
+
+		local dst = baseIdx + i
+		mixL[dst] = (mixL[dst] or 0) + outL
+		mixR[dst] = (mixR[dst] or 0) + outR
 		tr.cursor = tr.cursor + step
 	end
 end
 
-local function renderAudioPcm(audioList, nSamples, checkDrift, curFrameIdx)
+local function renderAudioPcm(s, audioList, nSamples, checkDrift, curFrameIdx)
 	if nSamples <= 0 then return nil, 0 end
 	if nSamples > MAX_MIX_SAMPLES then nSamples = MAX_MIX_SAMPLES end
+	local outRate = s.audioRate or DEFAULT_AUDIO_RATE
 
 	if USE_FFI then
-		ffi.fill(mixL, nSamples * 4, 0)
-		ffi.fill(mixR, nSamples * 4, 0)
+		ffi.fill(mixL, nSamples * 8, 0)
+		ffi.fill(mixR, nSamples * 8, 0)
 	else
 		for i = 1, nSamples do
 			mixL[i] = 0
@@ -437,9 +447,9 @@ local function renderAudioPcm(audioList, nSamples, checkDrift, curFrameIdx)
 	if type(audioList) == "table" then
 		for sIdx = 1, #audioList do
 			local item = audioList[sIdx]
-			local vol = tonumber(item and item.volume) or 0
-			if vol > 0.0005 then
-				local volQ8 = math.floor(math.min(2.0, vol) * 256 + 0.5)
+			if item then
+				local vol = math.max(0, math.min(2.0, tonumber(item.volume) or 0))
+				local gain = vol * HEADROOM_GAIN
 				if item.soundData then
 					local sd = item.soundData
 					local okMeta, rate, sampleCount, ch, bits = pcall(function()
@@ -460,31 +470,31 @@ local function renderAudioPcm(audioList, nSamples, checkDrift, curFrameIdx)
 							tr.lastUsedFrame = curFrameIdx
 							if checkDrift and item.time ~= nil then
 								local expected = math.max(0, (tonumber(item.time) or 0) * rate)
-								if math.abs(tr.cursor - expected) / rate > 0.35 then
+								if math.abs(tr.cursor - expected) / rate > 0.12 then
 									tr.cursor = expected
 								end
 							end
 						end
 						local pitch = math.max(0.1, math.min(4.0, tonumber(item.pitch) or 1.0))
-						local step = (rate * pitch) / AUDIO_RATE
+						local step = (rate * pitch) / outRate
 						tr.cursor = mixSoundDataBuffer(
 							sd, sampleCount, ch or 1, bits or 16,
-							tr.cursor, step, item.looped == true, volQ8, nSamples
+							tr.cursor, step, item.looped == true, gain, nSamples
 						)
 					end
 				elseif item.path then
 					local tr = getOrCreateStreamTrack(item)
 					if tr then
-						mixStreamTrack(tr, item, volQ8, nSamples, checkDrift, curFrameIdx)
+						mixStreamTrack(tr, item, gain, nSamples, checkDrift, curFrameIdx, outRate)
 					end
 				end
 			end
 		end
 	end
 
-	if curFrameIdx % 300 == 0 then
+	if curFrameIdx % 600 == 0 then
 		for k, tr in pairs(streamTracks) do
-			if (curFrameIdx - (tr.lastUsedFrame or 0)) > 300 then
+			if (curFrameIdx - (tr.lastUsedFrame or 0)) > 600 then
 				releaseChunk(tr.chunk)
 				releaseChunk(tr.peekChunk)
 				if tr.decoder and tr.decoder.release then
@@ -494,35 +504,69 @@ local function renderAudioPcm(audioList, nSamples, checkDrift, curFrameIdx)
 			end
 		end
 		for k, tr in pairs(sfxTracks) do
-			if (curFrameIdx - (tr.lastUsedFrame or 0)) > 300 then
+			if (curFrameIdx - (tr.lastUsedFrame or 0)) > 600 then
 				sfxTracks[k] = nil
 			end
 		end
 	end
 
+	local envGain = s.limiterGain or 1.0
+	local relCoef = s.limiterRelCoef or math.exp(-1.0 / (0.085 * outRate))
+
 	if USE_FFI then
-		local rshift = bit.arshift
 		for i = 0, nSamples - 1 do
-			local l = rshift(mixL[i], 8)
-			local r = rshift(mixR[i], 8)
-			if l > 32767 then l = 32767 elseif l < -32768 then l = -32768 end
-			if r > 32767 then r = 32767 elseif r < -32768 then r = -32768 end
-			pcmOut[i * 2] = l
-			pcmOut[i * 2 + 1] = r
+			local l = mixL[i]
+			local r = mixR[i]
+			local absL = l < 0 and -l or l
+			local absR = r < 0 and -r or r
+			local peak = absL > absR and absL or absR
+
+			local reqGain = softKneeGain(peak)
+			if reqGain < envGain then
+				envGain = reqGain
+			else
+				envGain = reqGain + (envGain - reqGain) * relCoef
+			end
+
+			local outL = l * envGain
+			local outR = r * envGain
+			if outL > LIMIT_CEIL then outL = LIMIT_CEIL elseif outL < -LIMIT_CEIL then outL = -LIMIT_CEIL end
+			if outR > LIMIT_CEIL then outR = LIMIT_CEIL elseif outR < -LIMIT_CEIL then outR = -LIMIT_CEIL end
+
+			pcmOut[i * 2] = math.floor(outL * 32767.0 + (outL >= 0 and 0.5 or -0.5))
+			pcmOut[i * 2 + 1] = math.floor(outR * 32767.0 + (outR >= 0 and 0.5 or -0.5))
 		end
+		s.limiterGain = envGain
 		return pcmOut, nSamples
 	end
 
 	local parts = {}
 	for i = 1, nSamples do
-		local l = math.floor((mixL[i] or 0) / 256)
-		local r = math.floor((mixR[i] or 0) / 256)
-		if l > 32767 then l = 32767 elseif l < -32768 then l = -32768 end
-		if r > 32767 then r = 32767 elseif r < -32768 then r = -32768 end
-		if l < 0 then l = 65536 + l end
-		if r < 0 then r = 65536 + r end
-		parts[i] = string.char(l % 256, math.floor(l / 256) % 256, r % 256, math.floor(r / 256) % 256)
+		local l = mixL[i] or 0
+		local r = mixR[i] or 0
+		local absL = l < 0 and -l or l
+		local absR = r < 0 and -r or r
+		local peak = absL > absR and absL or absR
+
+		local reqGain = softKneeGain(peak)
+		if reqGain < envGain then
+			envGain = reqGain
+		else
+			envGain = reqGain + (envGain - reqGain) * relCoef
+		end
+
+		local outL = l * envGain
+		local outR = r * envGain
+		if outL > LIMIT_CEIL then outL = LIMIT_CEIL elseif outL < -LIMIT_CEIL then outL = -LIMIT_CEIL end
+		if outR > LIMIT_CEIL then outR = LIMIT_CEIL elseif outR < -LIMIT_CEIL then outR = -LIMIT_CEIL end
+
+		local il = math.floor(outL * 32767.0 + (outL >= 0 and 0.5 or -0.5))
+		local ir = math.floor(outR * 32767.0 + (outR >= 0 and 0.5 or -0.5))
+		if il < 0 then il = 65536 + il end
+		if ir < 0 then ir = 65536 + ir end
+		parts[i] = string.char(il % 256, math.floor(il / 256) % 256, ir % 256, math.floor(ir / 256) % 256)
 	end
+	s.limiterGain = envGain
 	return table.concat(parts), nSamples
 end
 
@@ -553,19 +597,14 @@ end
 
 local function emitAudioUpToFrame(s, endFrameIdx, audioList, checkDrift)
 	if not s.recordAudio then return end
-	local targetSamples = math.floor((endFrameIdx * AUDIO_RATE) / s.fps)
+	local targetSamples = math.floor((endFrameIdx * s.audioRate) / s.fps + 0.5)
 	local remaining = targetSamples - s.totalAudioSamples
 	if remaining <= 0 then return end
-	-- Guard against extreme multi-second OS suspend while preserving full hitch continuity up to 1.5s
-	local maxCatchup = math.floor(AUDIO_RATE * 1.5)
-	if remaining > maxCatchup then
-		remaining = maxCatchup
-	end
 
 	local firstChunk = true
 	while remaining > 0 do
 		local batch = math.min(remaining, MAX_MIX_SAMPLES)
-		local pcmBuf, count = renderAudioPcm(audioList, batch, checkDrift and firstChunk, endFrameIdx)
+		local pcmBuf, count = renderAudioPcm(s, audioList, batch, checkDrift and firstChunk, endFrameIdx)
 		firstChunk = false
 		if not pcmBuf or count <= 0 then break end
 
@@ -586,27 +625,88 @@ local function emitAudioUpToFrame(s, endFrameIdx, audioList, checkDrift)
 	end
 end
 
-local function processOrderedPacket(s, pkt)
-	local targetFrame = math.max(s.writtenFrames, tonumber(pkt.targetFrame) or s.writtenFrames)
-	local deltaFrames = math.max(1, math.min((targetFrame - s.writtenFrames) + 1, math.max(15, s.fps * 2)))
+-- Flushes the active interval [s.pendingFrameIdx, nextRelFrame):
+-- 1. Writes s.pendingVideoBytes for `gap = nextRelFrame - s.pendingFrameIdx` frames,
+--    duplicating the previous frame across frame drops so CFR/VFR players hold the
+--    previous image until the exact PTS of the new frame (never shifting video early!).
+-- 2. Synthesizes audio for the exact same [s.pendingFrameIdx, nextRelFrame) interval
+--    using s.pendingAudio (the audio snapshot taken at s.pendingFrameIdx).
+local function flushIntervalToFrame(s, nextRelFrame)
+	if not s.hasStartedTimeline then return end
+	local gap = math.max(1, nextRelFrame - s.pendingFrameIdx)
 
 	if s.nativeMode then
-		s.writtenFrames = s.writtenFrames + deltaFrames
-		emitAudioUpToFrame(s, s.writtenFrames, pkt.audio, true)
+		s.writtenFrames = s.writtenFrames + gap
+		emitAudioUpToFrame(s, s.writtenFrames, s.pendingAudio, true)
+		s.pendingFrameIdx = nextRelFrame
 		return
 	end
 
-	local videoBytes = extractPayloadBytes(pkt.payload) or s.lastVideoBytes
+	local videoBytes = s.pendingVideoBytes
+	if not videoBytes or not s.muxer then return end
+
+	local maxDuplicates = 60
+	if gap <= maxDuplicates then
+		for _ = 1, gap do
+			s.muxer:writeVideoFrame(videoBytes, 1000)
+		end
+	else
+		for _ = 1, maxDuplicates - 1 do
+			s.muxer:writeVideoFrame(videoBytes, 1000)
+		end
+		s.muxer:writeVideoFrame(videoBytes, (gap - (maxDuplicates - 1)) * 1000)
+	end
+
+	s.writtenFrames = s.writtenFrames + gap
+	emitAudioUpToFrame(s, s.writtenFrames, s.pendingAudio, true)
+	s.pendingFrameIdx = nextRelFrame
+end
+
+local function processOrderedPacket(s, pkt)
+	local rawTarget = math.max(0, math.floor(tonumber(pkt.targetFrame) or 0))
+
+	if pkt.type == "native_audio" then
+		if not s.hasStartedTimeline then
+			s.frameOrigin = rawTarget
+			s.pendingFrameIdx = 0
+			s.pendingAudio = pkt.audio
+			s.hasStartedTimeline = true
+			return
+		end
+		local relFrame = math.max(s.pendingFrameIdx + 1, rawTarget - s.frameOrigin)
+		flushIntervalToFrame(s, relFrame)
+		s.pendingAudio = pkt.audio
+		return
+	end
+
+	if pkt.type == "drop" then
+		if not s.hasStartedTimeline then
+			return
+		end
+		local relFrame = math.max(s.pendingFrameIdx + 1, rawTarget - s.frameOrigin)
+		flushIntervalToFrame(s, relFrame)
+		s.pendingAudio = pkt.audio
+		return
+	end
+
+	local videoBytes = extractPayloadBytes(pkt.payload) or s.pendingVideoBytes
 	if not videoBytes or #videoBytes == 0 then
 		return
 	end
 
-	s.lastVideoBytes = videoBytes
-	if s.muxer then
-		s.muxer:writeVideoFrame(videoBytes, deltaFrames * 1000)
-		s.writtenFrames = s.writtenFrames + deltaFrames
-		emitAudioUpToFrame(s, s.writtenFrames, pkt.audio, true)
+	if not s.hasStartedTimeline then
+		s.frameOrigin = rawTarget
+		s.pendingFrameIdx = 0
+		s.pendingVideoBytes = videoBytes
+		s.pendingAudio = pkt.audio
+		s.hasStartedTimeline = true
+		return
 	end
+
+	local relFrame = math.max(s.pendingFrameIdx + 1, rawTarget - s.frameOrigin)
+	flushIntervalToFrame(s, relFrame)
+	s.pendingVideoBytes = videoBytes
+	s.pendingAudio = pkt.audio
 end
 
 local function drainReadyOrderedPackets(s)
@@ -621,7 +721,8 @@ local function drainReadyOrderedPackets(s)
 end
 
 local function handleMuxMessage(msg)
-	if type(msg) ~= "table" or (msg.type ~= "encoded" and msg.type ~= "native_audio") then
+	if type(msg) ~= "table"
+		or (msg.type ~= "encoded" and msg.type ~= "native_audio" and msg.type ~= "drop") then
 		return
 	end
 	if not session or msg.session ~= session.id then
@@ -641,10 +742,21 @@ local function handleMuxMessage(msg)
 	drainReadyOrderedPackets(session)
 end
 
-local function finalizeSession()
+local function finalizeSession(stopFrames)
 	if not session then return end
 	local s = session
 	session = nil
+
+	if s.hasStartedTimeline then
+		local endRel = s.pendingFrameIdx + 1
+		if stopFrames ~= nil then
+			local candidate = math.floor(tonumber(stopFrames) or 0) - s.frameOrigin
+			if candidate > endRel then
+				endRel = candidate
+			end
+		end
+		flushIntervalToFrame(s, endRel)
+	end
 
 	for _, pkt in pairs(s.pending) do
 		if pkt and pkt.payload and type(pkt.payload) ~= "string" then
@@ -688,7 +800,7 @@ local function finalizeSession()
 end
 
 local function startSession(cmd)
-	finalizeSession()
+	finalizeSession(nil)
 	closeAllAudioTracks()
 
 	local width = math.max(16, math.floor(tonumber(cmd.width) or 640))
@@ -696,12 +808,13 @@ local function startSession(cmd)
 	local fps = math.max(1, math.floor(tonumber(cmd.fps) or 60))
 	local recordAudio = (cmd.recordAudio ~= false) and hasLoveSound
 	local nativeMode = cmd.nativeMode == true
+	local audioRate = (tonumber(cmd.audioRate) == 48000) and 48000 or DEFAULT_AUDIO_RATE
 
 	local muxer = nil
 	if not nativeMode then
 		local objectType = (cmd.fourcc == "MPNG") and 0x6D or 0x6C
 		local err
-		muxer, err = Mp4Muxer.open(cmd.path, width, height, fps, recordAudio, objectType)
+		muxer, err = Mp4Muxer.open(cmd.path, width, height, fps, recordAudio, objectType, audioRate)
 		if not muxer then
 			statusCh:push({
 				status = "error",
@@ -721,10 +834,17 @@ local function startSession(cmd)
 		width = width,
 		height = height,
 		fps = fps,
+		audioRate = audioRate,
 		recordAudio = recordAudio,
+		limiterGain = 1.0,
+		limiterRelCoef = math.exp(-1.0 / (0.085 * audioRate)),
+		hasStartedTimeline = false,
+		frameOrigin = 0,
+		pendingFrameIdx = 0,
+		pendingVideoBytes = nil,
+		pendingAudio = nil,
 		writtenFrames = 0,
 		totalAudioSamples = 0,
-		lastVideoBytes = nil,
 		nextSeq = 1,
 		pending = {}
 	}
@@ -732,7 +852,7 @@ local function startSession(cmd)
 	statusCh:push({status = "started", path = cmd.path, session = session.id})
 end
 
-local function finishUpToSeq(lastSeq)
+local function finishUpToSeq(lastSeq, stopFrames)
 	if not session then return end
 	lastSeq = tonumber(lastSeq) or 0
 	local deadline = os.clock() + 10.0
@@ -756,7 +876,7 @@ local function finishUpToSeq(lastSeq)
 			break
 		end
 	end
-	finalizeSession()
+	finalizeSession(stopFrames)
 end
 
 while true do
@@ -765,9 +885,9 @@ while true do
 		if cmd.type == "start" then
 			startSession(cmd)
 		elseif cmd.type == "finish" or cmd.type == "stop" then
-			finishUpToSeq(cmd.lastSeq)
+			finishUpToSeq(cmd.lastSeq, cmd.stopFrames)
 		elseif cmd.type == "quit" then
-			finishUpToSeq(cmd.lastSeq)
+			finishUpToSeq(cmd.lastSeq, cmd.stopFrames)
 			break
 		end
 	end

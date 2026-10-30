@@ -611,6 +611,7 @@ while true do
 				session = job.session,
 				seq = job.seq,
 				targetFrame = job.targetFrame,
+				ptsUs = job.ptsUs,
 				payload = encodedData,
 				audio = job.audio
 			})
