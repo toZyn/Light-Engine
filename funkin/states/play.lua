@@ -81,6 +81,7 @@ function PlayState:new(storyMode, song, diff)
 	if storyMode ~= nil then
 		PlayState.storyMode = storyMode
 		PlayState.storyWeek = ""
+		PlayState.storyScore = 0
 	end
 
 	if type(song) == "number" then
@@ -1761,6 +1762,7 @@ function PlayState:endSong(skip)
 
 			if not PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty) then
 				GameOverSubstate.deaths = 0
+				PlayState.storyScore = 0
 				PlayState.canFadeInReceptors = true
 				local stickers = Stickers(nil, StoryMenuState())
 				self:add(stickers)
@@ -1772,8 +1774,9 @@ function PlayState:endSong(skip)
 			GameOverSubstate.deaths = 0
 			PlayState.canFadeInReceptors = true
 			if not self.usedBotPlay then
-				Highscore.saveWeekScore(self.storyWeekFile, self.storyScore, self.songDifficulty)
+				Highscore.saveWeekScore(PlayState.storyWeekFile, PlayState.storyScore, self.songDifficulty)
 			end
+			PlayState.storyScore = 0
 
 			local stickers = Stickers(nil, StoryMenuState())
 			self:add(stickers)
