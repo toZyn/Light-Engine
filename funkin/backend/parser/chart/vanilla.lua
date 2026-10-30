@@ -95,12 +95,13 @@ local function getStuff(data, eventData, bpm, psych)
 		end
 	end
 
-	if #timeChanges > 1 then Parser.sortByTime(timeChanges) end
+	if #timeChanges > 1 then table.sort(timeChanges, Parser.sortByTime) end
 
 	return {enemy = dad, player = bf}, events, timeChanges
 end
 
 function vanilla.parse(data, events, meta)
+	if type(data) ~= "table" then return Parser.getDummyChart() end
 	local baseData = data.song
 	data = type(baseData) == "table" and baseData or data
 

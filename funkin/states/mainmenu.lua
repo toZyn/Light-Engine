@@ -111,10 +111,14 @@ function MainMenuState:update(dt)
 		if controls:pressed("back") then
 			game.sound.play(paths.getSound('cancelMenu'))
 			game.switchState(TitleState())
-		end
-
-		if controls:pressed("pick_mods") then
+		elseif controls:pressed("pick_mods") then
 			game.switchState(ModsState())
+		elseif controls:pressed("debug_1") then
+			util.playSfx(paths.getSound('scrollMenu'))
+			self:openEditorMenu()
+		elseif controls:pressed("debug_2") then
+			util.playSfx(paths.getSound('scrollMenu'))
+			game.switchState(CharacterEditor())
 		end
 	end
 
@@ -204,13 +208,10 @@ end
 
 function MainMenuState:leave()
 	self.script:call("leave")
-	if self.notCreated then
-		self.script:call("postLeave")
-		return
+	if self.throttles then
+		for _, v in pairs(self.throttles) do v:destroy() end
+		self.throttles = nil
 	end
-
-	for _, v in ipairs(self.throttles) do v:destroy() end
-
 	self.script:call("postLeave")
 	self.script:close()
 end

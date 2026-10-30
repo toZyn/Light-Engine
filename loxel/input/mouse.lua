@@ -52,7 +52,7 @@ function Mouse.reset()
 	if Mouse.justReleased then
 		Mouse.justReleased = false
 		Mouse.justReleasedLeft = false
-		Mouse.justReleaseddRight = false
+		Mouse.justReleasedRight = false
 		Mouse.justReleasedMiddle = false
 	end
 	Mouse.deltaX = 0
@@ -68,8 +68,8 @@ function Mouse.overlaps(obj, cam)
 	if obj then
 		if obj:is(Group) then
 			for _, o in ipairs(obj.members) do
-				if o and (o.x and o.y and o.width and o.height) then
-					Mouse.overlaps(o, cam)
+				if o and Mouse.overlaps(o, cam) then
+					return true
 				end
 			end
 		elseif obj:is(Object) then

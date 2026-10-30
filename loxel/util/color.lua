@@ -30,20 +30,21 @@ local colorTable = {
 local Color = {}
 
 function Color.get(c)
-	local r, g, b, a
-
 	if type(c) == "table" then
-		r, g, b, a = c[1], c[2], c[3], c[4] or 1
-		if r > 1 then
-			r, g, b, a = r / 255, g / 255, b / 255, a / 255
+		local r, g, b, a = c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
+		if r > 1 or g > 1 or b > 1 then
+			r, g, b = r / 255, g / 255, b / 255
+			if a > 1 then a = a / 255 end
 		end
-	else
-		if type(c) == "string" then
-			c = c:gsub("#", "0x")
-		end
-		r, g, b, a = fromRawHEX(c)
+		return r, g, b, a
+	elseif type(c) == "string" then
+		local parsed = Color.fromString(c)
+		return parsed[1], parsed[2], parsed[3], parsed[4] or 1
+	elseif type(c) == "number" then
+		local parsed = fromHEX(c)
+		return parsed[1], parsed[2], parsed[3], 1
 	end
-	return r, g, b, a
+	return 1, 1, 1, 1
 end
 
 function Color.fromHEX(hex) return fromHEX(hex) end
@@ -97,14 +98,46 @@ function Color.RGBtoHSL(r, g, b)
 end
 
 function Color.fromHSL(...)
-	return {Color.HSL(...)}
+	return {Color.HSLtoRGB(...)}
 end
 
 function Color.fromString(str)
-	str = str:gsub("#", "")
-	return Color.fromRGB(tonumber('0x' .. str:sub(1, 2)),
-		tonumber('0x' .. str:sub(3, 4)),
-		tonumber('0x' .. str:sub(5, 6)))
+	if type(str) == "table" then
+		local r, g, b, a = Color.get(str)
+		return {r, g, b, a}
+	elseif type(str) == "number" then
+		return fromHEX(str)
+	elseif type(str) ~= "string" then
+		return {1, 1, 1}
+	end
+	local upper = str:upper():gsub("^%s+", ""):gsub("%s+$", "")
+	if colorTable[upper] then
+		local p = colorTable[upper]
+		return {p[1], p[2], p[3]}
+	end
+	local clean = upper:gsub("^#", ""):gsub("^0X", "")
+	if #clean == 3 then
+		clean = clean:sub(1, 1):rep(2) .. clean:sub(2, 2):rep(2) .. clean:sub(3, 3):rep(2)
+	elseif #clean == 8 then
+		local a = (tonumber("0x" .. clean:sub(1, 2)) or 255) / 255
+		local r = (tonumber("0x" .. clean:sub(3, 4)) or 255) / 255
+		local g = (tonumber("0x" .. clean:sub(5, 6)) or 255) / 255
+		local b = (tonumber("0x" .. clean:sub(7, 8)) or 255) / 255
+		return {r, g, b, a}
+	end
+	local r = tonumber("0x" .. clean:sub(1, 2)) or 255
+	local g = tonumber("0x" .. clean:sub(3, 4)) or 255
+	local b = tonumber("0x" .. clean:sub(5, 6)) or 255
+	return Color.fromRGB(r, g, b)
+end
+
+function Color.toHexString(c, includeHash)
+	local r, g, b = Color.get(c or Color.WHITE)
+	local prefix = (includeHash == false) and "" or "#"
+	return string.format("%s%02X%02X%02X", prefix,
+		math.clamp(math.round(r * 255), 0, 255),
+		math.clamp(math.round(g * 255), 0, 255),
+		math.clamp(math.round(b * 255), 0, 255))
 end
 
 function Color.convert(rgb)
@@ -126,31 +159,25 @@ function Color.lerp(x, y, i)
 end
 
 function Color.lerpDelta(x, y, i, delta)
-	return {math.lerp(y[1], x[1], math.exp(-(delta or game.dt) * i)),
-		math.lerp(y[2], x[2], math.exp(-(delta or game.dt) * i)),
-		math.lerp(y[3], x[3], math.exp(-(delta or game.dt) * i))}
+	local t = math.exp(-(delta or game.dt) * i)
+	return {math.lerp(y[1], x[1], t),
+		math.lerp(y[2], x[2], t),
+		math.lerp(y[3], x[3], t)}
 end
 
-function Color.vec4(tbl, ...)
-	local args = {...}
-	local fill = table.clone(tbl)
-
-	local idx = 1
-	for i = #tbl + 1, 4 do
-		if idx <= #args then
-			fill[i] = args[idx]
-			idx = idx + 1
-		else
-			fill[i] = 0
-		end
-	end
-
-	return fill[1], fill[2], fill[3], fill[4]
+function Color.vec4(tbl, a, b, c, d)
+	local n = #tbl
+	if n >= 4 then return tbl[1], tbl[2], tbl[3], tbl[4] end
+	if n == 3 then return tbl[1], tbl[2], tbl[3], a or 0 end
+	if n == 2 then return tbl[1], tbl[2], a or 0, b or 0 end
+	if n == 1 then return tbl[1], a or 0, b or 0, c or 0 end
+	return a or 0, b or 0, c or 0, d or 0
 end
 
 setmetatable(Color, {
-	__index = function(tbl, key)
-		if colorTable[key] then return table.clone(colorTable[key]) end
+	__index = function(_, key)
+		local p = colorTable[key]
+		if p then return {p[1], p[2], p[3]} end
 	end
 })
 

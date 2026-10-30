@@ -180,6 +180,7 @@ end
 function Note:destroySustain()
 	if self.sustainEnd and self.sustainEnd.destroy then self.sustainEnd:destroy() end
 	if self.sustain and self.sustain.destroy then self.sustain:destroy() end
+	self.sustainEnd, self.sustain = nil, nil
 end
 
 function Note:ghost()
@@ -254,7 +255,7 @@ function Note:__render(camera)
 			prx + grp.memberRotations.x, pry + grp.memberRotations.y, prz + grp.memberRotations.z,
 			psx * grp.memberScales.x, psy * grp.memberScales.y, psz * grp.memberScales.z
 
-		if grp.affectAngle then self.angle, rot.y, rot.y, rot.z = self.angle + grp.angle, rot.y + grx, rot.y + gry, rot.z + grz end
+		if grp.affectAngle then self.angle, rot.x, rot.y, rot.z = self.angle + grp.angle, rot.x + grx, rot.y + gry, rot.z + grz end
 		if grp.affectScale then sc.x, sc.y, sc.z = sc.x * gsx, sc.y * gsy, sc.z * gsz end
 		if rec then
 			nx, ny, nz = nx + rec.x + rec.noteOffsets.x, ny + rec.y + rec.noteOffsets.y, nz + rec.z + rec.noteOffsets.z
@@ -319,8 +320,10 @@ function Note:__render(camera)
 				local fhs = uvh / segments
 				hfw, fh, gotVerts = hfw * ssc.x / 2, fh / segments * ssc.y, vertLens
 
-				tex:setFilter(susend.antialiasing and "linear" or "nearest")
-				love.graphics.setShader(susend.shader or defaultShader); love.graphics.setBlendMode(susend.blend)
+				local seMode = susend.antialiasing and "linear" or "nearest"
+				local seMin, seMag = tex:getFilter()
+				if seMin ~= seMode or seMag ~= seMode then tex:setFilter(seMode, seMode) end
+				love.graphics.setShader(susend.shader or dshader); love.graphics.setBlendMode(susend.blend)
 				love.graphics.setColor(susend.color[1], susend.color[2], susend.color[3], susend.alpha * almult)
 				susMesh:setTexture(tex)
 
@@ -384,8 +387,10 @@ function Note:__render(camera)
 				segments = segments * math.max(math.round(fh / 128), 1)
 				fh = fh / segments
 
-				tex:setFilter(sus.antialiasing and "linear" or "nearest")
-				love.graphics.setShader(sus.shader or defaultShader); love.graphics.setBlendMode(sus.blend)
+				local sMode = sus.antialiasing and "linear" or "nearest"
+				local sMin, sMag = tex:getFilter()
+				if sMin ~= sMode or sMag ~= sMode then tex:setFilter(sMode, sMode) end
+				love.graphics.setShader(sus.shader or dshader); love.graphics.setBlendMode(sus.blend)
 				love.graphics.setColor(sus.color[1], sus.color[2], sus.color[3], sus.alpha * almult)
 				susMesh:setTexture(tex)
 

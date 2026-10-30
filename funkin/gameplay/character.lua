@@ -21,7 +21,7 @@ function Character:new(x, y, char, isPlayer)
 	self.data = data
 
 	if Character.editorMode then
-		self.animationsTable = data.animations or {}
+		self.animationsTable = table.clone(data.animations or {})
 		self.animOffsets = {}
 		for _, animation in ipairs(self.animationsTable) do
 			animation[6] = animation[6] or {0, 0}
@@ -43,12 +43,13 @@ function Character:new(x, y, char, isPlayer)
 		self.jsonScale = data.scale or 1
 	end
 
-	local fullpath = paths.getPath('images/' .. data.sprite)
-	if paths.exists(fullpath, "directory") and paths.exists(fullpath .. "/Animation.json", "file") then
-		self._animAtlas = AnimateAtlas(0, 0, paths.getAnimateAtlas(data.sprite))
-	elseif paths.exists(paths.getPath('images/' .. data.sprite .. ".xml", "file"))
-		or paths.exists(paths.getPath('images/' .. data.sprite .. ".txt", "file")) then
-		self:setFrames(paths.getAtlas(data.sprite, not data.antialiasing))
+	local spriteName = tostring(data.sprite or "")
+	local fullpath = paths.getPath('images/' .. spriteName)
+	if spriteName ~= "" and paths.exists(fullpath, "directory") and paths.exists(fullpath .. "/Animation.json", "file") then
+		self._animAtlas = AnimateAtlas(0, 0, paths.getAnimateAtlas(spriteName))
+	elseif spriteName ~= "" and (paths.exists(paths.getPath('images/' .. spriteName .. ".xml"), "file")
+		or paths.exists(paths.getPath('images/' .. spriteName .. ".txt"), "file")) then
+		self:setFrames(paths.getAtlas(spriteName, not data.antialiasing))
 	else
 		Logger.log("error", "Character \"" .. char .. "\" has invalid image path: \"" .. fullpath .. "\"")
 		self.exists = false
@@ -74,7 +75,8 @@ function Character:new(x, y, char, isPlayer)
 			local anim, name, indices, fps, loop, offset, atlas = unpack(an)
 
 			if not self._animAtlas and atlas and atlas ~= "" and not atlasAdded[atlas] and
-				(paths.exists(atlas .. ".xml", "file") or paths.exists(atlas .. ".txt", "file")) then
+				(paths.exists(paths.getPath("images/" .. atlas .. ".xml"), "file") or
+				 paths.exists(paths.getPath("images/" .. atlas .. ".txt"), "file")) then
 				self.frames:addCollection(paths.getAtlas(atlas))
 				atlasAdded[atlas] = true
 			end
@@ -170,8 +172,12 @@ function Character:update(dt)
 	local animName = self.anim.curAnim and self.anim.curAnim.name or ""
 
 	local cond, last, hold = PlayState.conductor, self.lastHit, self.holdTime
-	local canDance = self.waitingFinish or (last > 0 and last + cond.stepCrotchet * hold < cond.time)
-	if canDance and (self.dirAnim ~= nil and self.waitReleaseAfterSing) then
+	local stepCrochet = cond and cond.stepCrotchet or 150
+	local curTime = cond and cond.time or ((self._localTime or 0) * 1000)
+	self._localTime = (self._localTime or 0) + dt
+
+	local canDance = self.waitingFinish or (last ~= math.negative_infinity and last + stepCrochet * hold < curTime)
+	if canDance and (self.dirAnim ~= nil and self.waitReleaseAfterSing) and controls then
 		canDance = controls:down(PlayState.keysControls[self.dirAnim]) ~= true
 	end
 	if canDance and self.anim:has(animName .. "-end") and not animName:endsWith("-end") then
@@ -190,7 +196,7 @@ function Character:update(dt)
 end
 
 function Character:beat(b)
-	if not self.waitingFinish and self.lastHit <= 0 and b % self.danceSpeed == 0 then
+	if not self.waitingFinish and self.lastHit == math.negative_infinity and b % self.danceSpeed == 0 then
 		self:dance()
 	end
 end
@@ -234,7 +240,7 @@ function Character:sing(dir, type, force)
 	self:playAnim(anim, force ~= false)
 
 	self.dirAnim = type == "miss" and nil or dir
-	self.lastHit = PlayState.conductor.time
+	self.lastHit = PlayState.conductor and PlayState.conductor.time or ((self._localTime or 0) * 1000)
 	if #self.idleAnims == 2 then
 		self.idleIndex = (anim:startsWith("singLEFT") or anim == "singUP") and 2 or 1
 	end

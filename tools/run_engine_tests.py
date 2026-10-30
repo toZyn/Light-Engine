@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
-DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay']
+DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay', 'editors-and-modding']
 SUCCESS = {
     'extension-examples': r'EXTENSION EXAMPLES PASSED:',
     'chart-timing': r'CHART TIMING: \d+ passed, 0 failed',
@@ -65,8 +65,11 @@ def main():
     parser.add_argument('--love',default='love')
     parser.add_argument('--copy',action='store_true',help='Copy runtime once instead of using symlinks (Windows/CI)')
     parser.add_argument('--logs',type=Path,default=ROOT/'test-results')
-    parser.add_argument('suites',nargs='*',choices=DEFAULT)
+    parser.add_argument('suites',nargs='*',help='Suites to run (defaults to all)')
     args=parser.parse_args()
+    unknown=[s for s in args.suites if s not in DEFAULT]
+    if unknown:
+        parser.error('Unknown suite(s): '+', '.join(unknown)+'. Choose from: '+', '.join(DEFAULT))
     suites=args.suites or DEFAULT
     missing=[suite for suite in suites if not (ROOT/'tests'/'engine'/(suite+'.lua')).is_file()]
     if missing:

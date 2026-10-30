@@ -14,7 +14,10 @@ function Frame:new(name, x, y, w, h, sw, sh, ox, oy, ow, oh, r, t)
 end
 
 function Frame:destroy()
-	self.quad:release()
+	if self.quad then
+		self.quad:release()
+		self.quad = nil
+	end
 	Frame.super.destroy(self)
 end
 

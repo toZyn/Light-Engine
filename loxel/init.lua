@@ -174,6 +174,16 @@ Signal = loxreq "util.signal"
 
 Toast = loxreq "system.toast"
 ui = loxreq "ui"
+UINavbar = ui.UINavbar
+UIWindow = ui.UIWindow
+UIButton = ui.UIButton
+UICheckbox = ui.UICheckbox
+UIDropDown = ui.UIDropDown
+UIGrid = ui.UIGrid
+UIInputTextBox = ui.UIInputTextBox
+UINumericStepper = ui.UINumericStepper
+UISlider = ui.UISlider
+UITabMenu = ui.UITabMenu
 
 local function getram()
 	local os, handle, result = jit.os
@@ -232,6 +242,7 @@ game = {
 		ram = getram()
 	}
 }
+Mouse = game.mouse
 
 Classic.implement(game, Group)
 Classic.implement(game.bound, Group)
@@ -483,7 +494,7 @@ function game.__literalBoundScissor(w, h, sx, sy)
 end
 
 function game.__popBoundScissor()
-	_scissorn = _scissorn - 1; local idx = _scissorn * 4
+	_scissorn = _scissorn - 1; local idx = _scissorn * 6
 	_scX, _scY = _scissors[idx + 1], _scissors[idx + 2]
 	_scSX, _scSY = _scissors[idx + 3], _scissors[idx + 4]
 	_scW, _scH = _scissors[idx + 5], _scissors[idx + 6]

@@ -1,58 +1,52 @@
-local tweenTable = {}
+local tweens = {}
+local baseSpeed
 
-function event(data)
-	data = data.v
+local function cancelTweens()
+	for nf, tw in pairs(tweens) do
+		if tw then tw:cancel() end
+		tweens[nf] = nil
+	end
+end
 
-	local duration = data.duration or 4
-	local ease = data.ease or "linear"
-	local notefield = data.strumline or "both"
-	local abs = data.absolute == true
-	local scroll = (tonumber(data.scroll) or 1) * (abs and 1 or PlayState.SONG.speed)
-	local notefields
-
-	switch(notefield, {
-		["both"] = function() notefields = state.notefields end,
-		["player"] = function() notefields = {playerNotefield} end,
-		["opponent"] = function() notefields = {enemyNotefield} end,
-		default = function()
-			print("[SCROLLSPEED EVENT] " .. notefield .. " strumline not supported in FNF-LÖVE")
-		end
-	})
-
-	for _, nf in pairs(notefields) do
-		local idx = table.find(tweenTable, nf)
-		if idx then
-			local tween = tweenTable[idx]
-			tween:destroy()
-			table.remove(tweenTable, idx)
-		end
+function event(params)
+	local v = params.v or {}
+	if not baseSpeed then
+		baseSpeed = (PlayState.SONG and PlayState.SONG.speed) or 1
 	end
 
-	if ease == "INSTANT" then
-		for _, nf in pairs(notefields) do
-			if nf.is then nf.speed = scroll end
+	-- Support V-Slice {scroll, duration, ease, absolute} and Psych {mult, duration}
+	local scroll = tonumber(v.scroll or v[1]) or 1
+	local durationSteps = tonumber(v.duration)
+	local durationSec = (v.duration == nil and v[2] ~= nil) and tonumber(v[2]) or nil
+	local ease = v.ease or "linear"
+	local absolute = v.absolute
+
+	local targetSpeed = absolute and scroll or (baseSpeed * scroll)
+	cancelTweens()
+
+	local dur = 0
+	if durationSec then
+		dur = math.max(0, durationSec)
+	elseif durationSteps and durationSteps > 0 and PlayState.conductor then
+		dur = (PlayState.conductor.stepCrotchet / 1000) * durationSteps
+	end
+
+	if dur <= 0 or ease == "INSTANT" then
+		for _, notefield in ipairs(state.notefields) do
+			notefield.speed = targetSpeed
 		end
 	else
-		local dur = (conductor.stepCrotchet * duration) / 1000
-		local daEase = Ease[ease]
-
-		if daEase == nil then
-			print("[SCROLLSPEED EVENT] Invalid ease function: " .. ease)
-			return
-		end
-
-		for _, nf in pairs(notefields) do
-			if nf.is then
-				local tw
-				tw = tween:tween(nf, {speed = scroll}, dur, {
-					ease = daEase,
-					onComplete = function()
-						table.delete(tweenTable, tw)
-					end
-				})
-
-				table.insert(tweenTable, tw)
-			end
+		local easeFn = Ease[ease] or Ease.linear
+		for _, notefield in ipairs(state.notefields) do
+			tweens[notefield] = state.tween:tween(
+				notefield,
+				{speed = targetSpeed},
+				dur,
+				{
+					ease = easeFn,
+					onComplete = function() tweens[notefield] = nil end
+				}
+			)
 		end
 	end
 end

@@ -1,190 +1,209 @@
----@class Window:Object
-local Window = Object:extend("Window")
+---@class UIWindow:Object
+local Window = Object:extend("UIWindow")
 
-function Window:new(x, y, width, height, title)
+local function getMousePos(self)
+	local mx, my = game.mouse.x, game.mouse.y
+	local cam = self.cameras and self.cameras[1]
+	if cam then
+		local z = cam.zoom or 1
+		if z ~= 0 and z ~= 1 then
+			mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
+			my = (my - cam.height * 0.5) / z + cam.height * 0.5
+		end
+		mx = mx + cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1)
+		my = my + cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1)
+	end
+	return mx - (self.__uiOffsetX or 0), my - (self.__uiOffsetY or 0)
+end
+
+function Window:new(x, y, width, height, title, closable, minimizable)
 	Window.super.new(self, x, y)
 
-	self.group = Group()
-	self.members = self.group.members
-
-	self.width = width or 400
+	self.width = width or 300
 	self.height = height or 200
-
 	self.title = title or "Window"
-	self.font = love.graphics.newFont(12)
-	self.font:setFilter("nearest", "nearest")
 
-	self.hovered = false
+	self.bgColor = Color.fromRGB(30, 28, 42)
+	self.titleBarColor = Color.fromRGB(52, 74, 128)
+	self.borderColor = Color.fromRGB(98, 96, 126)
+	self.textColor = {1, 1, 1}
+	self.buttonColor = Color.fromRGB(64, 62, 84)
+	self.buttonHoveredColor = Color.fromRGB(205, 72, 72)
+
+	self.titleBarHeight = 28
+	self.borderSize = 1.5
+	self.font = love.graphics.getFont()
+
+	self.isDragging = false
+	self.dragOffsetX = 0
+	self.dragOffsetY = 0
+
 	self.minimized = false
-	self.dragging = false
-	self.focused = true
-	self.onClosed = nil
-	self.onMinimized = nil
+	self.closed = false
 
-	self.color = {0.3, 0.3, 0.3}
-	self.barColor = {0.4, 0.4, 0.4}
-	self.lineColor = Color.WHITE
-	self.textColor = Color.WHITE
+	self.closable = closable ~= false
+	self.minimizable = minimizable ~= false
 
-	self.lineSize = 1
+	self.hoveredButton = nil
+	self.pressedButton = nil
 
-	self.exitButton = ui.UIButton(0, 0, 22, 22, 'X', function()
-		self:kill()
-		if self.onClosed then self.onClosed() end
-	end)
-	self.exitButton.color = Color.RED
-	self.minButton = ui.UIButton(0, 0, 22, 22, '-', function()
-		self.minimized = not self.minimized
-		if self.onMinimized then self.onMinimized() end
-	end)
+	self.children = {}
+	self.onClose = nil
 end
 
-function Window:add(obj)
-	obj.x = obj.x + self.x
-	obj.y = obj.y + self.y
-	obj.cameras = self.cameras
-	return self.group:add(obj)
+function Window:add(child)
+	table.insert(self.children, child)
+	return child
 end
 
-function Window:remove(obj) return self.group:remove(obj) end
-
-function Window:sort(func) return self.group:sort(func) end
-
-function Window:recycle(class, factory, revive) return self.group:recycle(class, factory, revive) end
-
-function Window:clear() self.group:clear() end
-
-function Window:kill()
-	self.group:kill(); Object.super.kill(self)
-end
-
-function Window:revive()
-	self.group:revive(); Object.super.revive(self)
-end
-
-function Window:destroy()
-	self.group:destroy(); Object.super.destroy(self)
+function Window:remove(child)
+	table.delete(self.children, child)
+	return child
 end
 
 function Window:update(dt)
+	if self.closed or not self.visible then return end
 	Window.super.update(self, dt)
 
-	self.prevMouseX = self.prevMouseX or game.mouse.x
-	self.prevMouseY = self.prevMouseY or game.mouse.y
+	local mx, my = getMousePos(self)
+	local buttonSize = self.titleBarHeight - 8
 
-	self.group:update(dt)
-
-	local mx, my = game.mouse.x, game.mouse.y
-	self.hovered =
-		(mx >= self.x and mx <= self.x + self.width and my >= self.y - 35 and my <=
-			(self.minimized and self.y or self.y + self.height))
-
-	local barHovered =
-		(mx >= self.x and mx <= self.x + self.width and my >= self.y - 35 and my <=
-			self.y)
-
-	if barHovered and game.mouse.justPressedLeft then
-		self.dragging = true
-		self.prevMouseX = mx
-		self.prevMouseY = my
-		self.focused = true
-	elseif not self.hovered and game.mouse.justPressedLeft then
-		self.focused = false
-	end
-
-	if game.mouse.justReleasedLeft then
-		self.dragging = false
-	end
-
-	if self.focused and self.dragging then
-		local dx = mx - self.prevMouseX
-		local dy = my - self.prevMouseY
-
-		self.x = self.x + dx
-		self.y = self.y + dy
-		for _, obj in ipairs(self.members) do
-			obj.x = obj.x + dx
-			obj.y = obj.y + dy
+	self.hoveredButton = nil
+	local btnRight = self.x + self.width - 4
+	if self.closable then
+		local bx, by = btnRight - buttonSize, self.y + 4
+		if mx >= bx and mx <= bx + buttonSize and my >= by and my <= by + buttonSize then
+			self.hoveredButton = "close"
 		end
-
-		self.prevMouseX = mx
-		self.prevMouseY = my
+		btnRight = bx - 4
+	end
+	if self.minimizable and not self.hoveredButton then
+		local bx, by = btnRight - buttonSize, self.y + 4
+		if mx >= bx and mx <= bx + buttonSize and my >= by and my <= by + buttonSize then
+			self.hoveredButton = "minimize"
+		end
 	end
 
-	self.exitButton:setPosition(self.x + self.width - 28, self.y - 29)
-	self.exitButton.disabled = not self.focused
-	self.exitButton:update()
-
-	self.minButton:setPosition(self.x + self.width - 54, self.y - 29)
-	self.minButton.disabled = not self.focused
-	self.minButton:update()
-end
-
-function Window:__render(camera)
-	local cr, cg, cb, ca = love.graphics.getColor()
-	local lineWidth = love.graphics.getLineWidth()
-
-	if self.minimized then
-		love.graphics.setColor(self.barColor[1], self.barColor[2], self.barColor[3],
-			self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y - 35, self.width, 35, 8, 8)
-
-		love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y - 18, self.width, 17, 8, 8)
-
-		if self.lineSize > 0 then
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.setColor(self.lineColor[1], self.lineColor[2], self.lineColor[3],
-				self.alpha)
-			love.graphics.rectangle("line", self.x, self.y - 35, self.width, 35, 8, 8)
-			love.graphics.setLineWidth(lineWidth)
+	if self.hoveredButton then
+		if game.mouse.justPressedLeft then
+			self.pressedButton = self.hoveredButton
+		elseif game.mouse.justReleasedLeft and self.pressedButton == self.hoveredButton then
+			if self.pressedButton == "close" then
+				self.closed = true
+				if self.onClose then self.onClose() end
+			elseif self.pressedButton == "minimize" then
+				self.minimized = not self.minimized
+			end
+			self.pressedButton = nil
+		elseif not game.mouse.pressedLeft then
+			self.pressedButton = nil
 		end
 	else
-		love.graphics.setColor(self.barColor[1], self.barColor[2], self.barColor[3],
-			self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y - 35, self.width, 50, 8, 8)
-
-		love.graphics.setColor(self.color[1], self.color[2], self.color[3],
-			self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y - 18, self.width, self.height + 18, 8, 8)
-
-		love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y, self.width, 2)
-
-		love.graphics.setColor(self.barColor[1], self.barColor[2], self.barColor[3],
-			self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y - 18, self.width, 17)
-
-		love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y - 18, self.width, 17)
-
-		if self.lineSize > 0 then
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.setColor(self.lineColor[1], self.lineColor[2], self.lineColor[3],
-				self.alpha)
-			love.graphics.rectangle("line", self.x, self.y - 35, self.width, self.height + 35, 8, 8)
-			love.graphics.setLineWidth(lineWidth)
+		if not game.mouse.pressedLeft then
+			self.pressedButton = nil
 		end
+		if game.mouse.justPressedLeft and mx >= self.x and mx <= self.x + self.width and
+			my >= self.y and my <= self.y + self.titleBarHeight then
+			self.isDragging = true
+			self.dragOffsetX = mx - self.x
+			self.dragOffsetY = my - self.y
+		end
+	end
 
-		for _, member in ipairs(self.members) do
-			if member.x then
-				love.graphics.push()
-				member:__render(camera)
-				love.graphics.pop()
-			else
-				member:__render(camera)
+	if self.isDragging then
+		if game.mouse.pressedLeft then
+			self.x = mx - self.dragOffsetX
+			self.y = my - self.dragOffsetY
+		else
+			self.isDragging = false
+		end
+	end
+
+	if not self.minimized then
+		local ox = (self.__uiOffsetX or 0) + self.x
+		local oy = (self.__uiOffsetY or 0) + self.y + self.titleBarHeight
+		for _, child in ipairs(self.children) do
+			if child and child.exists and child.active then
+				child.__uiOffsetX = ox
+				child.__uiOffsetY = oy
+				if self.cameras and not child.cameras then
+					child.cameras = self.cameras
+				end
+				child:update(dt)
 			end
 		end
 	end
+end
+
+function Window:__render(camera)
+	if self.closed or not self.visible then return end
+
+	local r, g, b, a = love.graphics.getColor()
+	local lineWidth = love.graphics.getLineWidth()
+	local prevFont = love.graphics.getFont()
+
+	local x = self.x - self.offset.x - (camera.scroll.x * self.scrollFactor.x)
+	local y = self.y - self.offset.y - (camera.scroll.y * self.scrollFactor.y)
+	local w = self.width
+	local h = self.minimized and self.titleBarHeight or self.height
+	local font = self.font or prevFont
+	love.graphics.setFont(font)
+
+	love.graphics.setColor(self.bgColor[1], self.bgColor[2], self.bgColor[3], 0.96 * self.alpha)
+	love.graphics.rectangle("fill", x, y, w, h, 4, 4)
+
+	love.graphics.setColor(self.titleBarColor[1], self.titleBarColor[2],
+		self.titleBarColor[3], self.alpha)
+	love.graphics.rectangle("fill", x, y, w, self.titleBarHeight, 4, 4)
+
+	love.graphics.setColor(self.borderColor[1], self.borderColor[2],
+		self.borderColor[3], self.alpha)
+	love.graphics.setLineWidth(self.borderSize)
+	love.graphics.rectangle("line", x, y, w, h, 4, 4)
 
 	love.graphics.setColor(self.textColor[1], self.textColor[2],
 		self.textColor[3], self.alpha)
-	love.graphics.print(self.title, self.font, self.x + 10, self.y - 25)
+	love.graphics.print(tostring(self.title or ""), x + 8,
+		y + (self.titleBarHeight - font:getHeight()) * 0.5)
 
-	self.exitButton:__render(camera)
-	self.minButton:__render(camera)
+	local buttonSize = self.titleBarHeight - 8
+	local btnRight = x + w - 4
+	if self.closable then
+		local bx, by = btnRight - buttonSize, y + 4
+		local col = (self.hoveredButton == "close") and self.buttonHoveredColor or self.buttonColor
+		love.graphics.setColor(col[1], col[2], col[3], self.alpha)
+		love.graphics.rectangle("fill", bx, by, buttonSize, buttonSize, 2, 2)
+		love.graphics.setColor(1, 1, 1, self.alpha)
+		love.graphics.printf("X", bx, by + (buttonSize - font:getHeight()) * 0.5, buttonSize, "center")
+		btnRight = bx - 4
+	end
+	if self.minimizable then
+		local bx, by = btnRight - buttonSize, y + 4
+		local col = (self.hoveredButton == "minimize") and Color.fromRGB(90, 90, 120) or self.buttonColor
+		love.graphics.setColor(col[1], col[2], col[3], self.alpha)
+		love.graphics.rectangle("fill", bx, by, buttonSize, buttonSize, 2, 2)
+		love.graphics.setColor(1, 1, 1, self.alpha)
+		love.graphics.printf(self.minimized and "+" or "-", bx,
+			by + (buttonSize - font:getHeight()) * 0.5, buttonSize, "center")
+	end
 
-	love.graphics.setColor(cr, cg, cb, ca)
+	if not self.minimized then
+		love.graphics.push()
+		love.graphics.translate(x, y + self.titleBarHeight)
+		for _, child in ipairs(self.children) do
+			if child and child:_canDraw() then
+				local pa = child.alpha
+				child.alpha = pa * self.alpha
+				child:__render(camera)
+				child.alpha = pa
+			end
+		end
+		love.graphics.pop()
+	end
+
+	love.graphics.setFont(prevFont)
+	love.graphics.setColor(r, g, b, a)
+	love.graphics.setLineWidth(lineWidth)
 end
 
 return Window

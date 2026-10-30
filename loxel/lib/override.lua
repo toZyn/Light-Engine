@@ -299,7 +299,7 @@ end
 function love.system.getDevice()
 	local os = love.system.getOS()
 	if os == "Android" or os == "iOS" then
-		return (not os == "iOS" and ischromeos()) and "Desktop" or "Mobile"
+		return (os ~= "iOS" and ischromeos()) and "Desktop" or "Mobile"
 	elseif os == "OS X" or os == "Windows" or os == "Linux" then
 		return "Desktop"
 	end
@@ -330,7 +330,7 @@ if --[[not love.markDeprecated actually this is better and]] debug then
 	local __markDeprecated__, __Sl__, __none__ = "markDeprecated", "Sl", ""
 	local __functionvariant__, __functionvariantin__ = "functionvariant", "function variant in"
 	local __methodvariant__, __methodvariantin__ = "methodvariant", "method variant in"
-	local __replaced__, __replcaedby__ = "replcaed", "(replaced by %s)"
+	local __replaced__, __replacedby__ = "replaced", "(replaced by %s)"
 	local __renamed__, __renamedto__ = "renamed", "(renamed to %s)"
 	local __warning__ = "LOVE - Warning: %s:%d: Using deprecated %s %s %s"
 	local deprecated = {}

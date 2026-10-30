@@ -1,8 +1,13 @@
 local Notefield = ActorGroup:extend("Notefield")
 
+local EMPTY_NOTES = {}
+local function sortChartNotes(a, b) return a.t < b.t end
+local function sortActiveNotes(a, b) return a.time < b.time end
+
 function Notefield:new(x, y, keys, skin, character, vocals, speed)
 	if keys == nil then keys = 4 end
 	if skin == nil then skin = "default" end
+	if type(skin) == "string" then skin = Skin(skin) end
 	if speed == nil then speed = 1 end
 
 	Notefield.super.new(self, x, y)
@@ -11,7 +16,7 @@ function Notefield:new(x, y, keys, skin, character, vocals, speed)
 	self.noteWidth = 160 * 0.7
 	self.height = 514
 	self.keys = keys
-	self.skin = skin.data
+	self.skin = skin and skin.data or Skin("default").data
 
 	self.time, self.beat = 0, 0
 	self.offsetTime = 0
@@ -102,7 +107,8 @@ end
 function Notefield:makeNotesFromChart(notes)
 	self.chartNotes = notes
 	self.chartIndex = 1
-	table.sort(self.chartNotes, function(a, b) return a.t < b.t end)
+	self.lastSpawnTime = -math.huge
+	table.sort(self.chartNotes, sortChartNotes)
 
 	for _, note in ipairs(self.activeNotes) do
 		if note.group then
@@ -120,12 +126,41 @@ function Notefield:makeNotesFromChart(notes)
 	end
 end
 
-function Notefield:getNotes(time, direction, sustainLoop)
-	local notes = self.activeNotes
-	if #notes == 0 then return {} end
+function Notefield:seekTo(timeSec)
+	local targetMs = (timeSec or 0) * 1000
+	self.chartIndex = 1
+	self.lastSpawnTime = -math.huge
+	if self.chartNotes then
+		while self.chartIndex <= #self.chartNotes and self.chartNotes[self.chartIndex].t < targetMs - 5 do
+			self.chartIndex = self.chartIndex + 1
+		end
+	end
+	for i = #self.activeNotes, 1, -1 do
+		local note = self.activeNotes[i]
+		if note.time < timeSec - 0.005 then
+			self:removeNoteFromIndex(i)
+			note:destroy()
+		end
+	end
+	self.time = timeSec or 0
+end
 
-	local safeZoneOffset, hitNotes, i, started, hasSustain,
-	forceHit, noteTime, hitTime, prev, prevIdx = Note.safeZoneOffset, {}, 1
+function Notefield:getNotes(time, direction, sustainLoop, outBuffer)
+	local notes = self.activeNotes
+	if #notes == 0 then
+		if outBuffer then table.clear(outBuffer); return outBuffer, false end
+		return EMPTY_NOTES, false
+	end
+
+	local hitNotes = outBuffer
+	if hitNotes then
+		table.clear(hitNotes)
+	else
+		hitNotes = {}
+	end
+
+	local safeZoneOffset, i, started, hasSustain,
+	forceHit, noteTime, prev, prevIdx = Note.safeZoneOffset, 1
 	for _, note in ipairs(notes) do
 		noteTime = note.time
 		if not note.tooLate
@@ -248,37 +283,46 @@ function Notefield:update(dt)
 	end
 	self.spawnBuffer = math.max(2.0, 1.0 + maxSpeed * 0.5)
 
-	if #self.chartNotes == 0 then return end
+	if #self.chartNotes > 0 and self.chartIndex <= #self.chartNotes then
+		local currentTime = (self.time - self.offsetTime) * 1000
+		local spawnTime = currentTime + self.spawnBuffer * 1000
 
-	local currentTime = (self.time - self.offsetTime) * 1000
-	local spawnTime = currentTime + self.spawnBuffer * 1000
+		if spawnTime - self.lastSpawnTime >= 100 or spawnTime < self.lastSpawnTime then
+			self.lastSpawnTime = spawnTime
+			local needsSort = false
+			local prevMaxTime = #self.activeNotes > 0 and self.activeNotes[#self.activeNotes].time or -math.huge
 
-	if spawnTime - self.lastSpawnTime < 100 then return end
-	self.lastSpawnTime = spawnTime
+			while self.chartIndex <= #self.chartNotes do
+				local chartNote = self.chartNotes[self.chartIndex]
+				if chartNote.t > spawnTime then break end
 
-	while self.chartIndex <= #self.chartNotes do
-		local chartNote = self.chartNotes[self.chartIndex]
-		if chartNote.t > spawnTime then break end
+				local sustainTime = chartNote.l or 0
+				if sustainTime ~= 0 then
+					sustainTime = math.max(sustainTime / 1000, 0.125)
+				end
 
-		local sustainTime = chartNote.l or 0
-		if sustainTime ~= 0 then
-			sustainTime = math.max(sustainTime / 1000, 0.125)
+				local note = Note(chartNote.t / 1000, chartNote.d % 4, sustainTime, chartNote.k, self.skin)
+				note.parent = self
+				note.gf = chartNote.gf
+
+				table.insert(self.activeNotes, note)
+				self.chartIndex = self.chartIndex + 1
+
+				if self.state and self.state.scripts then
+					self.state.scripts:call("noteSpawn", note)
+				end
+
+				if note.time < prevMaxTime then
+					needsSort = true
+				else
+					prevMaxTime = note.time
+				end
+			end
+
+			if needsSort and #self.activeNotes > 1 then
+				table.sort(self.activeNotes, sortActiveNotes)
+			end
 		end
-
-		local note = Note(chartNote.t / 1000, chartNote.d % 4, sustainTime, chartNote.k, self.skin)
-		note.parent = self
-		note.gf = chartNote.gf
-
-		table.insert(self.activeNotes, note)
-		self.chartIndex = self.chartIndex + 1
-
-		if self.state.scripts then
-			self.state.scripts:call("noteSpawn", note)
-		end
-	end
-
-	if #self.activeNotes > 1 then
-		table.sort(self.activeNotes, function(a, b) return a.time < b.time end)
 	end
 
 	for _, lane in ipairs(self.lanes) do
@@ -306,14 +350,6 @@ function Notefield:getHeight()
 end
 
 function Notefield:destroy()
-	ActorSprite.destroy(self)
-
-	self.modifiers = nil
-	if self.receptors then
-		for _, r in ipairs(self.receptors) do r:destroy() end
-		self.receptors = nil
-	end
-
 	if self.activeNotes then
 		for _, n in ipairs(self.activeNotes) do n:destroy() end
 		self.activeNotes = nil
@@ -321,20 +357,26 @@ function Notefield:destroy()
 
 	if self.lanes then
 		for _, l in ipairs(self.lanes) do
-			l:destroy(); if l.receptor then l.receptor:destroy() end
-			l.renderedNotes, l.renderedNotesI, l.currentNoteI, l.receptor = nil
+			if l.renderedNotes then table.clear(l.renderedNotes) end
+			l.renderedNotes, l.renderedNotesI, l.currentNoteI, l.receptor = nil, nil, nil, nil
 		end
 	end
 
+	Notefield.super.destroy(self)
+
+	self.modifiers = nil
+	self.receptors = nil
+	self.lanes = nil
 	self.chartNotes = nil
 end
 
 function Notefield:__prepareLane(direction, lane, time)
 	if self.noNoteRender then
-		for _, note in ipairs(lane.renderedNotes) do
+		for i = #lane.renderedNotes, 1, -1 do
+			local note = lane.renderedNotes[i]
 			note.group = nil
 			lane:remove(note)
-			table.delete(lane.renderedNotes, note)
+			lane.renderedNotes[i] = nil
 		end
 		return
 	end
@@ -349,10 +391,11 @@ function Notefield:__prepareLane(direction, lane, time)
 	table.clear(renderedNotesI)
 
 	if size == 0 then
-		for _, note in ipairs(renderedNotes) do
+		for i = #renderedNotes, 1, -1 do
+			local note = renderedNotes[i]
 			note.group = nil
 			lane:remove(note)
-			table.delete(renderedNotes, note)
+			renderedNotes[i] = nil
 		end
 		return
 	end
@@ -393,11 +436,12 @@ function Notefield:__prepareLane(direction, lane, time)
 		noteI = noteI + 1
 	end
 
-	for _, note in ipairs(renderedNotes) do
+	for i = #renderedNotes, 1, -1 do
+		local note = renderedNotes[i]
 		if not renderedNotesI[note] then
 			note.group = nil
 			lane:remove(note)
-			table.delete(renderedNotes, note)
+			table.remove(renderedNotes, i)
 		end
 	end
 end

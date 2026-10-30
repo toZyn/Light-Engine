@@ -1,175 +1,184 @@
----@class EditorMenu
-local EditorMenu = SpriteGroup:extend("EditorMenu")
+local EditorMenu = Substate:extend("EditorMenu")
 
-function EditorMenu:new(completionCallback)
+EditorMenu.entries = {
+	{
+		label = "Chart Editor",
+		desc = "Create & edit songs, notes, sustains, BPM, events, and difficulties.",
+		action = function()
+			PlayState.chartingMode = true
+			if not PlayState.SONG then
+				pcall(PlayState.loadSong, "bopeebo", "normal")
+			end
+			game.switchState(ChartingState())
+		end
+	},
+	{
+		label = "Character Editor",
+		desc = "Configure character sprites, animations, offsets, health icons, and camera.",
+		action = function()
+			CharacterEditor.onPlayState = false
+			game.switchState(CharacterEditor())
+		end
+	},
+	{
+		label = "Stage & Cutscene Editor",
+		desc = "Preview stages, adjust character/camera positions, and build JSON cutscenes.",
+		action = function()
+			game.switchState(CutsceneState())
+		end
+	},
+	{
+		label = "Create New Mod",
+		desc = "Generate a ready-to-use mod template folder with metadata, song, character, stage & script.",
+		action = function(menu)
+			local baseId = "my-mod"
+			local idx = 1
+			local candidate = baseId
+			while paths.exists((Mods.root or "mods") .. "/" .. candidate, "directory") do
+				idx = idx + 1
+				candidate = baseId .. "-" .. idx
+			end
+			local ok, msg = ModAPI.createTemplate(candidate, {
+				name = "My Mod " .. tostring(idx)
+			})
+			if ok then
+				util.playSfx(paths.getSound("confirmMenu"))
+				Toast.info("Mod created: " .. tostring(msg))
+			else
+				Toast.error(tostring(msg))
+			end
+		end
+	}
+}
+
+function EditorMenu:new(onSave)
 	EditorMenu.super.new(self)
 
-	self.exit = false
-	self.completionCallback = completionCallback
-
-	self.optionShit = {
-		{"charter",   "Chart Editor"},
-		{"character", "Character Editor"},
-		{"charter",   "Cutscene Editor"}
-	}
+	self.onSave = onSave
 	self.curSelected = 1
 
 	self.bg = Graphic(0, 0, game.width, game.height, Color.BLACK)
 	self.bg.alpha = 0
-	self.bg:setScrollFactor()
+	self.bg.scrollFactor:set(0, 0)
 	self:add(self.bg)
 
-	self.grpText = SpriteGroup()
-	self.grpText:setScrollFactor()
-	self:add(self.grpText)
+	self.headerBg = Graphic(0, 0, game.width, 64, Color.fromRGB(16, 16, 24))
+	self.headerBg.alpha = 0.9
+	self.headerBg.scrollFactor:set(0, 0)
+	self:add(self.headerBg)
 
-	self.grpIcon = SpriteGroup()
-	self.grpIcon:setScrollFactor()
-	self:add(self.grpIcon)
-end
+	local titleFont = paths.getFont("vcr.ttf", 28) or love.graphics.getFont()
+	self.titleText = Text(28, 18, "LIGHT ENGINE — EDITORS & MODDING TOOLS", titleFont, Color.WHITE)
+	self.titleText.scrollFactor:set(0, 0)
+	self:add(self.titleText)
 
-function EditorMenu:enter(parent)
-	self.parent = parent
+	self.grpOptions = Group()
+	self:add(self.grpOptions)
 
-	self.throttles = {}
-	self.throttles.left = Throttle:make({controls.down, controls, "ui_left"})
-	self.throttles.right = Throttle:make({controls.down, controls, "ui_right"})
-	self.throttles.up = Throttle:make({controls.down, controls, "ui_up"})
-	self.throttles.down = Throttle:make({controls.down, controls, "ui_down"})
-
-	for i = 0, #self.optionShit - 1 do
-		local optionText = Alphabet(0, (70 * i) + 30,
-			self.optionShit[i + 1][2], true, false)
-		optionText.isMenuItem = true
-		optionText.targetY = i
-		self.grpText:add(optionText)
-		optionText.ID = i + 1
-
-		if optionText:getWidth() > 980 then
-			local textScale = 980 / optionText:getWidth()
-			optionText.scale.x = textScale
-			for _, letter in ipairs(optionText.lettersArray) do
-				letter.x = letter.x * textScale
-				letter.offset.x = letter.offset.x * textScale
-			end
-		end
-
-		local icon = Sprite()
-		icon:loadTexture(paths.getImage("editor/menu/" .. self.optionShit[i + 1][1]))
-		icon:updateHitbox()
-		icon.ID = optionText.ID
-		self.grpIcon:add(icon)
+	for i, entry in ipairs(EditorMenu.entries) do
+		local item = AtlasText(90, 130 + (i - 1) * 110, entry.label, "bold")
+		item.scrollFactor:set(0, 0)
+		item.ID = i
+		item._targetX = 90
+		item._targetY = 130 + (i - 1) * 110
+		self.grpOptions:add(item)
 	end
-	self.grpText.alpha = 1
-	self.grpText.x = 0
-	self.grpIcon.alpha = 1
-	self.grpIcon.x = 0
-	self.x = 0
 
-	Tween.tween(self.bg, {alpha = 0.6}, 0.4, {ease = Ease.quartInOut})
+	self.footerBg = Graphic(0, game.height - 64, game.width, 64, Color.fromRGB(16, 16, 24))
+	self.footerBg.alpha = 0.92
+	self.footerBg.scrollFactor:set(0, 0)
+	self:add(self.footerBg)
 
-	self:revive()
-	self.visible = true
-	self.exit = false
+	local descFont = paths.getFont("vcr.ttf", 18) or love.graphics.getFont()
+	self.descText = Text(24, game.height - 44, "", descFont, Color.fromRGB(215, 220, 240), "center", game.width - 48)
+	self.descText.scrollFactor:set(0, 0)
+	self:add(self.descText)
 
-	self:changeSelection()
+	self.throttles = {
+		up = Throttle:make({controls.down, controls, "ui_up"}),
+		down = Throttle:make({controls.down, controls, "ui_down"})
+	}
+
+	self:changeSelection(0)
 end
 
-local triggerChoice = {
-	["Chart Editor"] = function() game.switchState(ChartingState()) end,
-	--["Character Editor"] = function() game.switchState(CharacterEditor()) end,
-	["Cutscene Editor"] = function() game.switchState(CutsceneState()) end
-}
+function EditorMenu:enter()
+	EditorMenu.super.enter(self)
+	Tween.tween(self.bg, {alpha = 0.72}, 0.25, {ease = Ease.quartOut})
+end
 
 function EditorMenu:update(dt)
 	EditorMenu.super.update(self, dt)
 
-	if not self.exit then
-		if self.throttles.up:check() then self:changeSelection(shift and -2 or -1) end
-		if self.throttles.down:check() then self:changeSelection(shift and 2 or 1) end
-
-		if controls:pressed('back') then
-			util.playSfx(paths.getSound('cancelMenu'))
-			self.exit = true
-
-			Tween.cancelTweensOf(self.grpText)
-			Tween.tween(self.grpText, {x = -720, alpha = 0}, 0.4, {ease = Ease.circIn})
-
-			Tween.cancelTweensOf(self.grpIcon)
-			Tween.tween(self.grpIcon, {x = -720, alpha = 0}, 0.4, {ease = Ease.circIn})
-
-			Tween.cancelTweensOf(self.bg)
-			Tween.tween(self.bg, {alpha = 0}, 0.4, {
-				ease = Ease.quartInOut,
-				onComplete = function()
-					return self.parent:remove(self)
-				end
-			})
-		end
-
-		if controls:pressed('accept') then
-			local switch = triggerChoice[self.optionShit[self.curSelected][2]]
-			if switch then
-				game.sound.music:stop()
-				switch()
-			end
-		end
+	if Mouse.wheel ~= 0 then
+		self:changeSelection(-Mouse.wheel)
 	end
 
-	for _, icon in pairs(self.grpIcon.members) do
-		local textTracker = nil
-		for _, spr in pairs(self.grpText.members) do
-			if icon.ID == spr.ID then textTracker = spr end
-		end
-		if textTracker then
-			icon:setPosition(textTracker.x + textTracker:getWidth() + 10,
-				textTracker.y - 30)
-		end
+	if self.throttles then
+		local shift = game.keys.pressed.SHIFT
+		if self.throttles.up:check(shift) then self:changeSelection(-1) end
+		if self.throttles.down:check(shift) then self:changeSelection(1) end
+	end
+
+	for _, item in ipairs(self.grpOptions.members) do
+		item.x = math.lerp(item._targetX, item.x, math.exp(-dt * 14))
+		item.y = math.lerp(item._targetY, item.y, math.exp(-dt * 14))
+	end
+
+	if controls:pressed("back") then
+		util.playSfx(paths.getSound("cancelMenu"))
+		self:close()
+		return
+	end
+
+	if controls:pressed("accept") then
+		self:activateCurrent()
 	end
 end
 
-function EditorMenu:changeSelection(huh)
-	if huh == nil then huh = 0 end
-	util.playSfx(paths.getSound('scrollMenu'))
+function EditorMenu:activateCurrent()
+	local entry = EditorMenu.entries[self.curSelected]
+	if not entry then return end
+	if entry.label == "Create New Mod" then
+		entry.action(self)
+		return
+	end
+	if self.onSave then self.onSave() end
+	util.playSfx(paths.getSound("confirmMenu"))
+	self:close()
+	entry.action(self)
+end
 
-	self.curSelected = self.curSelected + huh
+function EditorMenu:changeSelection(change)
+	change = change or 0
+	self.curSelected = (self.curSelected - 1 + change) % #EditorMenu.entries + 1
 
-	if self.curSelected > #self.optionShit then
-		self.curSelected = 1
-	elseif self.curSelected < 1 then
-		self.curSelected = #self.optionShit
+	for _, item in ipairs(self.grpOptions.members) do
+		if item.ID == self.curSelected then
+			item.alpha = 1
+			item._targetX = 120
+		else
+			item.alpha = 0.55
+			item._targetX = 80
+		end
 	end
 
-	local bullShit = 0
-
-	for _, item in pairs(self.grpText.members) do
-		item.targetY = bullShit - (self.curSelected - 1)
-		bullShit = bullShit + 1
-
-		item.alpha = 0.6
-
-		if item.targetY == 0 then item.alpha = 1 end
+	local entry = EditorMenu.entries[self.curSelected]
+	if entry and self.descText then
+		self.descText.content = entry.desc .. "  [ENTER: Open | ESC: Back]"
 	end
 
-	for _, icon in pairs(self.grpIcon.members) do
-		icon.alpha = icon.ID == self.curSelected and 1 or 0.6
+	if change ~= 0 then
+		util.playSfx(paths.getSound("scrollMenu"))
 	end
 end
 
-function EditorMenu:leave()
-	self.grpText:clear()
-	self.grpText.x = 0
-
-	self.grpIcon:clear()
-	self.grpIcon.x = 0
-
-	self:kill()
-	self.visible = false
-	self.parent = nil
-
-	if self.completionCallback then
-		self.completionCallback()
+function EditorMenu:close()
+	if self.throttles then
+		for _, t in pairs(self.throttles) do t:destroy() end
+		self.throttles = nil
 	end
+	EditorMenu.super.close(self)
 end
 
 return EditorMenu

@@ -55,28 +55,24 @@ function Sprite:loadTexture(texture, animated, frameWidth, frameHeight)
 	end
 	self.texture = texture or Sprite.defaultTexture
 
+	local texW, texH = self.texture:getWidth(), self.texture:getHeight()
 	if frameWidth == nil then frameWidth = 0 end
 	if frameWidth == 0 then
-		frameWidth = animated and self.texture:getHeight() or
-			self.texture:getWidth()
-		frameWidth = (frameWidth > self.texture:getWidth()) or
-			self.texture:getWidth() or frameWidth
-	elseif frameWidth > self.texture:getWidth() then
+		frameWidth = animated and math.min(texH, texW) or texW
+	elseif frameWidth > texW then
 		print('frameWidth: ' .. frameWidth ..
-			' is larger than the graphic\'s width: ' ..
-			self.texture:getWidth())
+			' is larger than the graphic\'s width: ' .. texW)
+		frameWidth = texW
 	end
 	self.width = frameWidth
 
 	if frameHeight == nil then frameHeight = 0 end
 	if frameHeight == 0 then
-		frameHeight = animated and frameWidth or self.texture:getHeight()
-		frameHeight = (frameHeight > self.texture:getHeight()) or
-			self.texture:getHeight() or frameHeight
-	elseif frameHeight > self.texture:getHeight() then
+		frameHeight = animated and math.min(frameWidth, texH) or texH
+	elseif frameHeight > texH then
 		print('frameHeight: ' .. frameHeight ..
-			' is larger than the graphic\'s height: ' ..
-			self.texture:getHeight())
+			' is larger than the graphic\'s height: ' .. texH)
+		frameHeight = texH
 	end
 	self.height = frameHeight
 
@@ -205,14 +201,19 @@ function Sprite:__render(camera)
 
 	local min, mag, anisotropy = texture:getFilter()
 	local mode = self.antialiasing and "linear" or "nearest"
-	texture:setFilter(mode, mode, anisotropy)
+	local filterChanged = (min ~= mode or mag ~= mode)
+	if filterChanged then
+		texture:setFilter(mode, mode, anisotropy)
+	end
 
 	if f then
 		love.graphics.draw(texture, f.quad, x, y, rad, sx, sy, ox, oy, kx, ky)
 	else
 		love.graphics.draw(texture, x, y, rad, sx, sy, ox, oy, kx, ky)
 	end
-	texture:setFilter(min, mag, anisotropy)
+	if filterChanged then
+		texture:setFilter(min, mag, anisotropy)
+	end
 
 	love.graphics.pop()
 end
@@ -223,22 +224,22 @@ function Sprite:_markDeprecated(func, new)
 end
 
 function Sprite.newFrame(name, x, y, w, h, sw, sh, ox, oy, ow, oh, r)
-	Sprite._markDeprecated("Sprite", "Sprite.newFrame", "Frame")
+	Sprite:_markDeprecated("Sprite.newFrame", "Frame")
 	return Frame(name, x, y, w, h, sw, sh, ox, oy, ow, oh, r)
 end
 
 function Sprite.getFramesFromSparrow(texture, description)
-	Sprite._markDeprecated("Sprite", "Sprite.getFramesFromSparrow", "FrameCollection.fromSparrow")
+	Sprite:_markDeprecated("Sprite.getFramesFromSparrow", "FrameCollection.fromSparrow")
 	return FrameCollection.fromSparrow(texture, description)
 end
 
 function Sprite.getFramesFromPacker(texture, description)
-	Sprite._markDeprecated("Sprite", "Sprite.getFramesFromPacker", "FrameCollection.fromPacker")
+	Sprite:_markDeprecated("Sprite.getFramesFromPacker", "FrameCollection.fromPacker")
 	return FrameCollection.fromPacker(texture, description)
 end
 
 function Sprite.getTiles(texture, tileSize, region, tileSpacing)
-	Sprite._markDeprecated("Sprite", "Sprite.getTiles", "FrameCollection.fromTiles")
+	Sprite:_markDeprecated("Sprite.getTiles", "FrameCollection.fromTiles")
 	return FrameCollection.fromTiles(texture, tileSize, region, tileSpacing)
 end
 

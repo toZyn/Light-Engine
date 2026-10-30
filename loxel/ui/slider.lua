@@ -1,177 +1,136 @@
----@class Slider:Object
-local Slider = Object:extend("Slider")
+---@class UISlider:Object
+local Slider = Object:extend("UISlider")
 
-function Slider:new(x, y, width, height, value, snap, sliderType, min, max)
+local function getMousePos(self)
+	local mx, my = game.mouse.x, game.mouse.y
+	local cam = self.cameras and self.cameras[1]
+	if cam then
+		local z = cam.zoom or 1
+		if z ~= 0 and z ~= 1 then
+			mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
+			my = (my - cam.height * 0.5) / z + cam.height * 0.5
+		end
+		mx = mx + cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1)
+		my = my + cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1)
+	end
+	return mx - (self.__uiOffsetX or 0), my - (self.__uiOffsetY or 0)
+end
+
+function Slider:new(x, y, width, height, value, min, max, step, orientation, style, onChanged)
 	Slider.super.new(self, x, y)
 
-	self.width = width
-	self.height = height
+	self.width = width or 100
+	self.height = height or 14
 
-	self.value = value or 0
 	self.min = min or 0
-	self.max = max or 1
-	self.snap = snap or nil
+	self.max = max or 100
+	self.step = step or 1
+	self.value = math.clamp(value or self.min, self.min, self.max)
 
-	self.dragging = false
-	self.disabled = false
-	self.onChanged = nil
-	self.sliderType = (type(sliderType) == "string") and sliderType:lower()
+	self.orientation = orientation or "horizontal"
+	self.style = style or "circle"
 
-	self.color = {0.2, 0.2, 0.2}
-	self.lineColor = Color.WHITE
-	self.knobColor = {0.4, 0.4, 0.4}
+	self.trackColor = Color.fromRGB(48, 46, 58)
+	self.fillColor = Color.fromRGB(108, 168, 255)
+	self.handleColor = {1, 1, 1}
+	self.handleSize = math.max(self.height, 14)
 
-	self.lineSize = 0.5
-	self.round = {4, 4}
+	self.isDragging = false
+	self.hovered = false
+	self.onChanged = onChanged
 end
 
-function Slider:update()
-	local mx, my = game.mouse.x, game.mouse.y
-	if self.dragging then
-		local newValue
-		if self.sliderType == "vertical" then
-			local relativeY = (game.mouse.y - self.width / 2) - self.y
-			local clampedY = math.max(self.min, math.min(
-				self.height - self.width, relativeY))
-			newValue = self.min + (clampedY / (self.height - self.width)) *
-				(self.max - self.min)
+function Slider:getRatio()
+	if self.max == self.min then return 0 end
+	return math.clamp((self.value - self.min) / (self.max - self.min), 0, 1)
+end
+
+function Slider:setValue(val, notify)
+	local stepped = val
+	if self.step and self.step > 0 then
+		stepped = math.floor((val - self.min) / self.step + 0.5) * self.step + self.min
+		stepped = tonumber(string.format("%.6f", stepped)) or stepped
+	end
+	local clamped = math.clamp(stepped, self.min, self.max)
+	if clamped ~= self.value then
+		self.value = clamped
+		if notify and self.onChanged then
+			self.onChanged(self.value)
+		end
+	end
+end
+
+function Slider:update(dt)
+	Slider.super.update(self, dt)
+	if not self.visible then
+		self.isDragging = false
+		self.hovered = false
+		return
+	end
+
+	local mx, my = getMousePos(self)
+	local pad = self.handleSize * 0.5
+	self.hovered = (mx >= self.x - pad and mx <= self.x + self.width + pad and
+		my >= self.y - pad and my <= self.y + self.height + pad)
+
+	if self.hovered and game.mouse.justPressedLeft then
+		self.isDragging = true
+	elseif not game.mouse.pressedLeft then
+		self.isDragging = false
+	end
+
+	if self.isDragging then
+		local ratio
+		if self.orientation == "vertical" then
+			ratio = 1 - math.clamp((my - self.y) / math.max(1, self.height), 0, 1)
 		else
-			local relativeX = (game.mouse.x - self.height / 2) - self.x
-			local clampedX = math.max(self.min, math.min(
-				self.width - self.height, relativeX))
-			newValue = self.min + (clampedX / (self.width - self.height)) *
-				(self.max - self.min)
+			ratio = math.clamp((mx - self.x) / math.max(1, self.width), 0, 1)
 		end
-
-		if self.snap then
-			newValue =
-				math.floor((newValue + self.snap * 0.5) / self.snap) * self.snap
-			newValue = math.max(self.min, math.min(self.max, newValue))
-		end
-
-		if self.value ~= newValue then
-			self.value = newValue
-			if self.onChanged then self.onChanged(self.value) end
-		end
-	end
-
-	if game.mouse.justPressedLeft then
-		self.dragging = (mx >= self.x and mx <= self.x + self.width and my >=
-			self.y and my <= self.y + self.height) and not self.disabled
-	end
-	if game.mouse.justReleasedLeft then
-		self.dragging = false
+		self:setValue(self.min + ratio * (self.max - self.min), true)
 	end
 end
 
-function Slider:__render()
+function Slider:__render(camera)
 	local r, g, b, a = love.graphics.getColor()
-	local lineWidth = love.graphics.getLineWidth()
 
-	love.graphics.setColor(self.color[1], self.color[2], self.color[3],
-		self.alpha)
+	local x, y = self.x - self.offset.x - (camera.scroll.x * self.scrollFactor.x),
+		self.y - self.offset.y - (camera.scroll.y * self.scrollFactor.y)
+	local ratio = self:getRatio()
 
-	if self.sliderType == "vertical" then
-		love.graphics.rectangle("fill", self.x, self.y, self.width, self.height,
-			self.round[1], self.round[2])
+	love.graphics.setColor(self.trackColor[1], self.trackColor[2],
+		self.trackColor[3], self.alpha)
+	love.graphics.rectangle("fill", x, y, self.width, self.height, 4, 4)
 
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-		if self.lineSize > 0 then
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.rectangle("line", self.x, self.y, self.width, self.height,
-				self.round[1], self.round[2])
-			love.graphics.setLineWidth(lineWidth)
-		end
-
-		if self.snap then
-			local stepCount = 0
-			for i = self.min, self.max, self.snap do
-				local snapY = self.y + (i - self.min) / (self.max - self.min) *
-					(self.height - self.width) + self.width / 2 - 1
-				local snapWidth = stepCount % 2 == 0 and 10 or 5
-				local xOffset = stepCount % 2 == 0 and 5 or 2.5
-
-				love.graphics.setColor(0, 0, 0, 0.5 / self.alpha)
-				love.graphics.rectangle("fill", self.x - xOffset, snapY,
-					self.width + snapWidth, 2)
-
-				stepCount = (stepCount + 1) % 2
-			end
-		end
-
-		local knobX = self.x - 5
-		local knobY = self.y + (self.value - self.min) / (self.max - self.min) *
-			(self.height - self.width)
-
-		love.graphics.setColor(self.knobColor[1], self.knobColor[2],
-			self.knobColor[3], self.alpha)
-		love.graphics.rectangle("fill", knobX, knobY,
-			self.width + 10, self.width, self.round[1], self.round[2])
-
-		love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-		love.graphics.rectangle("fill", knobX, knobY +
-			self.width / 2, self.width + 10, self.width / 2, self.round[1],
-			self.round[2])
-
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-		if self.lineSize > 0 then
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.rectangle("line", knobX, knobY,
-				self.width + 10, self.width, self.round[1], self.round[2])
-			love.graphics.setLineWidth(lineWidth)
-		end
+	love.graphics.setColor(self.fillColor[1], self.fillColor[2],
+		self.fillColor[3], self.alpha)
+	if self.orientation == "vertical" then
+		local fh = self.height * ratio
+		love.graphics.rectangle("fill", x, y + self.height - fh, self.width, fh, 4, 4)
 	else
-		love.graphics.rectangle("fill", self.x, self.y, self.width, self.height,
-			self.round[1], self.round[2])
+		love.graphics.rectangle("fill", x, y, self.width * ratio, self.height, 4, 4)
+	end
 
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-		if self.lineSize > 0 then
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.rectangle("line", self.x, self.y, self.width, self.height,
-				self.round[1], self.round[2])
-			love.graphics.setLineWidth(lineWidth)
-		end
+	local hx, hy
+	if self.orientation == "vertical" then
+		hx = x + self.width * 0.5
+		hy = y + self.height * (1 - ratio)
+	else
+		hx = x + self.width * ratio
+		hy = y + self.height * 0.5
+	end
 
-		if self.snap then
-			local stepCount = 0
-			for i = self.min, self.max, self.snap do
-				local snapX = self.x + (i - self.min) / (self.max - self.min) *
-					(self.width - self.height) + self.height / 2 - 1
-				local snapHeight = stepCount % 2 == 0 and 10 or 5
-				local yOffset = stepCount % 2 == 0 and 5 or 2.5
+	love.graphics.setColor(self.handleColor[1], self.handleColor[2],
+		self.handleColor[3], self.alpha)
+	local rad = self.handleSize * 0.5
+	if self.style == "square" then
+		love.graphics.rectangle("fill", hx - rad, hy - rad, self.handleSize, self.handleSize, 2, 2)
+	else
+		love.graphics.circle("fill", hx, hy, rad)
+	end
 
-				love.graphics.setColor(0, 0, 0, 0.5 / self.alpha)
-				love.graphics.rectangle("fill", snapX, self.y - yOffset,
-					2, self.height + snapHeight)
-
-				stepCount = (stepCount + 1) % 2
-			end
-		end
-
-		local knobX = self.x + (self.value - self.min) / (self.max - self.min) *
-			(self.width - self.height)
-		local knobY = self.y - 5
-
-		love.graphics.setColor(self.knobColor[1], self.knobColor[2],
-			self.knobColor[3], self.alpha)
-		love.graphics.rectangle("fill", knobX, knobY,
-			self.height, self.height + 10, self.round[1], self.round[2])
-
-		love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-		love.graphics.rectangle("fill", knobX, knobY + self.height / 2 + 5,
-			self.height, self.height / 2 + 5, self.round[1], self.round[2])
-
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-		if self.lineSize > 0 then
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.rectangle("line", knobX, knobY,
-				self.height, self.height + 10, self.round[1], self.round[2])
-			love.graphics.setLineWidth(lineWidth)
-		end
+	if self.hovered or self.isDragging then
+		love.graphics.setColor(1, 1, 1, 0.2 * self.alpha)
+		love.graphics.circle("fill", hx, hy, rad + 2)
 	end
 
 	love.graphics.setColor(r, g, b, a)

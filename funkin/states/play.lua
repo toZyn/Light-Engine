@@ -233,26 +233,78 @@ function PlayState:enter()
 	conductor.onTimeChange:dispatch()
 
 	self.events = table.clone(PlayState.SONG.events)
+	self.eventIndex = 1
 	self.eventScripts = {}
+	self._sustainHitBuffer = {}
 
-	local error
+	local eventAliases = {
+		["change scroll speed"] = "scrollspeed",
+		["camera follow pos"] = "focuscamera",
+		["add camera zoom"] = "addcamerazoom",
+		["change character"] = "changecharacter",
+		["play animation"] = "playanimation",
+		["camera flash"] = "cameraflash",
+		["screen shake"] = "screenshake",
+		["hey!"] = "hey"
+	}
+
+	local function resolveEventPath(name)
+		local lower = tostring(name or ""):lower()
+		local candidates = {
+			"data/events/" .. lower:gsub(" ", "-"),
+			"data/events/" .. lower:gsub("[%s%-_!]", ""),
+			"data/events/" .. lower
+		}
+		if eventAliases[lower] then
+			table.insert(candidates, 1, "data/events/" .. eventAliases[lower])
+		end
+		for _, cand in ipairs(candidates) do
+			if paths.exists(paths.getPath(cand .. ".lua"), "file") then
+				return cand
+			end
+		end
+		return nil
+	end
+	self._resolveEventPath = resolveEventPath
+
 	for _, e in ipairs(self.events) do
-		local scriptPath = "data/events/" .. e.e:gsub(" ", "-"):lower()
-		if paths.exists(paths.getPath(scriptPath .. ".lua"), "file") then
-			if not self.eventScripts[e.e] then
+		if e and e.e and not self.eventScripts[e.e] then
+			local scriptPath = resolveEventPath(e.e)
+			if scriptPath then
 				self.eventScripts[e.e] = Script(scriptPath)
 				self.scripts:add(self.eventScripts[e.e])
-			end
-		else
-			if not error then
-				error = "Events not found: "
-			end
-			if not error:find(e.e) then
-				error = error .. e.e .. "; "
+			else
+				Logger.log("debug", "[PlayState] Event script not found (will dispatch onEvent only): " .. tostring(e.e))
 			end
 		end
 	end
-	if error then Toast.error(error:sub(1, -3)) end
+
+	-- Auto-load custom NoteType scripts from data/notetypes/<type>.lua
+	self.noteTypeScripts = {}
+	if PlayState.SONG.notes then
+		for _, sectionNotes in pairs(PlayState.SONG.notes) do
+			if type(sectionNotes) == "table" then
+				for _, n in ipairs(sectionNotes) do
+					local kind = n and n.k
+					if type(kind) == "string" and kind ~= "" and kind ~= "alt" and kind ~= "gf" and not self.noteTypeScripts[kind] then
+						local ntSlug = kind:gsub(" ", "-"):lower()
+						local ntCompact = kind:gsub("[%s%-_]", ""):lower()
+						for _, cand in ipairs({"data/notetypes/" .. kind, "data/notetypes/" .. ntSlug, "data/notetypes/" .. ntCompact}) do
+							if paths.exists(paths.getPath(cand .. ".lua"), "file") then
+								local scr = Script(cand)
+								self.noteTypeScripts[kind] = scr
+								self.scripts:add(scr)
+								break
+							end
+						end
+						if not self.noteTypeScripts[kind] then
+							self.noteTypeScripts[kind] = false
+						end
+					end
+				end
+			end
+		end
+	end
 
 	self.scripts:call("create")
 
@@ -532,7 +584,7 @@ function PlayState:executeCutsceneEvent(event, onComplete)
 				game.camera:follow(self.camFollow, nil)
 				Tween.tween(self.camFollow, {x = xCam, y = yCam}, time, {ease = Ease[ease]})
 			else
-				self.state.camFollow:set(xCam, yCam)
+				self.camFollow:set(xCam, yCam)
 				game.camera:follow(self.camFollow, nil, 2.4 * self.camSpeed)
 			end
 		end,
@@ -818,13 +870,84 @@ function PlayState:pushEvent(name, params)
 		return
 	end
 
-	local path = "data/events/" .. name:gsub(" ", "-"):lower()
 	if not self.eventScripts[name] then
-		self.eventScripts[name] = Script(path)
-		self.scripts:add(self.eventScripts[name])
+		local path = (self._resolveEventPath and self._resolveEventPath(name))
+			or ("data/events/" .. tostring(name):gsub(" ", "-"):lower())
+		if paths.exists(paths.getPath(path .. ".lua"), "file") then
+			self.eventScripts[name] = Script(path)
+			self.scripts:add(self.eventScripts[name])
+		end
 	end
 
-	self:executeEvent({e = name, v = params})
+	self:executeEvent({e = name, v = params, t = PlayState.conductor and PlayState.conductor.time or 0})
+end
+
+function PlayState:swapCharacter(slot, newCharName)
+	if not newCharName or newCharName == "" or not self.stage then return nil end
+	local s = tostring(slot or "bf"):lower()
+	local isBF = (s == "bf" or s == "boyfriend" or s == "player" or s == "0" or s == "player1")
+	local isGF = (s == "gf" or s == "girlfriend" or s == "2" or s == "gfversion")
+
+	local oldChar = isBF and self.boyfriend or (isGF and self.gf or self.dad)
+	if oldChar and oldChar.curCharacter == newCharName then return oldChar end
+
+	local ok, newChar = pcall(Character, 0, 0, newCharName, isBF)
+	if not ok or not newChar then return nil end
+
+	local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
+	local camPoint = isBF and self.stage.boyfriendCam or (isGF and self.stage.gfCam or self.stage.dadCam)
+	if posPoint then
+		newChar:setPosition(newChar.x + posPoint.x, newChar.y + posPoint.y)
+	end
+	if camPoint and newChar.cameraPosition then
+		newChar.cameraPosition.x = newChar.cameraPosition.x + camPoint.x
+		newChar.cameraPosition.y = newChar.cameraPosition.y + camPoint.y
+	end
+
+	if oldChar then
+		local idx = table.find(self.stage.members, oldChar)
+		if idx then
+			self.stage.members[idx] = newChar
+		else
+			self.stage:add(newChar)
+		end
+		if oldChar.script and self.scripts then
+			self.scripts:remove(oldChar.script)
+			oldChar.script:close()
+		end
+	else
+		self.stage:add(newChar)
+	end
+
+	if newChar.script and self.scripts then
+		self.scripts:add(newChar.script)
+	end
+
+	if isBF then
+		self.boyfriend = newChar
+		self.stage.boyfriend = newChar
+		if self.playerNotefield then self.playerNotefield.character = newChar end
+		if self.healthBar and self.healthBar.iconP1 then
+			self.healthBar.iconP1:changeIcon(newChar.icon)
+		end
+	elseif isGF then
+		newChar.isGF = true
+		self.gf = newChar
+		self.stage.gf = newChar
+	else
+		self.dad = newChar
+		self.stage.dad = newChar
+		if self.enemyNotefield then self.enemyNotefield.character = newChar end
+		if self.healthBar and self.healthBar.iconP2 then
+			self.healthBar.iconP2:changeIcon(newChar.icon)
+		end
+	end
+
+	if self.camTarget == oldChar then
+		self.camTarget = newChar
+	end
+	if oldChar then oldChar:destroy() end
+	return newChar
 end
 
 function PlayState:doCountdown(beat)
@@ -887,21 +1010,41 @@ function PlayState:update(dt)
 		if self.startingSong and PlayState.conductor.time >= self.startPos then
 			self.startingSong = false
 
-			self:playSong(self.startPos)
+			local startSec = (self.startPos or 0) / 1000
+			if startSec > 0 then
+				for _, nf in pairs(self.notefields) do
+					if nf and nf.seekTo then nf:seekTo(startSec) end
+				end
+				while self.events and self.events[self.eventIndex or 1] and
+					self.events[self.eventIndex or 1].t < self.startPos do
+					local skipped = self.events[self.eventIndex or 1]
+					if skipped.e == "FocusCamera" or skipped.e == "ScrollSpeed"
+						or skipped.e == "Change Scroll Speed" or skipped.e == "Change Character"
+						or skipped.e == "ChangeCharacter" then
+						self:executeEvent(skipped)
+					end
+					self.eventIndex = (self.eventIndex or 1) + 1
+				end
+			end
+
+			self:playSong(startSec)
 			PlayState.conductor.time = self.startPos
 			self.scripts:call("songStart")
 		else
-			local noFocus, events, e = true, self.events
-			while events[1] do
-				e = events[1]
-				if e.t <= game.sound.music.time * 1000 then
+			local noFocus, events = true, self.events
+			local idx = self.eventIndex or 1
+			local curMusicMs = game.sound.music.time * 1000
+			while events[idx] do
+				local e = events[idx]
+				if e.t <= curMusicMs then
 					self:executeEvent(e)
-					table.remove(events, 1)
+					idx = idx + 1
 					if e.e == "FocusCamera" then noFocus = false end
 				else
 					break
 				end
 			end
+			self.eventIndex = idx
 			if noFocus and self.camTarget and game.camera.followLerp then
 				self:cameraMovement(self:getCameraPosition(self.camTarget))
 			end
@@ -925,7 +1068,7 @@ function PlayState:update(dt)
 		nf.time, nf.beat = time, PlayState.conductor.currentBeatFloat
 		local isPlayer, isPNF, sustainOffset = not nf.bot, nf == self.playerNotefield, 0.25 / nf.speed
 
-		for _, note in ipairs(nf:getNotes(time, nil, true)) do
+		for _, note in ipairs(nf:getNotes(time, nil, true, self._sustainHitBuffer)) do
 			local hasInput = not isPlayer or controls:down(PlayState.keysControls[note.direction])
 			local char = note.character or (note.gf and self.gf or nf.character)
 
@@ -1064,7 +1207,7 @@ function PlayState:onSettingChange(category, setting)
 			["botplayMode"] = function()
 				self.playerNotefield.bot = ClientPrefs.data.botplayMode
 				self:recalculateRating()
-				self.usedBotplay = true
+				self.usedBotPlay = true
 			end,
 			["backgroundDim"] = function()
 				self.camHUD.bgColor[4] = ClientPrefs.data.backgroundDim / 100
@@ -1339,12 +1482,13 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 	key = self:getKeyFromEvent(controls)
 	if key < 0 then return end
 
+	local pressWallTime = time or love.timer.getTime()
 	local fixedKey, offset = key + 1,
-		(time - self.lastTick) * game.sound.music:getActualPitch()
+		(pressWallTime - (self.lastTick or pressWallTime)) * game.sound.music:getActualPitch()
 	for _, notefield in pairs(self.notefields) do
 		if notefield.is and not notefield.bot then
-			time = notefield.time + offset
-			local hitNotes, hasSustain = notefield:getNotes(time, key)
+			local nfTime = notefield.time + offset
+			local hitNotes, hasSustain = notefield:getNotes(nfTime, key)
 			local l = #hitNotes
 
 			if l == 0 then
@@ -1367,7 +1511,7 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 					end
 					i = i + 1
 				end
-				self:goodNoteHit(firstNote, time)
+				self:goodNoteHit(firstNote, nfTime)
 				self.ghostTime = 0.17
 			end
 		end
@@ -1431,10 +1575,14 @@ function PlayState:endSong(skip)
 		if notefield.vocals then notefield.vocals:stop() end
 	end
 
-	if not self.usedBotPlay then
+	if not self.usedBotPlay and not self.chartingMode and not PlayState.chartingMode then
 		Highscore.saveScore(PlayState.SONG.song, self.score, self.songDifficulty)
 	end
-	if self.chartingMode then
+	if self.chartingMode or PlayState.chartingMode then
+		controls:unbindPress(self.bindedKeyPress)
+		controls:unbindRelease(self.bindedKeyRelease)
+		game.sound.music.onComplete = nil
+		self.skipResync = true
 		game.switchState(ChartingState())
 		return
 	end
@@ -1498,7 +1646,8 @@ function PlayState:updateDiscordRPC(paused)
 	local detailsText = "Freeplay"
 	if PlayState.storyMode then detailsText = "Story Mode: " .. PlayState.storyWeek end
 
-	local diff = PlayState.defaultDifficulty
+	local diff = (PlayState.songDifficulty and PlayState.songDifficulty ~= "")
+		and PlayState.songDifficulty or PlayState.defaultDifficulty
 
 	if paused then
 		Discord.changePresence({
@@ -1515,7 +1664,8 @@ function PlayState:updateDiscordRPC(paused)
 		})
 	else
 		local startTimestamp = os.time() * 1000
-		local endTimestamp = startTimestamp + game.sound.music.duration * 1000
+		local remaining = math.max(0, (game.sound.music.duration - game.sound.music.time)) * 1000
+		local endTimestamp = startTimestamp + remaining
 		Discord.changePresence({
 			details = detailsText,
 			state = PlayState.SONG.song .. ' - [' .. diff .. ']',
@@ -1531,8 +1681,15 @@ function PlayState:leave()
 	self.scripts:call("leave")
 
 	PlayState.prevCamFollow = self.camFollow
-	PlayState.conductor:destroy()
-	PlayState.conductor = nil
+	if PlayState.conductor then
+		PlayState.conductor:destroy()
+		PlayState.conductor = nil
+	end
+	if game.sound.music then
+		game.sound.music.onComplete = nil
+	end
+	if self.timer then self.timer:clear() end
+	if self.tween then self.tween:clear() end
 
 	controls:unbindPress(self.bindedKeyPress)
 	controls:unbindRelease(self.bindedKeyRelease)

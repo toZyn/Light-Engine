@@ -57,23 +57,24 @@ end
 function Shader:get() return rawget(self, "__shader") end
 
 function Shader:destroy()
-	self.__shader:release()
-	rawset(self, "__shader", nil)
-
-	Shader.instances[self] = nil
+	if rawget(self, "__shader") then
+		self.__shader:release()
+		rawset(self, "__shader", nil)
+	end
+	table.delete(Shader.instances, self)
 end
 
 function Shader.updateTime(dt)
-	for _, shader in pairs(Shader.instances) do
-		shader:update(dt)
+	for i = 1, #Shader.instances do
+		Shader.instances[i]:update(dt)
 	end
 end
 
 function Shader.clear()
-	for _, shader in pairs(Shader.instances) do
-		shader:destroy()
+	for i = #Shader.instances, 1, -1 do
+		Shader.instances[i]:destroy()
 	end
-	Shader.instances = {}
+	table.clear(Shader.instances)
 end
 
 return Shader

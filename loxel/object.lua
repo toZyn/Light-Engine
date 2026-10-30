@@ -76,7 +76,7 @@ function Object:destroy()
 	self.offset:zero()
 	self.origin:zero()
 	self.scale.x, self.scale.y = 1, 1
-	if type(zoom) == "table" then self.zoom:set(1, 1) end
+	if type(self.zoom) == "table" then self.zoom:set(1, 1) end
 
 	self.skew:zero()
 	self.velocity:zero()

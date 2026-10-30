@@ -267,12 +267,15 @@ function PauseSubstate:loadPauseMusic()
 end
 
 function PauseSubstate:close()
-	if self.parent.pauseButton then
+	if self.parent and self.parent.pauseButton then
 		self:remove(self.parent.pauseButton)
 		self.parent:add(self.parent.pauseButton)
 		Tween.cancelTweensOf(self.parent.pauseButton)
-		Tween.tween(self.parent.pauseButton, {alpha = 1}, 0.25, {ease = Ease.quartOut});
-		Tween.tween(self.parent.pauseCircle, {alpha = 0.1}, 0.25, {ease = Ease.quartOut});
+		Tween.tween(self.parent.pauseButton, {alpha = 1}, 0.25, {ease = Ease.quartOut})
+		if self.parent.pauseCircle then
+			Tween.cancelTweensOf(self.parent.pauseCircle)
+			Tween.tween(self.parent.pauseCircle, {alpha = 0.1}, 0.25, {ease = Ease.quartOut})
+		end
 	end
 
 	self.music:stop()

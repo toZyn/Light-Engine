@@ -1,306 +1,260 @@
----@class InputTextBox:Object
-local InputTextBox = Object:extend("InputTextBox")
+---@class UIInputTextBox:Object
+local InputTextBox = Object:extend("UIInputTextBox")
 
-local RemoveType = {NONE = 0, DELETE = 1, BACKSPACE = 2}
-local CursorDirection = {NONE = 0, LEFT = 1, RIGHT = 2}
-
-function InputTextBox:new(x, y, width, height, font)
-	InputTextBox.super.new(self, x, y)
-
-	self.width = width or 100
-	self.height = height or 20
-
-	self.font = font or love.graphics.newFont(12)
-	self.font:setFilter("nearest", "nearest")
-
-	self.text = ""
-	self.hovered = false
-	self.onChanged = nil
-	self.clearOnPressed = false
-	self.focused = false
-
-	self.color = {0.2, 0.2, 0.2}
-	self.lineColor = Color.WHITE
-	self.textColor = Color.WHITE
-	self.cursorColor = Color.WHITE
-
-	self.lineSize = 0.5
-	self.round = {4, 4}
-
-	-- cursor
-	self.__cursorPos = 0
-	self.__cursorBlinkTime = 0.5
-	self.__cursorBlinkTimer = 0
-	self.__cursorVisible = false
-	self.__cursorMove = false
-	self.__cursorMoveTime = 0.5
-	self.__cursorMoveTimer = 0
-	self.__cursorMoveDir = CursorDirection.NONE
-
-	-- remove text
-	self.__removeTime = 0.5
-	self.__removeTimer = 0
-	self.__removePressed = false
-	self.__removeType = RemoveType.NONE
-
-	-- insert text
-	self.__insertTime = 0.5
-	self.__insertTimer = 0
-	self.__insertPressed = false
-	self.__lastInput = nil
-
-	-- scrolling text
-	self.__scrollTextX = 0
-	self.__prevTextWidth = self.font:getWidth(self.text)
-	self.__newTextWidth = self.__prevTextWidth
+local function getMousePos(self)
+	local mx, my = game.mouse.x, game.mouse.y
+	local cam = self.cameras and self.cameras[1]
+	if cam then
+		local z = cam.zoom or 1
+		if z ~= 0 and z ~= 1 then
+			mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
+			my = (my - cam.height * 0.5) / z + cam.height * 0.5
+		end
+		mx = mx + cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1)
+		my = my + cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1)
+	end
+	return mx - (self.__uiOffsetX or 0), my - (self.__uiOffsetY or 0)
 end
 
-function InputTextBox:__render()
-	local r, g, b, a = love.graphics.getColor()
-	local lineWidth = love.graphics.getLineWidth()
+local function fitTextEnd(font, str, maxWidth)
+	if maxWidth <= 0 or str == "" then return "" end
+	if font:getWidth(str) <= maxWidth then return str end
+	local len = #str
+	for i = 2, len do
+		local sub = str:sub(i)
+		if font:getWidth(sub) <= maxWidth then
+			return sub
+		end
+	end
+	return ""
+end
 
-	love.graphics.setColor(self.color[1], self.color[2], self.color[3],
-		self.alpha)
-	love.graphics.rectangle("fill", self.x, self.y, self.width, self.height,
-		self.round[1], self.round[2])
+local function fitTextStart(font, str, maxWidth)
+	if maxWidth <= 0 or str == "" then return "" end
+	if font:getWidth(str) <= maxWidth then return str end
+	for i = #str - 1, 1, -1 do
+		local sub = str:sub(1, i)
+		if font:getWidth(sub) <= maxWidth then
+			return sub
+		end
+	end
+	return ""
+end
 
-	love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-	love.graphics.rectangle("fill", self.x, self.y + self.height / 2, self.width,
-		self.height / 2, self.round[1], self.round[2])
+function InputTextBox:new(x, y, width, height, placeholder, font)
+	InputTextBox.super.new(self, x, y)
 
-	love.graphics.push()
-	love.graphics.translate(self.x + 5, self.y)
-	love.graphics.setScissor(self.x, self.y, self.width - 10, self.height)
-
-	love.graphics.setColor(self.textColor[1], self.textColor[2],
-		self.textColor[3], self.alpha)
-	love.graphics.setFont(self.font)
-	love.graphics.print(self.text, -self.__scrollTextX,
-		(self.height - self.font:getHeight()) / 2)
-	love.graphics.pop()
-	love.graphics.setScissor()
-
-	if self.focused then
-		love.graphics.setColor(self.cursorColor[1], self.cursorColor[2],
-			self.cursorColor[3], self.alpha)
-		love.graphics.rectangle("fill", self.x - self.__scrollTextX + 5 +
-			self.font:getWidth(
-				self.text:sub(1, self.__cursorPos)),
-			self.y + 3, 1, self.height - 6)
+	if placeholder ~= nil and type(placeholder) ~= "string" then
+		font = placeholder
+		placeholder = nil
 	end
 
-	if self.lineSize > 0 then
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-		love.graphics.setLineWidth(self.lineSize)
-		love.graphics.rectangle("line", self.x, self.y, self.width, self.height,
-			self.round[1], self.round[2])
-		love.graphics.setLineWidth(lineWidth)
-	end
+	self.width = width or 150
+	self.height = height or 22
 
-	love.graphics.setColor(r, g, b, a)
+	self.text = ""
+	self.placeholder = placeholder or "Type here..."
+
+	self.focused = false
+	self.hovered = false
+	self.cursorPos = 0
+	self.cursorBlinkTime = 0.5
+	self.cursorTimer = 0
+	self.cursorVisible = true
+
+	self.font = font or love.graphics.getFont()
+
+	self.color = Color.fromRGB(36, 34, 46)
+	self.focusedColor = Color.fromRGB(48, 46, 64)
+	self.textColor = {1, 1, 1}
+	self.placeholderColor = {0.6, 0.6, 0.65}
+	self.borderColor = {0.75, 0.75, 0.82}
+	self.focusedBorderColor = Color.fromRGB(110, 175, 255)
+	self.borderSize = 1
+	self.cursorColor = {1, 1, 1}
+
+	self.onChanged = nil
+	self.onSubmit = nil
+	self.maxLength = 256
+end
+
+function InputTextBox:setText(value, notify)
+	local str = tostring(value or "")
+	if self.maxLength and #str > self.maxLength then
+		str = str:sub(1, self.maxLength)
+	end
+	self.text = str
+	self.cursorPos = math.clamp(self.cursorPos, 0, #self.text)
+	if notify and self.onChanged then
+		self.onChanged(self.text)
+	end
 end
 
 function InputTextBox:update(dt)
 	InputTextBox.super.update(self, dt)
+	if not self.visible then
+		self.focused = false
+		self.hovered = false
+		return
+	end
 
-	local mx, my = game.mouse.x, game.mouse.y
-	self.hovered =
-		(mx >= self.x and mx <= self.x + self.width and my >= self.y and my <=
-			self.y + self.height)
+	local mx, my = getMousePos(self)
+	self.hovered = (mx >= self.x and mx <= self.x + self.width and
+		my >= self.y and my <= self.y + self.height)
+
 	if game.mouse.justPressedLeft then
-		if self.hovered then
-			self.focused = true
-			self.__cursorVisible = true
-
-			if self.clearOnPressed then
-				self.text = ''
-				self.__cursorPos = 0
-			end
-
-			self.__cursorPos = utf8.len(self.text)
-		else
-			self.focused = false
-			self.__cursorVisible = false
+		local wasFocused = self.focused
+		self.focused = self.hovered
+		if self.focused then
+			self.cursorTimer = 0
+			self.cursorVisible = true
+			self.cursorPos = #self.text
+		elseif wasFocused and self.onSubmit then
+			self.onSubmit(self.text)
 		end
 	end
 
-	if self.focused and game.keys.justPressed.ANY then
-		if not self.__removePressed then
-			for key in pairs(game.keys.input.justPressed) do
-				self.__insertPressed = true
-				self.__lastInput = key
-				local newText =
-					self.text:sub(1, self.__cursorPos) .. key ..
-					self.text:sub(self.__cursorPos + 1)
-				self.text = newText
+	if not self.focused then return end
 
-				self.__cursorPos = self.__cursorPos + utf8.len(key)
-				if self.onChanged then self.onChanged(self.text) end
-			end
+	self.cursorTimer = self.cursorTimer + dt
+	if self.cursorTimer >= self.cursorBlinkTime then
+		self.cursorTimer = self.cursorTimer - self.cursorBlinkTime
+		self.cursorVisible = not self.cursorVisible
+	end
+
+	if game.keys.justPressed.ENTER or game.keys.justPressed.ESCAPE then
+		self.focused = false
+		if self.onSubmit then self.onSubmit(self.text) end
+		return
+	end
+
+	local ctrl = game.keys.pressed.CONTROL
+	if ctrl and game.keys.justPressed.V and love.system.getClipboardText then
+		local clip = (love.system.getClipboardText() or ""):gsub("[\r\n]", "")
+		if clip ~= "" then
+			self:input(clip)
 		end
+		return
+	elseif ctrl and game.keys.justPressed.C and love.system.setClipboardText then
+		love.system.setClipboardText(self.text)
+		return
+	elseif ctrl then
+		return
+	end
 
-		if game.keys.justPressed.BACKSPACE then
-			if self.__cursorPos > 0 then
-				local byteoffset = utf8.offset(self.text, -1,
-					self.__cursorPos + 1)
-				if byteoffset then
-					self.text = string.sub(self.text, 1, byteoffset - 1) ..
-						string.sub(self.text, byteoffset + 1)
-					self.__cursorPos = self.__cursorPos - 1
-				end
-			end
-			self.__removePressed = true
-			self.__removeType = RemoveType.BACKSPACE
-
-			self.__newTextWidth = self.font:getWidth(self.text)
-			if self.__newTextWidth > self.__prevTextWidth then
-				self.__scrollTextX = math.max(
-					self.__scrollTextX -
-					(self.__newTextWidth -
-						self.__prevTextWidth), 0)
-			elseif self.__newTextWidth < self.__prevTextWidth and
-				self.__scrollTextX > 0 then
-				self.__scrollTextX = math.min(
-					self.__scrollTextX +
-					(self.__prevTextWidth -
-						self.__newTextWidth),
-					self.__prevTextWidth -
-					(self.width - 10))
-			end
-			if self.onChanged then self.onChanged(self.text) end
-		elseif game.keys.justPressed.DELETE then
-			if self.__cursorPos < utf8.len(self.text) then
-				local byteoffset = utf8.offset(self.text, 1,
-					self.__cursorPos + 1)
-				if byteoffset then
-					self.text = string.sub(self.text, 1, byteoffset - 1) ..
-						string.sub(self.text, byteoffset + 1)
-				end
-			end
-			self.__removePressed = true
-			self.__removeType = RemoveType.DELETE
-			if self.onChanged then self.onChanged(self.text) end
-		elseif game.keys.justPressed.LEFT then
-			if self.__cursorPos > 0 then
-				self.__cursorPos = self.__cursorPos - 1
-			end
-			self.__cursorMove = true
-			self.__cursorMoveDir = CursorDirection.LEFT
-		elseif game.keys.justPressed.RIGHT then
-			if self.__cursorPos < utf8.len(self.text) then
-				self.__cursorPos = self.__cursorPos + 1
-			end
-			self.__cursorMove = true
-			self.__cursorMoveDir = CursorDirection.RIGHT
+	for key in pairs(game.keys.input.justPressed) do
+		if type(key) == "string" and #key == 1 then
+			self:input(key)
 		end
 	end
 
-	if self.focused and game.keys.justReleased.ANY then
-		self.__insertPressed = false
-		self.__insertTimer = 0
+	if game.keys.justPressed.BACKSPACE then
+		self:backspace()
+	elseif game.keys.justPressed.DELETE then
+		self:delete()
+	elseif game.keys.justPressed.LEFT then
+		self.cursorPos = math.max(0, self.cursorPos - 1)
+		self.cursorVisible = true
+		self.cursorTimer = 0
+	elseif game.keys.justPressed.RIGHT then
+		self.cursorPos = math.min(#self.text, self.cursorPos + 1)
+		self.cursorVisible = true
+		self.cursorTimer = 0
+	elseif game.keys.justPressed.HOME then
+		self.cursorPos = 0
+	elseif game.keys.justPressed.END then
+		self.cursorPos = #self.text
+	end
+end
 
-		if game.keys.justReleased.BACKSPACE or game.keys.justReleased.DELETE then
-			self.__removePressed = false
-			self.__removeTimer = 0
-			self.__removeType = RemoveType.NONE
+function InputTextBox:__render(camera)
+	local r, g, b, a = love.graphics.getColor()
+	local prevFont = love.graphics.getFont()
+
+	local x, y = self.x - self.offset.x - (camera.scroll.x * self.scrollFactor.x),
+		self.y - self.offset.y - (camera.scroll.y * self.scrollFactor.y)
+	local width, height = self.width, self.height
+	local bs = self.borderSize
+
+	local borderCol = self.focused and self.focusedBorderColor or self.borderColor
+	local bgCol = self.focused and self.focusedColor or self.color
+
+	love.graphics.setColor(borderCol[1], borderCol[2], borderCol[3], self.alpha)
+	love.graphics.rectangle("fill", x, y, width, height, 3, 3)
+
+	love.graphics.setColor(bgCol[1], bgCol[2], bgCol[3], self.alpha)
+	love.graphics.rectangle("fill", x + bs, y + bs, width - bs * 2, height - bs * 2, 2, 2)
+
+	if self.hovered and not self.focused then
+		love.graphics.setColor(1, 1, 1, 0.06 * self.alpha)
+		love.graphics.rectangle("fill", x + bs, y + bs, width - bs * 2, height - bs * 2, 2, 2)
+	end
+
+	local font = self.font or prevFont
+	love.graphics.setFont(font)
+	local padX = 5
+	local innerW = math.max(4, width - padX * 2)
+	local textY = y + (height - font:getHeight()) * 0.5
+
+	if #self.text > 0 then
+		love.graphics.setColor(self.textColor[1], self.textColor[2],
+			self.textColor[3], self.alpha)
+		local beforeCursor = self.text:sub(1, self.cursorPos)
+		local visBefore = fitTextEnd(font, beforeCursor, innerW)
+		local beforeW = font:getWidth(visBefore)
+		local afterCursor = self.text:sub(self.cursorPos + 1)
+		local visAfter = fitTextStart(font, afterCursor, math.max(0, innerW - beforeW))
+		love.graphics.print(visBefore .. visAfter, x + padX, textY)
+
+		if self.focused and self.cursorVisible then
+			local cx = x + padX + beforeW
+			love.graphics.setColor(self.cursorColor[1], self.cursorColor[2],
+				self.cursorColor[3], self.alpha)
+			love.graphics.rectangle("fill", cx, textY, 1.5, font:getHeight())
 		end
-		if game.keys.justReleased.LEFT or game.keys.justReleased.RIGHT then
-			self.__cursorMove = false
-			self.__cursorMoveTimer = 0
-			self.__cursorMoveDir = CursorDirection.NONE
+	else
+		if self.placeholder ~= "" and not self.focused then
+			love.graphics.setColor(self.placeholderColor[1], self.placeholderColor[2],
+				self.placeholderColor[3], self.alpha)
+			love.graphics.print(fitTextStart(font, self.placeholder, innerW), x + padX, textY)
+		end
+		if self.focused and self.cursorVisible then
+			love.graphics.setColor(self.cursorColor[1], self.cursorColor[2],
+				self.cursorColor[3], self.alpha)
+			love.graphics.rectangle("fill", x + padX, textY, 1.5, font:getHeight())
 		end
 	end
 
-	if self.focused then
-		self.__prevTextWidth = self.font:getWidth(self.text)
+	love.graphics.setFont(prevFont)
+	love.graphics.setColor(r, g, b, a)
+end
 
-		if self.__insertPressed then
-			self.__insertTimer = self.__insertTimer + dt
-			if self.__insertTimer >= self.__insertTime then
-				local newText =
-					self.text:sub(1, self.__cursorPos) .. self.__lastInput ..
-					self.text:sub(self.__cursorPos + 1)
-				self.text = newText
-				self.__cursorPos = self.__cursorPos + utf8.len(self.__lastInput)
-				if self.onChanged then self.onChanged(self.text) end
-				self.__insertTimer = self.__insertTime - 0.02
-			end
-		end
+function InputTextBox:input(char)
+	if not self.focused or not char or char == "" then return end
+	if self.maxLength and (#self.text + #char) > self.maxLength then return end
+	self.text = self.text:sub(1, self.cursorPos) .. char .. self.text:sub(self.cursorPos + 1)
+	self.cursorPos = self.cursorPos + #char
+	self.cursorVisible = true
+	self.cursorTimer = 0
+	if self.onChanged then self.onChanged(self.text) end
+end
 
-		if self.__cursorMove then
-			self.__cursorMoveTimer = self.__cursorMoveTimer + dt
-			if self.__cursorMoveTimer >= self.__cursorBlinkTime then
-				if self.__cursorMoveDir == CursorDirection.LEFT and
-					self.__cursorPos > 0 then
-					self.__cursorPos = self.__cursorPos - 1
-				elseif self.__cursorMoveDir == CursorDirection.RIGHT and
-					self.__cursorPos < utf8.len(self.text) then
-					self.__cursorPos = self.__cursorPos + 1
-				end
-				self.__cursorMoveTimer = self.__cursorBlinkTime - 0.02
-			end
-		end
+function InputTextBox:backspace()
+	if self.cursorPos > 0 then
+		self.text = self.text:sub(1, self.cursorPos - 1) .. self.text:sub(self.cursorPos + 1)
+		self.cursorPos = self.cursorPos - 1
+		self.cursorVisible = true
+		self.cursorTimer = 0
+		if self.onChanged then self.onChanged(self.text) end
+	end
+end
 
-		if self.__removePressed then
-			self.__removeTimer = self.__removeTimer + dt
-			if self.__removeTimer >= self.__removeTime then
-				if self.__removeType == RemoveType.BACKSPACE and
-					self.__cursorPos > 0 then
-					local byteoffset = utf8.offset(self.text, -1,
-						self.__cursorPos + 1)
-					if byteoffset then
-						self.text = string.sub(self.text, 1, byteoffset - 1) ..
-							string.sub(self.text, byteoffset + 1)
-						self.__cursorPos = self.__cursorPos - 1
-					end
-				elseif self.__removeType == RemoveType.DELETE and
-					self.__cursorPos < utf8.len(self.text) then
-					local byteoffset = utf8.offset(self.text, 1,
-						self.__cursorPos + 1)
-					if byteoffset then
-						self.text = string.sub(self.text, 1, byteoffset - 1) ..
-							string.sub(self.text, byteoffset + 1)
-					end
-				end
-				self.__removeTimer = self.__removeTime - 0.02
-				if self.onChanged then self.onChanged(self.text) end
-			end
-			self.__newTextWidth = self.font:getWidth(self.text)
-			if self.__newTextWidth > self.__prevTextWidth then
-				self.__scrollTextX = math.max(
-					self.__scrollTextX -
-					(self.__newTextWidth -
-						self.__prevTextWidth), 0)
-			elseif self.__newTextWidth < self.__prevTextWidth and
-				self.__scrollTextX > 0 then
-				self.__scrollTextX = math.min(
-					self.__scrollTextX +
-					(self.__prevTextWidth -
-						self.__newTextWidth),
-					self.__prevTextWidth -
-					(self.width - 10))
-			end
-		end
-
-		self.__cursorBlinkTimer = self.__cursorBlinkTimer + dt
-		if self.__cursorBlinkTimer >= self.__cursorBlinkTime then
-			self.__cursorVisible = not self.__cursorVisible
-			self.__cursorBlinkTimer = 0
-		end
-
-		local cursorX = self.x + 5 +
-			self.font:getWidth(
-				self.text:sub(1, self.__cursorPos)) -
-			self.__scrollTextX
-		if cursorX > self.x + self.width - 10 then
-			self.__scrollTextX = self.__scrollTextX +
-				(cursorX - (self.x + self.width - 10))
-		elseif cursorX < self.x + 5 then
-			self.__scrollTextX = self.__scrollTextX - (self.x + 5 - cursorX)
-		elseif self.__scrollTextX < 0 then
-			self.__scrollTextX = 0
-		end
+function InputTextBox:delete()
+	if self.cursorPos < #self.text then
+		self.text = self.text:sub(1, self.cursorPos) .. self.text:sub(self.cursorPos + 2)
+		self.cursorVisible = true
+		self.cursorTimer = 0
+		if self.onChanged then self.onChanged(self.text) end
 	end
 end
 

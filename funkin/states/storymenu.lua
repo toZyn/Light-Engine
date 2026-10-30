@@ -169,7 +169,11 @@ function StoryMenuState:update(dt)
 	end
 
 	self.lerpScore = util.coolLerp(self.lerpScore, self.intendedScore, 30, dt)
-	self.scoreText.content = 'LEVEL SCORE:' .. math.round(self.lerpScore)
+	local roundedScore = math.round(self.lerpScore)
+	if self._lastRoundedScore ~= roundedScore then
+		self._lastRoundedScore = roundedScore
+		self.scoreText.content = 'LEVEL SCORE:' .. roundedScore
+	end
 
 	if #self.weeksData > 0 and not self.movedBack and not self.selectedWeek and
 		not self.inSubstate and self.throttles then
@@ -303,18 +307,25 @@ function StoryMenuState:loadWeeks()
 		return paths.getPath(..., false)
 	end
 	if paths.exists(func('data/weekList.txt'), 'file') then
-		for _, week in pairs(paths.getText('weekList'):gsub('\r', ''):split('\n')) do
-			local data = paths.getJSON('data/weeks/weeks/' .. week)
-			data.file = week
-			table.insert(self.weeksData, data)
+		for _, rawWeek in pairs((paths.getText('weekList') or ""):gsub('\r', ''):split('\n')) do
+			local week = rawWeek:gsub("^%s+", ""):gsub("%s+$", "")
+			if week ~= "" and week:sub(1, 1) ~= "#" then
+				local data = paths.getJSON('data/weeks/weeks/' .. week)
+				if data then
+					data.file = week
+					table.insert(self.weeksData, data)
+				end
+			end
 		end
-	else
+	elseif paths.exists(func('data/weeks/weeks'), 'directory') then
 		for _, str in pairs(love.filesystem.getDirectoryItems(func('data/weeks/weeks'))) do
 			if str:endsWith('.json') then
 				local week = str:withoutExt()
 				local data = paths.getJSON('data/weeks/weeks/' .. week)
-				data.file = week
-				table.insert(self.weeksData, data)
+				if data then
+					data.file = week
+					table.insert(self.weeksData, data)
+				end
 			end
 		end
 	end
@@ -322,14 +333,10 @@ end
 
 function StoryMenuState:leave()
 	self.script:call("leave")
-	if self.notCreated then
-		self.script:call("postLeave")
-		return
+	if self.throttles then
+		for _, v in pairs(self.throttles) do v:destroy() end
+		self.throttles = nil
 	end
-
-	for _, v in ipairs(self.throttles) do v:destroy() end
-	self.throttles = nil
-
 	self.script:call("postLeave")
 	self.script:close()
 end
