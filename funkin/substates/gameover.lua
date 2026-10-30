@@ -55,7 +55,7 @@ function GameOverSubstate:enter()
 	self.scripts = self.parent.scripts or ScriptsHandler()
 	self.boyfriend:playAnim('firstDeath')
 
-	game.sound.music.pitch = 1
+	if game.sound.music then game.sound.music.pitch = 1 end
 	paths.getMusic(GameOverSubstate.loopSoundName)
 	paths.getMusic(GameOverSubstate.endSoundName)
 	util.playSfx(paths.getSound(GameOverSubstate.deathSoundName))
@@ -93,7 +93,7 @@ function GameOverSubstate:update(dt)
 
 			self.isEnding = true
 			self.boyfriend:playAnim('deathConfirm', true)
-			game.sound.music:stop()
+			if game.sound.music then game.sound.music:stop() end
 
 			game.sound.play(paths.getMusic(GameOverSubstate.endSoundName), ClientPrefs.data.musicVolume / 100)
 

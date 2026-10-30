@@ -18,6 +18,8 @@ local paths = {
 }
 
 local audioAliases = {
+	["music/gameOverend-pixel.ogg"] =
+		"music/gameOverEnd-pixel.ogg",
 	["songs/bopeebo/Voices-pico-playable-pico.ogg"] =
 		"songs/bopeebo/Voices-pico-pico.ogg",
 	["songs/cocoa/Voices-bf-christmas-erect.ogg"] =

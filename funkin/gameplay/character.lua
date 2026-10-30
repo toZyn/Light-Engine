@@ -45,10 +45,36 @@ function Character:new(x, y, char, isPlayer)
 
 	local spriteName = tostring(data.sprite or "")
 	local fullpath = paths.getPath('images/' .. spriteName)
-	if spriteName ~= "" and paths.exists(fullpath, "directory") and paths.exists(fullpath .. "/Animation.json", "file") then
+	local hasAnimAtlas = spriteName ~= "" and paths.exists(fullpath, "directory")
+		and paths.exists(fullpath .. "/Animation.json", "file")
+	local hasSheetAtlas = spriteName ~= "" and (paths.exists(paths.getPath('images/' .. spriteName .. ".xml"), "file")
+		or paths.exists(paths.getPath('images/' .. spriteName .. ".txt"), "file"))
+
+	if not hasAnimAtlas and not hasSheetAtlas and not Character.editorMode
+		and self.char ~= "bf-dead" and self.char:sub(-5) == "-dead" then
+		local fbData = Parser.getCharacter("bf-dead")
+		local fbSprite = tostring(fbData and fbData.sprite or "")
+		local fbPath = paths.getPath('images/' .. fbSprite)
+		local fbAnimAtlas = fbSprite ~= "" and paths.exists(fbPath, "directory")
+			and paths.exists(fbPath .. "/Animation.json", "file")
+		local fbSheetAtlas = fbSprite ~= "" and (paths.exists(paths.getPath('images/' .. fbSprite .. ".xml"), "file")
+			or paths.exists(paths.getPath('images/' .. fbSprite .. ".txt"), "file"))
+		if fbAnimAtlas or fbSheetAtlas then
+			Logger.log("warn", "Character \"" .. tostring(char) .. "\" missing sprite \"" .. fullpath
+				.. "\", falling back to \"bf-dead\"")
+			data = fbData
+			self.data = fbData
+			self.char = "bf-dead"
+			spriteName = fbSprite
+			fullpath = fbPath
+			hasAnimAtlas = fbAnimAtlas
+			hasSheetAtlas = fbSheetAtlas
+		end
+	end
+
+	if hasAnimAtlas then
 		self._animAtlas = AnimateAtlas(0, 0, paths.getAnimateAtlas(spriteName))
-	elseif spriteName ~= "" and (paths.exists(paths.getPath('images/' .. spriteName .. ".xml"), "file")
-		or paths.exists(paths.getPath('images/' .. spriteName .. ".txt"), "file")) then
+	elseif hasSheetAtlas then
 		self:setFrames(paths.getAtlas(spriteName, not data.antialiasing))
 	else
 		Logger.log("error", "Character \"" .. char .. "\" has invalid image path: \"" .. fullpath .. "\"")
