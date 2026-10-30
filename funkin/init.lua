@@ -27,17 +27,19 @@ util = require "funkin.util"
 ClientPrefs = require "funkin.backend.clientprefs"
 Throttle = require "funkin.backend.throttle"
 Parser = require "funkin.backend.parser"
+JSON = require "funkin.backend.jsonbuilder"
 
 Conductor = require "funkin.backend.gameplay.conductor"
 Highscore = require "funkin.backend.gameplay.highscore"
 
 Script = require "funkin.backend.scripts"
 ScriptsHandler = require "funkin.backend.scripts.handler"
--- GlobalScripts = require "funkin.backend.modding.scripts.global"
+GlobalScripts = require "funkin.backend.scripts.global"
 require "funkin.backend.scripts.events"
 
 Mods = require "funkin.backend.modding.mods"
 Addons = require "funkin.backend.modding.addons"
+ModAPI = require "funkin.backend.modding.api"
 
 Discord = require "funkin.backend.discord"
 
@@ -151,7 +153,7 @@ function funkin.load()
 	State.defaultTransOut = TransitionFade(0.7, color, "vertical")
 
 	game.onPreStateEnter = function(state)
-		-- GlobalScripts.call("preStateEnter", state)
+		GlobalScripts.call("preStateEnter", state)
 		if paths and not game.getState().persistCache and
 			getmetatable(state) ~= getmetatable(game.getState()) then
 			paths.clearCache()
@@ -188,7 +190,8 @@ function funkin.load()
 
 	Script.addToEnv("controls", controls)
 	Script.addToEnv("print", print)
-	-- GlobalScripts.reload()
+	Script.addToEnv("Mod", ModAPI)
+	GlobalScripts.reload()
 end
 
 function funkin.update(dt)
@@ -204,7 +207,7 @@ function funkin.update(dt)
 		love.window.setFullscreen(not love.window.getFullscreen())
 	end
 
-	-- GlobalScripts.call("update", dt)
+	GlobalScripts.call("update", dt)
 end
 
 function funkin.fullscreen(f)

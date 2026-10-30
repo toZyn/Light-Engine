@@ -109,7 +109,18 @@ end
 
 function Toast.print(text, font)
 	if not Toast.showPrints then return end
-	return handler(text, font, nil, 0x2B1B1B)
+	return handler(tostring(text or ""), font, nil, 0x2B1B1B)
+end
+
+function Toast.info(text, font)
+	if not Toast.showPrints or not Toast.font then return end
+	return handler(tostring(text or ""), font, nil, 0x225588)
+end
+
+function Toast.warn(text, font)
+	if not Toast.showDeprecations or not Toast.font then return end
+	local icon = Toast.icons and Toast.icons.deprecated or nil
+	return handler(tostring(text or ""), font, icon, 0x8A6420)
 end
 
 function Toast.error(text, font)

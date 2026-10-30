@@ -15,12 +15,15 @@ end
 
 function Judgements:createSprite(name, scale, duration)
 	local sprite = self:recycle()
-	sprite:loadTexture(PlayState.SONG.skin:get(name, "image"))
+	local skinObj = (self.skin and self.skin.get and self.skin)
+		or (PlayState.SONG and type(PlayState.SONG.skin) == "table" and PlayState.SONG.skin)
+		or paths.getSkin((PlayState.SONG and PlayState.SONG.skin) or "default")
+	sprite:loadTexture(skinObj:get(name, "image"))
 	sprite:setGraphicSize(math.floor(sprite.width * scale))
 	sprite.x, sprite.y = 0, 0
 	sprite:updateHitbox()
 	sprite.alpha = 1
-	sprite.antialiasing = antialias
+	sprite.antialiasing = self.antialiasing
 
 	sprite.moves = true
 	sprite.velocity.x = 0
@@ -49,10 +52,11 @@ end
 function Judgements:spawn(rating, combo)
 	if not self.visible then return end
 
-	local accel = PlayState.conductor.crotchet * 0.001
+	local accel = (PlayState.conductor and PlayState.conductor.crotchet or 500) * 0.001
 	if self.noStack then for _, member in pairs(self.members) do member:kill() end end
 
-	local pixelPerfect = self.cameras[1].pixelPerfect
+	local cam = self.cameras and self.cameras[1]
+	local pixelPerfect = cam and cam.pixelPerfect or false
 	if rating and self.ratingVisible then
 		local scale = pixelPerfect and 1 or (self.antialiasing and 0.65 or 4.2)
 		local areaHeight = self.area.height / 2

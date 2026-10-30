@@ -464,7 +464,10 @@ function Camera:drawComplex(_skipCheck)
 	grap.setColor(color[1] * alpha, color[2] * alpha, color[3] * alpha, alpha)
 
 	local filter = self.antialiasing and "linear" or "nearest"
-	canvas:setFilter(filter, filter)
+	local cmin, cmag = canvas:getFilter()
+	if cmin ~= filter or cmag ~= filter then
+		canvas:setFilter(filter, filter)
+	end
 
 	local scx, scy = 1, 1
 	if self.pixelPerfect then

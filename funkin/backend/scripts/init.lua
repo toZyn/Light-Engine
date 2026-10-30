@@ -59,10 +59,13 @@ local function limitindex(name, blocklist)
 	return setmetatable({}, mt)
 end
 
-local blocklist, modules = {
-	"loxreq", "dofile", "loadfile", "loadstring", "load", "module",
-	"rawset", "rawget", "rawequal", "setfenv", "getfenv", "newproxy"
-}, {
+local blockset = {
+	loxreq = true, dofile = true, loadfile = true, loadstring = true,
+	load = true, module = true, rawset = true, rawget = true,
+	rawequal = true, setfenv = true, getfenv = true, newproxy = true
+}
+
+local modules = {
 	debug = noindex("debug"),
 	package = noindex("package"),
 	io = noindex("io"),
@@ -78,7 +81,7 @@ local blocklist, modules = {
 		execute = deny("os.execute", false),
 		remove = deny("os.remove", false),
 		rename = deny("os.rename", false),
-		tmpname = deny("os.tmpname", false),
+		tmpname = deny("tmpname", false),
 		setenv = deny("os.setenv", false),
 		getenv = deny("os.getenv", false),
 		setlocale = deny("os.setlocale", false)
@@ -95,8 +98,9 @@ local blocklist, modules = {
 modules.require = function(path)
 	path = path:gsub("%.", "/")
 
-	if paths.exists(paths.getPath(path), "directory") and
-		paths.exists(paths.getPath(path .. "/init.lua"), "file") then
+	local classDir = paths.getPath("data/classes/" .. path)
+	if paths.exists(classDir, "directory") and
+		paths.exists(classDir .. "/init.lua", "file") then
 		local scr = Script("data/classes/" .. path .. "/init")
 		if not scr.chunk then error("Script require failed: " .. path, 2) end
 		return scr.chunk()
@@ -109,7 +113,7 @@ end
 
 local mtenv = {
 	__index = function(_, k)
-		if table.find(blocklist, k) then
+		if blockset[k] then
 			return deny(k)
 		end
 		return modules[k] or _G[k]
@@ -204,16 +208,24 @@ end
 function Script:linkObject(link)
 	local cur = getmetatable(self.variables)
 	local s = self.variables
-	if not s then return end
+	if not s or not link then return end
+	local boundMethods = {}
 	local new = {
 		__index = function(_, k)
-			if link[k] ~= nil then
-				if type(link[k]) == "function" then
-					return function(...)
-						return link[k](link, ...)
+			local val = link[k]
+			if val ~= nil then
+				if type(val) == "function" then
+					local bm = boundMethods[k]
+					if not bm or bm._fn ~= val then
+						local fn = function(...)
+							return val(link, ...)
+						end
+						bm = {_fn = val, _call = fn}
+						boundMethods[k] = bm
 					end
+					return bm._call
 				end
-				return link[k]
+				return val
 			end
 			return type(cur.__index) == "table" and
 				cur.__index[k] or cur.__index(s, k)
@@ -238,8 +250,7 @@ function Script:call(func, ...)
 
 	local f = rawget(self.variables, func)
 	if f and type(f) == "function" then
-		local args = {n = select("#", ...), ...}
-		local s, err = xpcall(function() return f(unpack(args, 1, args.n)) end, captureError)
+		local s, err = xpcall(f, captureError, ...)
 		if s then
 			if err ~= nil and pcall(type, err) then
 				return err

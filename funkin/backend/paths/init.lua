@@ -75,16 +75,11 @@ local function insertFile(path, file, type, tbl)
 	end
 end
 
-local function getFromCache(cache, key)
+local function generate(cache, key, createFunc, error, path)
 	local obj = cache[key]
 	if obj then return obj end
-end
 
-local function generate(cache, key, createFunc, error, path)
-	local obj = getFromCache(cache, key)
 	local exists = paths.exists(key, path and "directory" or "file")
-	if obj then return obj end
-
 	obj = createFunc(exists)
 	if obj then cache[key] = obj; return obj end
 	if error then Logger.log("debug", "[ PATHS ] " .. error .. ' returned a null value: ' .. key, 4) end
@@ -140,11 +135,11 @@ function paths.getPath(key, allowMods, allowAddons)
 	if allowMods == nil then allowMods = true end
 	if allowAddons == nil then allowAddons = true end
 
-	if allowMods then
-		local modPath = paths.getMods(key)
+	if allowMods and Mods and Mods.currentMod then
+		local modPath = Mods.root .. "/" .. Mods.currentMod .. "/" .. key
 		if paths.exists(modPath) then return modPath end
 	end
-	if allowAddons then
+	if allowAddons and Addons and Addons.all then
 		for _, addon in ipairs(Addons.all) do
 			if addon.active then
 				local addonPath = Addons.root .. "/" .. addon.path .. "/" .. key
@@ -157,15 +152,17 @@ end
 
 function paths.getItems(key, type, extension, excludeMods, excludeAddons, excludeAssets)
 	type = type or "any"
-	local files, getItems = {}, love.filesystem.getDirectoryItems
+	local files, seen, getItems = {}, {}, love.filesystem.getDirectoryItems
 
-	if not excludeAddons then
+	if not excludeAddons and Addons and Addons.all then
 		for _, addon in ipairs(Addons.all) do
 			local addonPath = Addons.root .. "/" .. addon.path .. "/" .. key .. "/"
 			if addon.active and paths.exists(addonPath, "directory") then
 				for _, v in ipairs(getItems(addonPath)) do
-					if not table.find(files, v) and (not extension or v:ext() == extension) then
+					if not seen[v] and (not extension or v:ext() == extension) then
+						local before = #files
 						insertFile(addonPath .. v, v, type, files)
+						if #files > before then seen[v] = true end
 					end
 				end
 			end
@@ -173,19 +170,23 @@ function paths.getItems(key, type, extension, excludeMods, excludeAddons, exclud
 	end
 
 	local mods, base = paths.getMods(key) .. "/", paths.getPath(key, false, false) .. "/"
-	if paths.exists(mods, "directory") or paths.exists(base, "directory") then
-		if not excludeMods and paths.exists(mods, "directory") then
-			for _, v in ipairs(getItems(mods)) do
-				if not table.find(files, v) and (not extension or v:ext() == extension) then
-					insertFile(mods .. v, v, type, files)
-				end
+	local hasMods = not excludeMods and Mods and Mods.currentMod and paths.exists(mods, "directory")
+	local hasBase = not excludeAssets and paths.exists(base, "directory")
+	if hasMods then
+		for _, v in ipairs(getItems(mods)) do
+			if not seen[v] and (not extension or v:ext() == extension) then
+				local before = #files
+				insertFile(mods .. v, v, type, files)
+				if #files > before then seen[v] = true end
 			end
 		end
-		if not excludeAssets then
-			for _, v in ipairs(getItems(base)) do
-				if not table.find(files, v) and (not extension or v:ext() == extension) then
-					insertFile(base .. v, v, type, files)
-				end
+	end
+	if hasBase then
+		for _, v in ipairs(getItems(base)) do
+			if not seen[v] and (not extension or v:ext() == extension) then
+				local before = #files
+				insertFile(base .. v, v, type, files)
+				if #files > before then seen[v] = true end
 			end
 		end
 	end
@@ -232,13 +233,14 @@ function paths.getSkin(key)
 end
 
 function paths.getFont(key, size, logError)
+	size = size or 12
 	local path = paths.getPath("fonts/" .. key)
 	local pkey = path .. "_" .. size
 	return generate(paths.fonts, pkey, function()
 		if paths.exists(path, "file") then
-			return love.graphics.newFont(path, size or 12, "light")
+			return love.graphics.newFont(path, size, "light")
 		end
-	end, "font")
+	end, not logError and "font" or nil)
 end
 
 function paths.getImage(key)
@@ -248,7 +250,7 @@ function paths.getImage(key)
 
 	if paths.compressedSupport.astc then
 		path = paths.getPath(basePath .. "astc")
-		if paths.exists(path, "file") then
+		if paths.images[path] or paths.exists(path, "file") then
 			return generate(paths.images, path, function()
 				return love.graphics.newImage(path)
 			end, "image")
@@ -257,7 +259,7 @@ function paths.getImage(key)
 
 	if paths.compressedSupport.ktx then
 		path = paths.getPath(basePath .. "ktx")
-		if paths.exists(path, "file") then
+		if paths.images[path] or paths.exists(path, "file") then
 			return generate(paths.images, path, function()
 				return love.graphics.newImage(path)
 			end, "image")
@@ -266,7 +268,7 @@ function paths.getImage(key)
 
 	if paths.compressedSupport.dds then
 		path = paths.getPath(basePath .. "dds")
-		if paths.exists(path, "file") then
+		if paths.images[path] or paths.exists(path, "file") then
 			return generate(paths.images, path, function()
 				return love.graphics.newImage(path)
 			end, "image")
@@ -274,8 +276,8 @@ function paths.getImage(key)
 	end
 
 	path = paths.getPath(basePath .. "png")
-	return generate(paths.images, path, function()
-		if paths.exists(path, "file") then
+	return generate(paths.images, path, function(exists)
+		if exists then
 			return love.graphics.newImage(path)
 		end
 	end, "image")
@@ -294,9 +296,24 @@ end
 
 function paths.getAudio(key, stream, logError)
 	local path = paths.getPath(key .. ".ogg")
-	if not paths.exists(path, "file") and audioAliases[key] then
-		path = paths.getPath(audioAliases[key] .. ".ogg")
+	if not paths.audio[path] and not paths.exists(path, "file") then
+		local alias = audioAliases[key .. ".ogg"] or audioAliases[key]
+		if alias then
+			local aliasClean = alias:gsub("%.ogg$", "")
+			path = paths.getPath(aliasClean .. ".ogg")
+		else
+			for _, ext in ipairs({".wav", ".mp3"}) do
+				local alt = paths.getPath(key .. ext)
+				if paths.audio[alt] or paths.exists(alt, "file") then
+					path = alt
+					break
+				end
+			end
+		end
 	end
+	local cacheKey = path .. (stream and ":stream" or ":static")
+	local cached = paths.audio[path] or paths.audio[cacheKey]
+	if cached then return cached end
 	return generate(paths.audio, path, function(y)
 		if y then return stream and love.audio.newSource(path, "stream") or
 			love.sound.newSoundData(path) end
@@ -321,7 +338,7 @@ end
 
 function paths.getSparrowAtlas(key)
 	local imgPath, xmlPath = key, paths.getPath("images/" .. key .. ".xml")
-	local atlasPath = paths.getPath("images/" .. key)
+	local atlasPath = xmlPath:gsub("%.xml$", "")
 
 	return generate(paths.atlases, atlasPath, function()
 		local img = paths.getImage(imgPath)
@@ -334,7 +351,7 @@ end
 
 function paths.getPackerAtlas(key)
 	local imgPath, txtPath = key, paths.getPath("images/" .. key .. ".txt")
-	local atlasPath = paths.getPath("images/" .. key)
+	local atlasPath = txtPath:gsub("%.txt$", "")
 
 	return generate(paths.atlases, atlasPath, function()
 		local img = paths.getImage(imgPath)

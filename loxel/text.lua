@@ -50,7 +50,7 @@ function Text:__updateDimension()
 
 	self.width = self.font:getWidth(self.content)
 	self.height = self.font:getHeight()
-	if self.limit ~= nil or self.width ~= 0 then
+	if self.limit ~= nil or (self.width ~= 0 and tostring(self.content):find("\n", 1, true)) then
 		local _, lines = self.font:getWrap(self.content, self.limit or self.width)
 		self.height = self.height * #lines
 	end
@@ -114,7 +114,10 @@ function Text:__render(camera)
 
 	local min, mag, anisotropy = self.font:getFilter()
 	local mode = self.antialiasing and "linear" or "nearest"
-	self.font:setFilter(mode, mode, anisotropy)
+	local filterChanged = (min ~= mode or mag ~= mode)
+	if filterChanged then
+		self.font:setFilter(mode, mode, anisotropy)
+	end
 
 	local x, y, rad, sx, sy, ox, oy, kx, ky = self:setupDrawLogic(camera)
 	local content, align, outline = self.content, self.alignment, self.outline
@@ -124,7 +127,7 @@ function Text:__render(camera)
 
 	if not self.antialiasing then x, y = math.round(x), math.round(y) end
 
-	if outline then
+	if outline and (outline.style == "simple" or (outline.width > 0 and outline.style == "normal")) then
 		color = outline.color
 		love.graphics.setColor(self:getDrawColor(color))
 
@@ -133,31 +136,41 @@ function Text:__render(camera)
 				x + outline.offset.x, y + outline.offset.y,
 				width, align, rad, sx, sy, ox, oy, kx, ky)
 		elseif outline.width > 0 and outline.style == "normal" then
+			local outlineModeChanged = false
+			if outline.antialiasing ~= nil then
+				local omode = outline.antialiasing and "linear" or "nearest"
+				if omode ~= mode then
+					self.font:setFilter(omode, omode, anisotropy)
+					outlineModeChanged = true
+				end
+			end
 			local step = (2 * math.pi) / outline.precision
 			for i = 1, outline.precision do
 				local dx = math.cos(i * step) * outline.width
 				local dy = math.sin(i * step) * outline.width
-				if outline.antialiasing ~= nil then
-					local omode = outline.antialiasing and "linear" or "nearest"
-					self.font:setFilter(omode, omode, anisotropy)
-				end
 				local fdx, fdy = math.round(x + dx), math.round(y + dy)
 				love.graphics.printf(content, fdx, fdy,
 					width, align, rad, sx, sy, ox, oy, kx, ky)
 			end
+			if outlineModeChanged then
+				self.font:setFilter(mode, mode, anisotropy)
+			end
 		end
 	end
-	self.font:setFilter(mode, mode, anisotropy)
 
 	color = self.bgColor
-	love.graphics.setColor(self:getDrawColor(color))
-	love.graphics.rectangle("fill", x, y, self:getWidth(), self:getHeight())
+	if color and (color[4] == nil or color[4] > 0) then
+		love.graphics.setColor(self:getDrawColor(color))
+		love.graphics.rectangle("fill", x, y, self:getWidth(), self:getHeight())
+	end
 
 	color = self.color
 	love.graphics.setColor(self:getDrawColor())
 	love.graphics.printf(content, x, y, width, align, rad, sx, sy, ox, oy, kx, ky)
 
-	self.font:setFilter(min, mag, anisotropy)
+	if filterChanged then
+		self.font:setFilter(min, mag, anisotropy)
+	end
 	love.graphics.pop()
 end
 

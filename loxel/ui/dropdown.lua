@@ -1,216 +1,274 @@
----@class Dropdown:Object
-local Dropdown = Object:extend("Dropdown")
+---@class UIDropDown:Object
+local Dropdown = Object:extend("UIDropDown")
 
-function Dropdown:new(x, y, options)
+local function getMousePos(self)
+	local mx, my = game.mouse.x, game.mouse.y
+	local cam = self.cameras and self.cameras[1]
+	if cam then
+		local z = cam.zoom or 1
+		if z ~= 0 and z ~= 1 then
+			mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
+			my = (my - cam.height * 0.5) / z + cam.height * 0.5
+		end
+		mx = mx + cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1)
+		my = my + cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1)
+	end
+	return mx - (self.__uiOffsetX or 0), my - (self.__uiOffsetY or 0)
+end
+
+local function truncateText(font, str, maxW)
+	str = tostring(str or "")
+	if maxW <= 0 or font:getWidth(str) <= maxW then return str end
+	for i = #str - 1, 1, -1 do
+		local candidate = str:sub(1, i) .. ".."
+		if font:getWidth(candidate) <= maxW then
+			return candidate
+		end
+	end
+	return ""
+end
+
+function Dropdown:new(x, y, options, onChanged, selected, width, height)
 	Dropdown.super.new(self, x, y)
 
-	self.width = 90
-	self.height = 20
+	if onChanged ~= nil and type(onChanged) ~= "function" then
+		-- Support Dropdown(x, y, options, selected, width, height, callback)
+		local cb = height
+		height = width
+		width = selected
+		selected = onChanged
+		onChanged = type(cb) == "function" and cb or nil
+	end
 
-	self.font = font or love.graphics.newFont(12)
-	self.font:setFilter("nearest", "nearest")
+	self.width = width or 120
+	self.height = height or 22
 
-	self.options = options
+	self.options = options and table.clone(options) or {}
+	self.items = self.options
 	self.selectedOption = 1
-	self.selectedLabel = self.options[1]
-
-	self.hovered = false
-	self.disabled = false
+	self.curSelected = 1
+	self.selectedLabel = self.options[1] or ""
+	self.label = {content = self.selectedLabel}
 	self.isOpen = false
-	self.onChanged = nil
+	self.hovered = false
+	self.hoveredRow = nil
 
-	self.color = {0.2, 0.2, 0.2}
-	self.lineColor = Color.WHITE
-	self.textColor = Color.WHITE
-	self.hoverColor = Color.WHITE
+	self.color = Color.fromRGB(42, 40, 54)
+	self.hoveredColor = Color.fromRGB(58, 56, 74)
+	self.optionColor = Color.fromRGB(32, 30, 42)
+	self.optionHoverColor = Color.fromRGB(72, 108, 178)
+	self.optionSelectedColor = Color.fromRGB(50, 74, 124)
+	self.borderColor = {0.8, 0.8, 0.88}
+	self.borderSize = 1
 
-	self.__canScroll = false
-	self.__curScroll = 0
-	self.__maxShow = 10
+	self.font = love.graphics.getFont()
+	self.textColor = {1, 1, 1}
 
-	self.lineSize = 0.5
-	self.round = {4, 4}
+	self.onChanged = onChanged
+	self.callback = onChanged
+	self.__maxShow = 8
+	self.curScroll = 0
 
-	self.__openButton = ui.UIButton(0, 0, self.height, self.height, "",
-		function() self.isOpen = not self.isOpen end)
-	self.__slider = ui.UISlider(0, 0, self.height - 8, self.height * 10, 0,
-		nil, "vertical", 0, #self.options - self.__maxShow)
+	if selected ~= nil then
+		self:selectOption(selected, false)
+	end
+end
+
+function Dropdown:setOptions(options, selected)
+	self.options = options and table.clone(options) or {}
+	self.items = self.options
+	self.curScroll = 0
+	if selected ~= nil then
+		self:selectOption(selected, false)
+	elseif self.options[1] ~= nil then
+		self.selectedOption = math.clamp(self.selectedOption or 1, 1, #self.options)
+		self.curSelected = self.selectedOption
+		self.selectedLabel = tostring(self.options[self.selectedOption] or "")
+		self.label.content = self.selectedLabel
+	else
+		self.selectedOption = 1
+		self.curSelected = 1
+		self.selectedLabel = ""
+		self.label.content = ""
+	end
+end
+
+Dropdown.setItems = Dropdown.setOptions
+
+function Dropdown:setSelected(value, notify)
+	self:selectOption(value, notify == true)
+end
+
+function Dropdown:selectOption(value, notify)
+	if value == nil then return end
+	if type(value) == "number" then
+		local idx = math.clamp(math.floor(value), 1, math.max(1, #self.options))
+		self.selectedOption = idx
+		self.curSelected = idx
+		self.selectedLabel = tostring(self.options[idx] or "")
+	else
+		local strVal = tostring(value)
+		local found = table.find(self.options, strVal)
+		if found then
+			self.selectedOption = found
+			self.curSelected = found
+			self.selectedLabel = strVal
+		else
+			self.selectedLabel = strVal
+		end
+	end
+	self.label.content = self.selectedLabel
+	local cb = self.callback or self.onChanged
+	if notify and cb and self.selectedLabel ~= "" then
+		cb(self.selectedLabel, self.selectedOption)
+	end
+end
+
+function Dropdown:containsPoint(mx, my)
+	if mx >= self.x and mx <= self.x + self.width and
+		my >= self.y and my <= self.y + self.height then
+		return true
+	end
+	if self.isOpen and #self.options > 0 then
+		local visCount = math.min(#self.options, self.__maxShow)
+		local listH = visCount * self.height
+		if mx >= self.x and mx <= self.x + self.width and
+			my >= self.y + self.height and my <= self.y + self.height + listH then
+			return true
+		end
+	end
+	return false
 end
 
 function Dropdown:update(dt)
-	self.__canScroll = (#self.options > self.__maxShow and true or false)
-
-	if game.mouse.wheel ~= 0 and self.__canScroll then
-		self.__curScroll = self.__curScroll - game.mouse.wheel
-		if self.__curScroll < 0 then
-			self.__curScroll = 0
-		elseif self.__curScroll > #self.options - self.__maxShow then
-			self.__curScroll = #self.options - self.__maxShow
-		end
-		self.__slider.value = self.__curScroll
+	Dropdown.super.update(self, dt)
+	if not self.visible then
+		self.isOpen = false
+		self.hovered = false
+		return
 	end
 
-	self.__openButton:update(dt)
-	self.__slider:update()
+	local mx, my = getMousePos(self)
+	self.hovered = (mx >= self.x and mx <= self.x + self.width and
+		my >= self.y and my <= self.y + self.height)
 
-	if game.mouse.justReleasedLeft then
-		local optionClicked = self:isMouseOverOption(game.mouse.x, game.mouse.y)
-		if self.isOpen and optionClicked then
-			self:selectOption(optionClicked + self.__curScroll)
+	self.hoveredRow = nil
+	local visCount = math.min(#self.options, self.__maxShow)
+
+	if self.isOpen and visCount > 0 then
+		if game.mouse.wheel ~= 0 and self:containsPoint(mx, my) then
+			local maxScroll = math.max(0, #self.options - visCount)
+			self.curScroll = math.clamp(self.curScroll - game.mouse.wheel, 0, maxScroll)
+		end
+
+		if mx >= self.x and mx <= self.x + self.width and
+			my >= self.y + self.height and my < self.y + self.height * (1 + visCount) then
+			local row = math.floor((my - (self.y + self.height)) / self.height) + 1
+			if row >= 1 and row <= visCount then
+				self.hoveredRow = row
+			end
 		end
 	end
-end
 
-local function drawBoid(mode, x, y, length, width, angle)
-	love.graphics.push()
-	love.graphics.translate(x, y)
-	love.graphics.rotate(math.rad(angle))
-	love.graphics.polygon(mode, -length / 2, -width / 2, -length / 2, width / 2,
-		length / 2, 0)
-	love.graphics.pop()
+	if game.mouse.justPressedLeft then
+		if self.hovered then
+			self.isOpen = not self.isOpen
+		elseif self.isOpen and self.hoveredRow then
+			local optIdx = self.hoveredRow + self.curScroll
+			if self.options[optIdx] ~= nil then
+				self:selectOption(optIdx, true)
+			end
+			self.isOpen = false
+		else
+			self.isOpen = false
+		end
+	elseif self.isOpen and game.keys.justPressed.ESCAPE then
+		self.isOpen = false
+	end
 end
 
 function Dropdown:__render(camera)
 	local r, g, b, a = love.graphics.getColor()
 	local lineWidth = love.graphics.getLineWidth()
-	local ogScis_x, ogScis_y, ogScis_w, ogScis_h = love.graphics.getScissor()
-	local mx, my = game.mouse.x, game.mouse.y
+	local prevFont = love.graphics.getFont()
 
+	local x, y = self.x - self.offset.x - (camera.scroll.x * self.scrollFactor.x),
+		self.y - self.offset.y - (camera.scroll.y * self.scrollFactor.y)
+	local width, height = self.width, self.height
+	local bs = self.borderSize
+	local font = self.font or prevFont
+	love.graphics.setFont(font)
+
+	local bgCol = (self.hovered or self.isOpen) and self.hoveredColor or self.color
+
+	love.graphics.setColor(self.borderColor[1], self.borderColor[2],
+		self.borderColor[3], self.alpha)
+	love.graphics.rectangle("fill", x, y, width, height, 3, 3)
+
+	love.graphics.setColor(bgCol[1], bgCol[2], bgCol[3], self.alpha)
+	love.graphics.rectangle("fill", x + bs, y + bs, width - bs * 2, height - bs * 2, 2, 2)
+
+	local arrowW = height
+	local textMaxW = math.max(10, width - arrowW - 8)
+	local label = self.selectedLabel ~= "" and self.selectedLabel or (self.options[self.selectedOption] or "-")
+	love.graphics.setColor(self.textColor[1], self.textColor[2], self.textColor[3], self.alpha)
+	love.graphics.print(truncateText(font, label, textMaxW), x + 5,
+		y + (height - font:getHeight()) * 0.5)
+
+	-- Draw dropdown arrow indicator
+	local ax = x + width - arrowW * 0.5
+	local ay = y + height * 0.5
 	if self.isOpen then
-		local heightOption = #self.options
-		if heightOption > self.__maxShow then heightOption = self.__maxShow end
-		love.graphics.setColor(self.color[1], self.color[2],
-			self.color[3], self.alpha)
-		love.graphics.rectangle("fill", self.x, self.y, self.width,
-			self.height * (heightOption + 1), self.round[1], self.round[2])
-
-		for i, option in ipairs(self.options) do
-			if i > self.__curScroll and i <= (self.__maxShow + self.__curScroll) then
-				local fakeIndex = i - self.__curScroll
-				local optionX = self.x
-				local optionY = self.y + (self.height * fakeIndex)
-
-				love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-				love.graphics.rectangle("fill", optionX, optionY + self.height / 2,
-					self.width, self.height / 2, self.round[1],
-					self.round[2])
-
-				love.graphics.setColor(self.textColor[1], self.textColor[2],
-					self.textColor[3], self.alpha)
-				love.graphics.push()
-				love.graphics.setScissor(optionX + 2, optionY, self.width - 7,
-					self.height)
-				love.graphics.print(option, optionX + 5, optionY +
-					(self.height - self.font:getHeight()) /
-					2)
-				love.graphics.setScissor(ogScis_x, ogScis_y, ogScis_w, ogScis_h)
-				love.graphics.pop()
-				if mx >= optionX and mx < optionX + self.width and
-					my >= optionY and my < optionY + self.height then
-					love.graphics.setColor(self.hoverColor[1], self.hoverColor[2],
-						self.hoverColor[3], 0.1 / self.alpha)
-					love.graphics.rectangle("fill", optionX, optionY,
-						self.width, self.height)
-					love.graphics.setColor(self.textColor[1], self.textColor[2],
-						self.textColor[3], self.alpha)
-					love.graphics.push()
-					love.graphics.setScissor(optionX + 2, optionY,
-						self.width - 7, self.height)
-					love.graphics.print(option, optionX + 5, optionY +
-						(self.height - self.font:getHeight()) /
-						2)
-					love.graphics.setScissor(ogScis_x, ogScis_y, ogScis_w,
-						ogScis_h)
-					love.graphics.pop()
-				end
-			end
-		end
-
-		if self.lineSize > 0 then
-			love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-				self.lineColor[3], self.alpha)
-			love.graphics.setLineWidth(self.lineSize)
-			love.graphics.rectangle("line", self.x, self.y, self.width,
-				self.height * (heightOption + 1), self.round[1], self.round[2])
-			love.graphics.setLineWidth(lineWidth)
-		end
-	end
-
-	love.graphics.setColor(self.color[1], self.color[2], self.color[3],
-		self.alpha)
-	love.graphics.rectangle("fill", self.x, self.y, self.width + self.height,
-		self.height, self.round[1], self.round[2])
-
-	love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-	love.graphics.rectangle("fill", self.x, self.y + self.height / 2,
-		self.width + self.height, self.height / 2, self.round[1],
-		self.round[2])
-
-	if self.lineSize > 0 then
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-		love.graphics.setLineWidth(self.lineSize)
-		love.graphics.rectangle("line", self.x, self.y, self.width + self.height,
-			self.height, self.round[1], self.round[2])
-		love.graphics.setLineWidth(lineWidth)
-	end
-
-	love.graphics.setColor(self.textColor[1], self.textColor[2],
-		self.textColor[3], self.alpha)
-	love.graphics.push()
-	love.graphics.setScissor(self.x + 2, self.y, self.width - 7, self.height)
-	love.graphics.print(self.selectedLabel, self.x + 5,
-		self.y + (self.height - self.font:getHeight()) / 2)
-	love.graphics.setScissor(ogScis_x, ogScis_y, ogScis_w, ogScis_h)
-	love.graphics.pop()
-
-	if self.isOpen and #self.options > self.__maxShow then
-		self.__slider.x = self.x + self.width + 4
-		self.__slider.y = self.y + self.height
-		self.__slider:__render(camera)
-		self.__curScroll = math.floor(self.__slider.value)
-	end
-
-	self.__openButton.x = self.x + self.width
-	self.__openButton.y = self.y
-	self.__openButton:__render(camera)
-
-	love.graphics.setColor(1, 1, 1)
-	if self.isOpen then
-		drawBoid("fill", self.__openButton.x + (self.__openButton.width * 0.49),
-			self.__openButton.y + (self.__openButton.height * 0.49),
-			self.__openButton.width * 0.4, self.__openButton.height * 0.6,
-			-90)
+		love.graphics.polygon("fill", ax - 4, ay + 2, ax + 4, ay + 2, ax, ay - 3)
 	else
-		drawBoid("fill", self.__openButton.x + (self.__openButton.width * 0.49),
-			self.__openButton.y + (self.__openButton.height * 0.49),
-			self.__openButton.width * 0.4, self.__openButton.height * 0.6,
-			90)
+		love.graphics.polygon("fill", ax - 4, ay - 2, ax + 4, ay - 2, ax, ay + 3)
 	end
 
-	love.graphics.setColor(r, g, b, a)
-end
+	if self.isOpen and #self.options > 0 then
+		local visCount = math.min(#self.options, self.__maxShow)
+		local listH = visCount * height
+		local ly = y + height
 
-function Dropdown:selectOption(index)
-	if index >= 1 and index <= #self.options then
-		self.selectedLabel = self.options[index]
-		self.selectedOption = index
-		self.isOpen = false
-		if self.onChanged then self.onChanged(self.selectedLabel) end
-	end
-end
+		love.graphics.setColor(self.borderColor[1], self.borderColor[2],
+			self.borderColor[3], self.alpha)
+		love.graphics.rectangle("fill", x, ly, width, listH + bs, 2, 2)
 
-function Dropdown:isMouseOverOption(mx, my)
-	if self.isOpen and self.options then
-		for i, _ in ipairs(self.options) do
-			local optionX = self.x
-			local optionY = self.y + (self.height * i)
-			if mx >= optionX and mx < optionX + self.width and my >= optionY and
-				my < optionY + self.height then
-				return i
+		local hasScroll = #self.options > visCount
+		local rowTextW = math.max(10, width - (hasScroll and 14 or 8))
+
+		for row = 1, visCount do
+			local idx = row + self.curScroll
+			local ry = ly + (row - 1) * height
+			local rowCol = self.optionColor
+			if row == self.hoveredRow then
+				rowCol = self.optionHoverColor
+			elseif idx == self.selectedOption then
+				rowCol = self.optionSelectedColor
 			end
+
+			love.graphics.setColor(rowCol[1], rowCol[2], rowCol[3], self.alpha)
+			love.graphics.rectangle("fill", x + bs, ry, width - bs * 2, height - (row == visCount and bs or 0))
+
+			love.graphics.setColor(self.textColor[1], self.textColor[2], self.textColor[3], self.alpha)
+			love.graphics.print(truncateText(font, self.options[idx], rowTextW),
+				x + 5, ry + (height - font:getHeight()) * 0.5)
+		end
+
+		if hasScroll then
+			local trackH = listH - 4
+			local barH = math.max(12, trackH * (visCount / #self.options))
+			local maxScroll = math.max(1, #self.options - visCount)
+			local barY = ly + 2 + (trackH - barH) * (self.curScroll / maxScroll)
+			love.graphics.setColor(1, 1, 1, 0.2 * self.alpha)
+			love.graphics.rectangle("fill", x + width - 6, ly + 2, 4, trackH, 2, 2)
+			love.graphics.setColor(1, 1, 1, 0.75 * self.alpha)
+			love.graphics.rectangle("fill", x + width - 6, barY, 4, barH, 2, 2)
 		end
 	end
+
+	love.graphics.setFont(prevFont)
+	love.graphics.setColor(r, g, b, a)
+	love.graphics.setLineWidth(lineWidth)
 end
 
 return Dropdown

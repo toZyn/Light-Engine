@@ -131,13 +131,14 @@ function ModsState:update(dt)
 	if controls:pressed("back") and not self.leaving then
 		if Mods.currentMod ~= self.initialMod then
 			game.save.data.currentMod = Mods.currentMod
+			if Parser and Parser.clearCache then Parser.clearCache() end
 			local volume = ClientPrefs.data.menuMusicVolume
 			if game.sound.music then game.sound.music:fade(1.5, volume / 100, 0) end
 			TitleState.initialized = false
 			Tween.tween(game.camera, {zoom = 1.15, alpha = 0}, 1.5, {ease = "sineIn", onComplete = function()
 				if game.sound.music then game.sound.music:stop() end
 				Timer.wait(1, function()
-					-- GlobalScripts.reload()
+					GlobalScripts.reload()
 					ClientPrefs.saveData()
 					game.switchState(TitleState(), true)
 				end)
@@ -146,6 +147,25 @@ function ModsState:update(dt)
 			game.switchState(MainMenuState())
 		end
 		self.leaving = true
+	elseif not self.leaving and not self.inEffect and game.keys.justPressed.N then
+		local baseId = "my-mod"
+		local idx = 1
+		local candidate = baseId
+		while paths.exists((Mods.root or "mods") .. "/" .. candidate, "directory") do
+			idx = idx + 1
+			candidate = baseId .. "-" .. idx
+		end
+		local ok, msg = ModAPI.createTemplate(candidate, {
+			name = "My Mod " .. (idx > 1 and tostring(idx) or "1")
+		})
+		if ok then
+			util.playSfx(paths.getSound('confirmMenu'))
+			Toast.info("Created new mod: " .. candidate)
+			game.switchState(ModsState())
+			return
+		else
+			Toast.error(tostring(msg))
+		end
 	end
 
 	self.descBG.y = util.coolLerp(self.descBG.y,
@@ -325,6 +345,13 @@ function ModsState:swapTabs()
 			})
 		end
 	})
+end
+
+function ModsState:leave()
+	if self.throttles then
+		for _, v in pairs(self.throttles) do v:destroy() end
+		self.throttles = nil
+	end
 end
 
 return ModsState

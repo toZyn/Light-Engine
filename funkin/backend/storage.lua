@@ -240,9 +240,78 @@ local function clearContentCache()
 	local state = game and game.getState and game.getState()
 	if state and PlayState and state:is(PlayState) then return false end
 
+	if Parser and Parser.clearCache then Parser.clearCache() end
 	paths.clearCache()
 	if Shader then Shader.clear() end
+	if GlobalScripts and GlobalScripts.reload then GlobalScripts.reload() end
 	return true
+end
+
+function Storage.getWritableRoot()
+	if Storage.mounted and Storage.root then
+		return Storage.root
+	end
+	return lfs.getSaveDirectory()
+end
+
+function Storage.ensureDir(virtualPath)
+	if type(virtualPath) ~= "string" or virtualPath == "" or virtualPath:find("%.%.", 1, true) then
+		return false, "Invalid directory path"
+	end
+	local clean = virtualPath:gsub("\\", "/"):gsub("^/+", ""):gsub("/+$", "")
+	if clean == "" then return true end
+
+	local mountPrefix = Storage.mountPoint .. "/"
+	if Storage.mounted and Storage.root and clean:sub(1, #mountPrefix) == mountPrefix then
+		local rel = clean:sub(#mountPrefix + 1)
+		local realDir = Storage.root .. "/" .. rel
+		createDirectory(realDir)
+		tryMount()
+		return true, realDir
+	end
+
+	local accum = ""
+	for part in clean:gmatch("[^/]+") do
+		accum = (accum == "") and part or (accum .. "/" .. part)
+		lfs.createDirectory(accum)
+	end
+	return true, lfs.getSaveDirectory() .. "/" .. clean
+end
+
+function Storage.writeFile(virtualPath, content)
+	if type(virtualPath) ~= "string" or virtualPath == "" or virtualPath:find("%.%.", 1, true) then
+		return false, "Invalid file path"
+	end
+	local clean = virtualPath:gsub("\\", "/"):gsub("^/+", "")
+	local parent = clean:match("^(.*)/[^/]+$")
+
+	local mountPrefix = Storage.mountPoint .. "/"
+	if Storage.mounted and Storage.root and clean:sub(1, #mountPrefix) == mountPrefix then
+		local rel = clean:sub(#mountPrefix + 1)
+		local realPath = Storage.root .. "/" .. rel
+		local realParent = realPath:match("^(.*)/[^/]+$")
+		if realParent then createDirectory(realParent) end
+		local f, err = io.open(realPath, "wb")
+		if not f then
+			return false, tostring(err or "Could not open file for writing")
+		end
+		f:write(tostring(content or ""))
+		f:close()
+		-- Refresh PhysFS mount so love.filesystem sees new files immediately
+		lfs.unmount(Storage.root)
+		Storage.mounted = lfs.mount(Storage.root, Storage.mountPoint, true)
+		Storage.refreshWatchList()
+		return true, realPath
+	end
+
+	if parent and parent ~= "" then
+		Storage.ensureDir(parent)
+	end
+	local ok, err = lfs.write(clean, tostring(content or ""))
+	if not ok then
+		return false, tostring(err or "love.filesystem.write failed")
+	end
+	return true, lfs.getSaveDirectory() .. "/" .. clean
 end
 
 function Storage.refreshNow(clearCache)

@@ -160,11 +160,13 @@ local Keyboard = {
 }
 
 local invalidKeys = {
-	'escape', 'shift', 'windows', 'alt', 'ctrl', 'pageup', 'pagedown',
-	'home', 'end', 'insert', 'delete', 'backspace', 'capslock', 'scrolllock',
-	'numlock', 'return', 'left', 'down', 'up', 'right', 'tab', 'menu',
-	'printscreen', 'pause', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8',
-	'f9', 'f10', 'f11', 'f12'
+	escape = true, shift = true, windows = true, alt = true, ctrl = true,
+	pageup = true, pagedown = true, home = true, ["end"] = true, insert = true,
+	delete = true, backspace = true, capslock = true, scrolllock = true,
+	numlock = true, ["return"] = true, left = true, down = true, up = true,
+	right = true, tab = true, menu = true, printscreen = true, pause = true,
+	f1 = true, f2 = true, f3 = true, f4 = true, f5 = true, f6 = true,
+	f7 = true, f8 = true, f9 = true, f10 = true, f11 = true, f12 = true
 }
 local shiftKeys = {
 	["0"] = "!",
@@ -217,32 +219,38 @@ function Keyboard.reset()
 	end
 end
 
+local function normalizeKey(key)
+	if key == 'kpenter' then return 'return' end
+	if key == 'lshift' or key == 'rshift' then return 'shift' end
+	if key == 'lgui' or key == 'rgui' then return 'windows' end
+	if key == 'lalt' or key == 'ralt' then return 'alt' end
+	if key == 'lctrl' or key == 'rctrl' then return 'ctrl' end
+	return key
+end
+
 function Keyboard.onPressed(key)
 	Keyboard.loveInput.justPressed[key] = true
 	Keyboard.loveInput.pressed[key] = true
 	Keyboard.loveInput.released[key] = nil
 
-	if not table.find(invalidKeys, key) then
-		local key = key
-		if key == 'space' then
-			key = ' '
-		elseif key:startsWith('kp') and not Keyboard.modifierActive.NUMLOCK then
-			key = key:gsub('kp', '')
+	local normKey = normalizeKey(key)
+	if not invalidKeys[normKey] then
+		local inputKey = normKey
+		if inputKey == 'space' then
+			inputKey = ' '
+		elseif inputKey:startsWith('kp') and not Keyboard.modifierActive.NUMLOCK then
+			inputKey = inputKey:gsub('kp', '')
 		end
-		if Keyboard.pressed.SHIFT and shiftKeys[key] then
-			key = shiftKeys[key]
+		if Keyboard.pressed.SHIFT and shiftKeys[inputKey] then
+			inputKey = shiftKeys[inputKey]
 		end
 
-		Keyboard.input.justPressed[key] = true
-		Keyboard.input.pressed[key] = true
-		Keyboard.input.released[key] = nil
+		Keyboard.input.justPressed[inputKey] = true
+		Keyboard.input.pressed[inputKey] = true
+		Keyboard.input.released[inputKey] = nil
 	end
 
-	if key == 'kpenter' then key = "return" end
-	if key == 'lshift' or key == 'rshift' then key = 'shift' end
-	if key == 'lgui' or key == 'rgui' then key = 'windows' end
-	if key == 'lalt' or key == 'ralt' then key = 'alt' end
-	if key == 'lctrl' or key == 'rctrl' then key = 'ctrl' end
+	key = normKey
 	if key == "=" then key = "+" end
 
 	local value = Keyboard.keyValues[key]
@@ -263,27 +271,24 @@ function Keyboard.onReleased(key)
 	Keyboard.loveInput.released[key] = true
 	Keyboard.loveInput.pressed[key] = nil
 
-	if not table.find(invalidKeys, key) then
-		local key = key
-		if key == 'space' then
-			key = ' '
-		elseif key:startsWith('kp') and not Keyboard.modifierActive.NUMLOCK then
-			key = key:gsub('kp', '')
+	local normKey = normalizeKey(key)
+	if not invalidKeys[normKey] then
+		local inputKey = normKey
+		if inputKey == 'space' then
+			inputKey = ' '
+		elseif inputKey:startsWith('kp') and not Keyboard.modifierActive.NUMLOCK then
+			inputKey = inputKey:gsub('kp', '')
 		end
-		if Keyboard.pressed.SHIFT and shiftKeys[key] then
-			key = shiftKeys[key]
+		if Keyboard.pressed.SHIFT and shiftKeys[inputKey] then
+			inputKey = shiftKeys[inputKey]
 		end
 
-		Keyboard.input.justReleased[key] = true
-		Keyboard.input.released[key] = true
-		Keyboard.input.pressed[key] = nil
+		Keyboard.input.justReleased[inputKey] = true
+		Keyboard.input.released[inputKey] = true
+		Keyboard.input.pressed[inputKey] = nil
 	end
 
-	if key == 'kpenter' then key = "return" end
-	if key == 'lshift' or key == 'rshift' then key = 'shift' end
-	if key == 'lgui' or key == 'rgui' then key = 'windows' end
-	if key == 'lalt' or key == 'ralt' then key = 'alt' end
-	if key == 'lctrl' or key == 'rctrl' then key = 'ctrl' end
+	key = normKey
 	if key == "=" then key = "+" end
 
 	local value = Keyboard.keyValues[key]

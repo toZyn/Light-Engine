@@ -1,44 +1,31 @@
-local camZoomTween
-local function cameraZoom(zoom, dur, direct, ease)
-	if camZoomTween then camZoomTween:destroy() end
+local zoomTween
 
-	local target = zoom * (direct and 1 or stage.camZoom)
+function event(params)
+	local v = params.v or {}
+	local zoom = tonumber(v.zoom or v[1]) or 1
+	local durationSteps = tonumber(v.duration)
+	local durationSec = (v.duration == nil and v[2] ~= nil) and tonumber(v[2]) or nil
+	local mode = v.mode or "stage"
+	local ease = v.ease or "linear"
 
-	if dur == 0 then
-		camZoom = target
-		camZoomTween = nil
-	else
-		camZoomTween = tween:tween(state, {camZoom = target}, dur, {
-			ease = ease,
-			onComplete = function() camZoomTween = nil end
-		})
-	end
-end
+	local targetZoom = (mode == "direct") and zoom or ((state.stage and state.stage.camZoom or 1) * zoom)
+	if zoomTween then zoomTween:cancel(); zoomTween = nil end
 
-function event(data)
-	if game.camera.pixelPerfect then
-		return
+	local dur = 0
+	if durationSec then
+		dur = math.max(0, durationSec)
+	elseif durationSteps and durationSteps > 0 and PlayState.conductor then
+		dur = (PlayState.conductor.stepCrotchet / 1000) * durationSteps
 	end
 
-	data = data.v
-	local zoom = data.zoom or 1
-	local duration = data.duration or 4
-	local mode = data.mode or "direct"
-	local direct = (mode == "direct")
-	local ease = data.ease or "linear"
-	local dir = data.easeDir
-
-	if ease == "INSTANT" then
-		cameraZoom(zoom, 0, direct)
+	if dur <= 0 or ease == "INSTANT" then
+		state.camZoom = targetZoom
 	else
-		local dur = conductor.stepCrotchet * duration / 1000
-		local daEase = dir and Ease[ease .. dir] or Ease[ease]
-
-		if daEase == nil then
-			print("[CAMERAZOOM EVENT] Invalid ease function: " .. ease)
-			return
-		end
-
-		cameraZoom(zoom, dur, direct, daEase)
+		zoomTween = state.tween:tween(
+			state,
+			{camZoom = targetZoom},
+			dur,
+			{ease = Ease[ease] or Ease.linear, onComplete = function() zoomTween = nil end}
+		)
 	end
 end

@@ -1,0 +1,191 @@
+local JsonDecode = require "loxel.lib.json"
+
+check("JSONBuilder escapes special characters, handles NaN/Inf, and round-trips", function()
+	local payload = {
+		title = 'Song "Quoted" \\ Line1\nLine2\tTab\b\f\r' .. string.char(1),
+		nanVal = 0 / 0,
+		infVal = math.huge,
+		colors = {146, 113, 253},
+		nested = {ok = true, empty = {}}
+	}
+	local encoded = JSON.encode(payload, true)
+	assert(encoded:find('"nanVal": 0', 1, true), "NaN must serialize safely as 0")
+	assert(encoded:find('"infVal": 0', 1, true), "Inf must serialize safely as 0")
+	local decoded = JsonDecode.decode(encoded)
+	assert(decoded.title == payload.title, "escaped string must decode identically")
+	assert(decoded.nanVal == 0 and decoded.infVal == 0, "NaN/Inf round-trip safely")
+	assert(decoded.colors[1] == 146 and decoded.colors[3] == 253, "numeric array round-trip")
+	assert(decoded.nested.ok == true, "boolean field round-trip")
+end)
+
+check("All 10 loxel.ui widgets instantiate, update, and draw cleanly", function()
+	local state = State()
+	local grid = ui.UIGrid(0, 0, 4, 4, 16, Color.WHITE, Color.GRAY)
+	local btn = ui.UIButton(10, 10, 100, 26, "Click")
+	local cb = ui.UICheckbox(10, 44, 20)
+	local slider = ui.UISlider(10, 74, 120, 12, 0.5, 0, 1, 0.1)
+	local input = ui.UIInputTextBox(10, 96, 140, 24)
+	local stepper = ui.UINumericStepper(10, 128, 0.1, 1.0, 0, 10, 120, 24)
+	local dd = ui.UIDropDown(10, 160, {"One", "Two", "Three"}, 1, 120, 24)
+	local tabs = ui.UITabMenu(200, 10, {"TabA", "TabB"}, 260, 220)
+	local tabContent = Group()
+	local innerBtn = ui.UIButton(12, 12, 80, 24, "Inner")
+	tabContent:add(innerBtn)
+	tabs:addGroup(tabContent, 1)
+	local nav = ui.UINavbar({{"File", function() end}, {"Help", function() end}})
+	local win = ui.UIWindow(480, 40, 200, 150, "Inspector")
+
+	for _, w in ipairs({grid, btn, cb, slider, input, stepper, dd, tabs, nav, win}) do
+		state:add(w)
+	end
+	state:update(1 / 60)
+	assert(innerBtn.offsetX == 200 and innerBtn.offsetY == 10 + tabs.tabHeight,
+		"UITabMenu must propagate container offsets to child widgets")
+
+	-- Verify stepper float rounding avoids 0.30000000000000004 drift
+	stepper:setValue(0.1 + 0.2)
+	assert(stepper.text == "0.3", "UINumericStepper must round clean decimals, got: " .. tostring(stepper.text))
+
+	local canvas = love.graphics.newCanvas(game.width, game.height)
+	canvas:renderTo(function() state:draw() end)
+	canvas:release()
+	state:destroy()
+end)
+
+check("ModAPI scaffolds mod template, persists mod data, and keeps compat opt-in", function()
+	local modRoot = Mods.root or "mods"
+	local modId = "unit-test-mod-" .. tostring(os.time()) .. "-" .. tostring(math.random(1000, 9999))
+	local ok, pathMsg = ModAPI.createTemplate(modId, {
+		name = "Unit Test Mod",
+		description = "Automated template verification"
+	})
+	assert(ok, "ModAPI.createTemplate failed: " .. tostring(pathMsg))
+	assert(love.filesystem.getInfo(modRoot .. "/" .. modId .. "/meta.json", "file"), "meta.json must exist")
+	assert(love.filesystem.getInfo(modRoot .. "/" .. modId .. "/songs/bopeebo/charts/normal.json", "file"), "starter chart must exist")
+	assert(love.filesystem.getInfo(modRoot .. "/" .. modId .. "/data/weeks/week1.json", "file"), "starter week must exist")
+
+	assert(ModAPI.saveData("highscore_flag", {cleared = true, stars = 3}))
+	local loaded = ModAPI.loadData("highscore_flag")
+	assert(type(loaded) == "table" and loaded.cleared == true and loaded.stars == 3, "ModAPI save/load round-trip")
+
+	-- Verify Mod is available in native scripts via environment metatable without polluting rawget(variables)
+	assert(Storage.writeFile("assets/data/scripts/mod_env_probe.lua", [[
+		function checkMod()
+			return type(Mod) == "table" and type(Mod.flash) == "function"
+		end
+	]]))
+	local scr = Script("data/scripts/mod_env_probe", false)
+	assert(rawget(scr.variables, "getProperty") == nil, "compat globals must stay opt-in")
+	assert(rawget(scr.variables, "Mod") == nil, "Mod must live on shared env metatable, not raw variables")
+	assert(scr:call("checkMod") == true, "Mod table must be accessible inside scripts")
+	scr:close()
+end)
+
+check("EditorMenu opens, navigates, and cleans up throttles on close", function()
+	local beforeCount = #Throttle.list
+	local host = State()
+	game.switchState(host, true)
+	game.update(1 / 60)
+	local menu = EditorMenu()
+	host:openSubstate(menu)
+	game.update(1 / 60)
+	menu:changeSelection(1)
+	assert(menu.curSelected == 2, "EditorMenu selection must advance")
+	menu:close()
+	assert(#Throttle.list == beforeCount, "EditorMenu must destroy all throttles on close")
+end)
+
+check("ChartingState edits notes/events, supports undo/redo, and round-trips chart JSON", function()
+	PlayState.loadSong("bopeebo", "normal")
+	local charter = ChartingState()
+	game.switchState(charter, true)
+	game.update(1 / 60)
+	game.draw()
+
+	assert(not charter:isTyping(), "ChartingState must not lock keyboard shortcuts when inputs are unfocused")
+
+	-- Clear & place specific notes + custom event
+	charter:pushUndo()
+	charter.song.notes.player = {}
+	charter.song.notes.enemy = {}
+	charter.song.events = {}
+
+	table.insert(charter.song.notes.player, {t = 500, d = 0, l = 250})
+	table.insert(charter.song.notes.player, {t = 1000, d = 2, l = 0, gf = true})
+	table.insert(charter.song.notes.enemy, {t = 1500, d = 3, l = 125, k = "alt"})
+	table.insert(charter.song.notes.player, {t = 2000, d = 1, l = 0, k = "Hurt Note"})
+	table.insert(charter.song.events, {t = 1000, e = "Add Camera Zoom", v = {"0.02", "0.04"}})
+
+	-- Undo & Redo check
+	charter:pushUndo()
+	charter.song.notes.player = {}
+	assert(#charter.song.notes.player == 0)
+	charter:undo()
+	assert(#charter.song.notes.player == 3, "Undo must restore 3 player notes")
+
+	-- Save chart and parse back through vanilla parser
+	charter.song.song = "roundtrip-test"
+	charter.curDifficulty = "hard"
+	local savedOk, savedPath = charter:saveChart(false)
+	assert(savedOk, "ChartingState:saveChart failed: " .. tostring(savedPath))
+
+	local reparsed = Parser.getChart("roundtrip-test", "hard")
+	assert(#reparsed.notes.player == 3, "Reparsed chart must have 3 player notes, got " .. #reparsed.notes.player)
+	assert(#reparsed.notes.enemy == 1, "Reparsed chart must have 1 enemy note, got " .. #reparsed.notes.enemy)
+	assert(reparsed.notes.player[1].l == 250, "Sustain length must survive round-trip")
+	assert(reparsed.notes.player[2].gf == true, "GF Sing flag must survive round-trip")
+	assert(reparsed.notes.enemy[1].k == "alt", "Alt anim flag must survive round-trip")
+	assert(reparsed.notes.player[3].k == "Hurt Note", "Custom note type must survive round-trip")
+
+	local foundZoomEv = false
+	for _, ev in ipairs(reparsed.events) do
+		if ev.e == "Add Camera Zoom" then foundZoomEv = true end
+	end
+	assert(foundZoomEv, "Custom chart event must survive round-trip")
+end)
+
+check("CharacterEditor & CutsceneState run cleanly and save valid JSON", function()
+	CharacterEditor.onPlayState = false
+	local charEd = CharacterEditor()
+	game.switchState(charEd, true)
+	game.update(1 / 60)
+	game.draw()
+	assert(not charEd:isTyping(), "CharacterEditor must not trap keyboard input when unfocused")
+
+	charEd:changeOffsets(12, -8)
+	assert(charEd.curAnim[6][1] == 12 and charEd.curAnim[6][2] == -8, "CharacterEditor offset update")
+	charEd.inCharId.text = "bf-edited-test"
+	local okSave = charEd:saveCharacter(false)
+	assert(okSave, "CharacterEditor:saveCharacter must succeed cross-platform")
+	local parsedChar = Parser.getCharacter("bf-edited-test")
+	assert(parsedChar and parsedChar.animations[1][6][1] == 12, "Saved character JSON must round-trip offsets")
+
+	-- Cutscene & Stage Editor
+	local cutEd = CutsceneState()
+	game.switchState(cutEd, true)
+	game.update(1 / 60)
+	game.draw()
+	cutEd.inStageId.text = "custom-stage-test"
+	cutEd.curZoom = 0.85
+	cutEd:saveStageJSON()
+	local parsedStage = Parser.getStage("custom-stage-test")
+	assert(parsedStage and math.abs(parsedStage.cameraZoom - 0.85) < 0.001,
+		"Native JSON stage saved from CutsceneState must parse via Parser.getStage")
+end)
+
+check("Notefield seekTo advances spawn cursor and updates notes every frame", function()
+	local rawNotes = {
+		{t = 200, d = 0, l = 0},
+		{t = 800, d = 1, l = 0},
+		{t = 5000, d = 2, l = 0},
+		{t = 5500, d = 3, l = 0}
+	}
+	local nf = Notefield(0, 0, 4, "default", nil, nil, 1.0)
+	nf:makeNotesFromChart(rawNotes)
+	nf:seekTo(4.9)
+	assert(#nf.activeNotes == 0, "Notes well before seek target must be skipped without spawning")
+	nf.time = 4.95
+	nf:update(1 / 60)
+	assert(#nf.activeNotes >= 1 and nf.activeNotes[1].time == 5.0, "Upcoming notes after seek target must spawn cleanly")
+	nf:destroy()
+end)

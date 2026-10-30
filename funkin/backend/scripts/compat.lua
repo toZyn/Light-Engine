@@ -370,6 +370,91 @@ function Compat.new(state, script)
 	end
 	api.setSoundVolume = function(tag, volume) self:_active(); if self.sounds[tag] then self.sounds[tag].volume = volume end end
 	api.getSoundVolume = function(tag) self:_active(); return self.sounds[tag] and self.sounds[tag].volume end
+	api.luaSpriteExists = function(tag) self:_active(); return self.objects[tag] ~= nil and self.objects[tag]:is(Sprite) end
+	api.luaTextExists = function(tag) self:_active(); return self.objects[tag] ~= nil and self.objects[tag]:is(Text) end
+	api.makeLuaText = function(tag, text, width, x, y)
+		self:_active()
+		if type(tag) ~= "string" or not tag:match("^[%a_][%w_]*$") then fail("text tag must be an identifier") end
+		if self.objects[tag] then self:_remove(tag, true) end
+		local font = paths.getFont("vcr.ttf", 16) or love.graphics.getFont()
+		local txt = Text(x or 0, y or 0, tostring(text or ""), font, Color.WHITE, "center", (width and width > 0) and width or nil)
+		txt.outline.style = "simple"
+		txt.outline.size = 1
+		if self.state.camHUD then txt.cameras = {self.state.camHUD} end
+		self.objects[tag] = txt
+		return txt
+	end
+	api.addLuaText = function(tag) return api.addLuaSprite(tag, true) end
+	api.removeLuaText = function(tag, destroy) return api.removeLuaSprite(tag, destroy) end
+	api.setTextString = function(tag, text) local obj = self:_object(tag); obj.content = tostring(text or ""); return true end
+	api.getTextString = function(tag) return self:_object(tag).content end
+	api.setTextSize = function(tag, size)
+		positive(size, "text size")
+		local obj = self:_object(tag)
+		local fontName = obj._compatFontName or "vcr.ttf"
+		local f = paths.getFont(fontName, math.floor(size))
+		if f then obj.font = f end
+	end
+	api.setTextFont = function(tag, fontName)
+		local obj = self:_object(tag)
+		obj._compatFontName = tostring(fontName or "vcr.ttf")
+		local curSize = (obj.font and obj.font.getHeight and obj.font:getHeight()) or 16
+		local f = paths.getFont(obj._compatFontName, curSize)
+		if f then obj.font = f end
+	end
+	api.setTextColor = function(tag, hexColor)
+		local hex = tostring(hexColor or "FFFFFF"):gsub("^#", ""):gsub("^0[xX]", "")
+		if #hex == 8 then hex = hex:sub(3) end
+		if not hex:match("^%x%x%x%x%x%x$") then fail("text color must be hexadecimal RGB") end
+		self:_object(tag).color = Color.fromHEX(tonumber(hex, 16))
+	end
+	api.setTextAlignment = function(tag, align)
+		local a = tostring(align or "left"):lower()
+		if a ~= "left" and a ~= "center" and a ~= "right" and a ~= "justify" then fail("unsupported alignment: " .. tostring(align)) end
+		self:_object(tag).alignment = a
+	end
+	local function resolveCompatCam(camera)
+		local names = {game = "camGame", camgame = "camGame", hud = "camHUD", camhud = "camHUD", other = "camOther", camother = "camOther", notes = "camNotes", camnotes = "camNotes"}
+		local key = names[tostring(camera or "game"):lower()] or camera
+		local cam = self:_root(key)
+		if not cam then fail("camera is unavailable: " .. tostring(camera)) end
+		return cam
+	end
+	api.cameraFlash = function(camera, color, duration, forced)
+		self:_active()
+		local cam = resolveCompatCam(camera)
+		local hex = tostring(color or "FFFFFF"):gsub("^#", ""):gsub("^0[xX]", "")
+		if #hex == 8 then hex = hex:sub(3) end
+		local col = hex:match("^%x%x%x%x%x%x$") and Color.fromHEX(tonumber(hex, 16)) or Color.WHITE
+		cam:flash(col, tonumber(duration) or 0.5, nil, forced ~= false)
+	end
+	api.cameraShake = function(camera, intensity, duration)
+		self:_active()
+		local cam = resolveCompatCam(camera)
+		cam:shake(tonumber(intensity) or 0.01, tonumber(duration) or 0.25, nil, true)
+	end
+	api.cameraFade = function(camera, color, duration, fadeIn, forced)
+		self:_active()
+		local cam = resolveCompatCam(camera)
+		local hex = tostring(color or "000000"):gsub("^#", ""):gsub("^0[xX]", "")
+		if #hex == 8 then hex = hex:sub(3) end
+		local col = hex:match("^%x%x%x%x%x%x$") and Color.fromHEX(tonumber(hex, 16)) or Color.BLACK
+		cam:fade(col, tonumber(duration) or 0.5, fadeIn == true, nil, forced ~= false)
+	end
+	api.characterPlayAnim = function(charType, anim, forced)
+		self:_active()
+		local s = tostring(charType or "dad"):lower()
+		local ch = (s == "bf" or s == "boyfriend" or s == "0") and self.state.boyfriend
+			or ((s == "gf" or s == "girlfriend" or s == "2") and self.state.gf or self.state.dad)
+		if not ch then fail("missing character: " .. tostring(charType)) end
+		if ch.playAnim then ch:playAnim(tostring(anim), forced ~= false, true) end
+	end
+	api.triggerEvent = function(name, v1, v2)
+		self:_active()
+		if self.state.pushEvent then
+			self.state:pushEvent(tostring(name), {v1, v2})
+		end
+	end
 	api.runHaxeCode = function() fail("runHaxeCode is unsupported; use native Lua engine APIs") end
 	api.runHaxeFunction = function() fail("runHaxeFunction is unsupported; use native Lua engine APIs") end
 	require("funkin.backend.scripts.compat-controls").install(self, api)

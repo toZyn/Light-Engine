@@ -1,96 +1,99 @@
----@class Checkbox:Object
-local Checkbox = Object:extend("Checkbox")
+---@class UICheckbox:Object
+local Checkbox = Object:extend("UICheckbox")
 
-function Checkbox:new(x, y, size, callback)
+local function getMousePos(self)
+	local mx, my = game.mouse.x, game.mouse.y
+	local cam = self.cameras and self.cameras[1]
+	if cam then
+		local z = cam.zoom or 1
+		if z ~= 0 and z ~= 1 then
+			mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
+			my = (my - cam.height * 0.5) / z + cam.height * 0.5
+		end
+		mx = mx + cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1)
+		my = my + cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1)
+	end
+	return mx - (self.__uiOffsetX or 0), my - (self.__uiOffsetY or 0)
+end
+
+function Checkbox:new(x, y, size, checked, callback)
 	Checkbox.super.new(self, x, y)
 
 	self.size = size or 20
-
-	self.checked = false
+	self.width = self.size
+	self.height = self.size
+	self.checked = checked or false
 	self.hovered = false
+
+	self.color = Color.fromRGB(36, 34, 46)
+	self.checkColor = Color.fromRGB(110, 215, 145)
+	self.borderColor = {1, 1, 1}
+	self.borderSize = 1.5
+
 	self.callback = callback
+end
 
-	self.color = {0.2, 0.2, 0.2}
-	self.lineColor = Color.WHITE
-	self.lineColorHovered = {0.8, 0.8, 0.8}
-	self.checkColor = Color.WHITE
-
-	self.lineSize = 0.5
-	self.round = {4, 4}
+function Checkbox:setChecked(value, triggerCallback)
+	self.checked = not not value
+	if triggerCallback and self.callback then
+		self.callback(self.checked)
+	end
 end
 
 function Checkbox:update(dt)
 	Checkbox.super.update(self, dt)
+	if not self.visible then
+		self.hovered = false
+		return
+	end
 
-	local mx, my = game.mouse.x, game.mouse.y
-	self.hovered =
-		(mx >= self.x and mx <= self.x + self.size and my >= self.y and my <=
-			self.y + self.size)
+	self.width, self.height = self.size, self.size
+	local mx, my = getMousePos(self)
 
-	if self.hovered and game.mouse.justReleased then
+	self.hovered = (mx >= self.x and mx <= self.x + self.size and
+		my >= self.y and my <= self.y + self.size)
+
+	if self.hovered and game.mouse.justPressedLeft then
 		self.checked = not self.checked
-		if self.callback then self.callback() end
+		if self.callback then self.callback(self.checked) end
 	end
 end
 
-function Checkbox:__render()
+function Checkbox:__render(camera)
 	local r, g, b, a = love.graphics.getColor()
 	local lineWidth = love.graphics.getLineWidth()
 
-	love.graphics.setColor(self.color[1], self.color[2], self.color[3],
-		self.alpha)
-	love.graphics.rectangle("fill", self.x, self.y, self.size, self.size,
-		self.round[1], self.round[2])
+	local x, y = self.x - self.offset.x - (camera.scroll.x * self.scrollFactor.x),
+		self.y - self.offset.y - (camera.scroll.y * self.scrollFactor.y)
+	local size = self.size
+	local bs = self.borderSize
 
-	love.graphics.setColor(0, 0, 0, 0.1 / self.alpha)
-	love.graphics.rectangle("fill", self.x, self.y + self.size / 2, self.size,
-		self.size / 2, self.round[1], self.round[2])
+	love.graphics.setColor(self.borderColor[1], self.borderColor[2],
+		self.borderColor[3], self.alpha)
+	love.graphics.setLineWidth(bs)
+	love.graphics.rectangle("fill", x, y, size, size, 3, 3)
 
-	if self.hovered then
-		local color = {0, 0, 0, 0.1 / self.alpha}
-		if game.mouse.pressed then
-			color = {1, 1, 1, 0.1 / self.alpha}
-		end
-		love.graphics.setColor(unpack(color))
-		love.graphics.rectangle("fill", self.x, self.y, self.size, self.size,
-			self.round[1], self.round[2])
-
-		love.graphics.setColor(self.lineColorHovered[1], self.lineColorHovered[2],
-			self.lineColorHovered[3], self.alpha)
-	else
-		love.graphics.setColor(self.lineColor[1], self.lineColor[2],
-			self.lineColor[3], self.alpha)
-	end
-
-	if self.lineSize > 0 then
-		love.graphics.setLineWidth(self.lineSize)
-		love.graphics.rectangle("line", self.x, self.y, self.size, self.size,
-			self.round[1], self.round[2])
-		love.graphics.setLineWidth(lineWidth)
-	end
+	love.graphics.setColor(self.color[1], self.color[2], self.color[3], self.alpha)
+	love.graphics.rectangle("fill", x + bs, y + bs, size - bs * 2, size - bs * 2, 2, 2)
 
 	if self.checked then
-		love.graphics.push()
-
-		local checkX = self.x + self.size / 2
-		local checkY = self.y + self.size / 2
-
-		love.graphics.translate(checkX, checkY)
 		love.graphics.setColor(self.checkColor[1], self.checkColor[2],
 			self.checkColor[3], self.alpha)
+		love.graphics.setLineWidth(math.max(2, size * 0.14))
+		love.graphics.line(
+			x + size * 0.22, y + size * 0.52,
+			x + size * 0.44, y + size * 0.74,
+			x + size * 0.78, y + size * 0.28
+		)
+	end
 
-		local logo_position = {(-self.size) * 0.3, (-self.size) * -0.3}
-
-		love.graphics.rotate(math.rad(45))
-		love.graphics.rectangle("fill", logo_position[1], logo_position[2],
-			(self.size * 0.5), (self.size * 0.2))
-		love.graphics.rectangle("fill", 0, logo_position[2] * -2,
-			(self.size * 0.2), (self.size * 1.1))
-
-		love.graphics.pop()
+	if self.hovered then
+		love.graphics.setColor(1, 1, 1, 0.1 * self.alpha)
+		love.graphics.rectangle("fill", x, y, size, size, 3, 3)
 	end
 
 	love.graphics.setColor(r, g, b, a)
+	love.graphics.setLineWidth(lineWidth)
 end
 
 return Checkbox

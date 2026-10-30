@@ -81,7 +81,7 @@ function GameOverSubstate:update(dt)
 
 			util.playMenuMusic()
 			GameOverSubstate.deaths = 0
-			local state = PlayState.isStoryMode and StoryMenuState or FreeplayState
+			local state = PlayState.storyMode and StoryMenuState or FreeplayState
 			local stickers = Stickers()
 			self:add(stickers)
 			stickers:start(state())

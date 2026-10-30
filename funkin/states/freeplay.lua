@@ -101,14 +101,29 @@ function FreeplayState:update(dt)
 	if math.abs(self.lerpScore - self.intendedScore) <= 10 then
 		self.lerpScore = self.intendedScore
 	end
-	self.scoreText.content = "PERSONAL BEST: " .. util.formatNumber(math.floor(self.lerpScore))
-
-	self:positionHighscore()
+	local dispScore = math.floor(self.lerpScore)
+	if self._lastDispScore ~= dispScore then
+		self._lastDispScore = dispScore
+		self.scoreText.content = "PERSONAL BEST: " .. util.formatNumber(dispScore)
+		self:positionHighscore()
+	end
 
 	if not self.songs.lock then
 		if #self.songs.members > 0 and self.throttles then
 			if self.throttles.left:check() then self:changeDiff(-1) end
 			if self.throttles.right:check() then self:changeDiff(1) end
+			if controls:pressed("debug_1") then
+				local selected = self.songs:getSelected()
+				if selected then
+					local diff = selected.diffs[FreeplayState.curDifficulty]
+					PlayState.storyMode = false
+					PlayState.META = selected.meta
+					PlayState.loadSong(selected.songName, diff)
+					PlayState.storyDifficulty = diff
+					game.switchState(ChartingState())
+					return
+				end
+			end
 		end
 		if controls:pressed("back") then
 			self.songs.lock = true
@@ -155,11 +170,28 @@ function FreeplayState:positionHighscore()
 	self.diffText.x = math.floor(self.scoreBG.x + (self.scoreBG.width - self.diffText:getWidth()) / 2)
 end
 
+local function trimEntry(line)
+	if type(line) ~= "string" then return "" end
+	line = line:gsub("^%s+", ""):gsub("%s+$", "")
+	if line == "" or line:sub(1, 1) == "#" or line:sub(1, 2) == "//" then
+		return ""
+	end
+	return line
+end
+
 function FreeplayState:loadSongs()
 	local listData, func = nil, Mods.currentMod and paths.getMods or function(...)
 		return paths.getPath(..., false)
 	end
-	local data, dont = {}
+	local data, seenSongs, dont = {}, {}
+	local function addSongMeta(songName)
+		local clean = trimEntry(songName)
+		if clean == "" then return end
+		local key = paths.formatToSongPath(clean)
+		if seenSongs[key] then return end
+		seenSongs[key] = true
+		table.insert(data, Parser.getMeta(clean))
+	end
 
 	if paths.exists(func('data/freeplayList.txt'), 'file') then
 		listData = paths.getText('freeplayList')
@@ -167,12 +199,15 @@ function FreeplayState:loadSongs()
 		listData = paths.getText('freeplaySonglist')
 	else
 		if paths.exists(func('data/weekList.txt'), 'file') then
-			listData = paths.getText('weekList'):gsub('\r', ''):split('\n')
-			for _, week in pairs(listData) do
-				local weekData = paths.getJSON('data/weeks/weeks/' .. week)
-				if not weekData.hide_fm then
-					for _, song in ipairs(weekData.songs) do
-						table.insert(data, Parser.getMeta(song))
+			listData = (paths.getText('weekList') or ""):gsub('\r', ''):split('\n')
+			for _, rawWeek in pairs(listData) do
+				local week = trimEntry(rawWeek)
+				if week ~= "" then
+					local weekData = paths.getJSON('data/weeks/weeks/' .. week)
+					if weekData and not weekData.hide_fm and type(weekData.songs) == "table" then
+						for _, song in ipairs(weekData.songs) do
+							addSongMeta(type(song) == "table" and song[1] or song)
+						end
 					end
 				end
 			end
@@ -180,9 +215,9 @@ function FreeplayState:loadSongs()
 			for _, name in pairs(paths.getItems('data/weeks/weeks', 'file', 'json',
 				not Mods.currentMod, true, Mods.currentMod)) do
 				local weekData = paths.getJSON('data/weeks/weeks/' .. name:withoutExt())
-				if weekData and not weekData.hide_fm then
+				if weekData and not weekData.hide_fm and type(weekData.songs) == "table" then
 					for _, song in ipairs(weekData.songs) do
-						table.insert(data, Parser.getMeta(song))
+						addSongMeta(type(song) == "table" and song[1] or song)
 					end
 				end
 			end
@@ -193,7 +228,42 @@ function FreeplayState:loadSongs()
 	if not dont and listData then
 		listData = listData:gsub('\r', ''):split('\n')
 		for _, song in ipairs(listData) do
-			table.insert(data, Parser.getMeta(song))
+			addSongMeta(song)
+		end
+	end
+
+	-- Auto-discover songs inside active mod's songs/ folder so mods work with zero list setup!
+	if Mods.currentMod then
+		local modSongsDir = paths.getMods('songs')
+		if paths.exists(modSongsDir, 'directory') then
+			for _, folder in ipairs(love.filesystem.getDirectoryItems(modSongsDir)) do
+				local songDir = modSongsDir .. '/' .. folder
+				if paths.exists(songDir, 'directory') and not seenSongs[paths.formatToSongPath(folder)] then
+					if paths.exists(songDir .. '/charts', 'directory')
+						or paths.exists(songDir .. '/Inst.ogg', 'file')
+						or paths.exists(songDir .. '/Inst.wav', 'file')
+						or paths.exists(songDir .. '/Inst.mp3', 'file')
+						or paths.exists(songDir .. '/meta.json', 'file') then
+						local meta = Parser.getMeta(folder)
+						-- Infer difficulties from charts/*.json if meta.json wasn't provided
+						if not paths.exists(songDir .. '/meta.json', 'file')
+							and paths.exists(songDir .. '/charts', 'directory') then
+							local foundDiffs = {}
+							for _, cf in ipairs(love.filesystem.getDirectoryItems(songDir .. '/charts')) do
+								if cf:endsWith('.json') and cf ~= 'meta.json' and cf ~= 'events.json' then
+									local dname = cf:withoutExt():gsub("^%l", string.upper)
+									table.insert(foundDiffs, dname)
+								end
+							end
+							if #foundDiffs > 0 then
+								meta.difficulties = foundDiffs
+							end
+						end
+						seenSongs[paths.formatToSongPath(folder)] = true
+						table.insert(data, meta)
+					end
+				end
+			end
 		end
 	end
 
@@ -223,14 +293,10 @@ end
 
 function FreeplayState:leave()
 	self.script:call("leave")
-	if self.notCreated then
-		self.script:call("postLeave")
-		return
+	if self.throttles then
+		for _, v in pairs(self.throttles) do v:destroy() end
+		self.throttles = nil
 	end
-
-	for _, v in ipairs(self.throttles) do v:destroy() end
-	self.throttles = nil
-
 	self.script:call("postLeave")
 	self.script:close()
 end
