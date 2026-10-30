@@ -394,6 +394,22 @@ function Storage.getContentRoot(name)
 	return name
 end
 
+function Storage.getEditorSavePrefix()
+	if Mods and Mods.currentMod and Mods.currentMod ~= "" then
+		return (Mods.root or Storage.getContentRoot("mods")) .. "/" .. Mods.currentMod .. "/"
+	end
+	return Storage.getContentRoot("saves") .. "/"
+end
+
+function Storage.isAssetsSourcePath(nativePath)
+	if type(nativePath) ~= "string" or nativePath == "" then return false end
+	local src = love.filesystem.getSource and love.filesystem.getSource() or ""
+	if src == "" then return false end
+	local normDst = nativePath:gsub("\\", "/"):lower()
+	local normAssets = (src:gsub("\\", "/"):gsub("/+$", "") .. "/assets/"):lower()
+	return normDst:sub(1, #normAssets) == normAssets
+end
+
 function Storage.installSave(save)
 	if save.externalStorageInstalled then return end
 	save.externalStorageInstalled = true

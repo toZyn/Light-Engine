@@ -53,15 +53,24 @@ local function readFile(key)
 	return nil
 end
 
+local function getSavesRoot()
+	if Storage and Storage.getContentRoot then
+		return Storage.getContentRoot("saves")
+	end
+	return "saves"
+end
+
 local function excludeAssets(path)
 	local i, n = path:find("assets/")
 	if i == 1 then
 		return path:sub(n + 1)
 	end
 
-	for _, root in ipairs({Mods.root, Addons.root}) do
-		local prefix = root .. "/"
-		if path:sub(1, #prefix) == prefix then return path:sub(#prefix + 1) end
+	for _, root in ipairs({getSavesRoot(), "saves", Mods.root, Addons.root}) do
+		if root and root ~= "" then
+			local prefix = root .. "/"
+			if path:sub(1, #prefix) == prefix then return path:sub(#prefix + 1) end
+		end
 	end
 
 	return path
@@ -132,10 +141,21 @@ function paths.getMods(key)
 	return "_"
 end
 
-function paths.getPath(key, allowMods, allowAddons)
+function paths.getSaves(key)
+	local root = getSavesRoot() .. "/"
+	if key and key ~= "" then return root .. key end
+	return root
+end
+
+function paths.getPath(key, allowMods, allowAddons, allowSaves)
 	if allowMods == nil then allowMods = true end
 	if allowAddons == nil then allowAddons = true end
+	if allowSaves == nil then allowSaves = allowMods end
 
+	if allowSaves then
+		local savePath = getSavesRoot() .. "/" .. key
+		if paths.exists(savePath) then return savePath end
+	end
 	if allowMods and Mods and Mods.currentMod then
 		local modPath = Mods.root .. "/" .. Mods.currentMod .. "/" .. key
 		if paths.exists(modPath) then return modPath end
@@ -154,6 +174,17 @@ end
 function paths.getItems(key, type, extension, excludeMods, excludeAddons, excludeAssets)
 	type = type or "any"
 	local files, seen, getItems = {}, {}, love.filesystem.getDirectoryItems
+
+	local savesDir = getSavesRoot() .. "/" .. key .. "/"
+	if not excludeMods and paths.exists(savesDir, "directory") then
+		for _, v in ipairs(getItems(savesDir)) do
+			if not seen[v] and (not extension or v:ext() == extension) then
+				local before = #files
+				insertFile(savesDir .. v, v, type, files)
+				if #files > before then seen[v] = true end
+			end
+		end
+	end
 
 	if not excludeAddons and Addons and Addons.all then
 		for _, addon in ipairs(Addons.all) do

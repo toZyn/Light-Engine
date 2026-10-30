@@ -302,3 +302,70 @@ check("B5: Mod.button, Mod.addMenuButton, SpriteButton, UIButton touch, and cust
 	Mods.currentMod = prevMod
 	paths.async.stop()
 end)
+
+check("Editor saves target saves/ by default with saves/ > mods/ > assets/ priority", function()
+	local prevMod = Mods.currentMod
+	Mods.currentMod = nil
+
+	PlayState.loadSong("bopeebo", "normal")
+	local charter = ChartingState()
+	game.switchState(charter, true)
+	game.update(1 / 60)
+
+	local prefix = charter:getSaveBasePrefix()
+	local savesRoot = Storage.getContentRoot("saves") .. "/"
+	assert(prefix == savesRoot,
+		"Editor save prefix without active mod must be '" .. savesRoot .. "', got '" .. tostring(prefix) .. "'")
+	assert(prefix ~= "assets/", "Editor save prefix must never be 'assets/'")
+
+	charter.song.song = "priority-probe-song"
+	charter.curDifficulty = "normal"
+	charter.song.bpm = 148
+	local okChart, savedChartPath = charter:saveChart(false)
+	assert(okChart, "ChartingState:saveChart(false) must succeed: " .. tostring(savedChartPath))
+	local okMeta, savedMetaPath = charter:saveSongMeta()
+	assert(okMeta, "ChartingState:saveSongMeta() must succeed: " .. tostring(savedMetaPath))
+
+	local expectedRelChart = savesRoot .. "songs/priority-probe-song/charts/normal.json"
+	local expectedRelMeta = savesRoot .. "songs/priority-probe-song/meta.json"
+	assert(paths.exists(expectedRelChart, "file"), "Saved chart must exist in saves/: " .. expectedRelChart)
+	assert(paths.exists(expectedRelMeta, "file"), "Saved meta must exist in saves/: " .. expectedRelMeta)
+	assert(not paths.exists("assets/songs/priority-probe-song/charts/normal.json", "file"),
+		"Editor must never write charts under assets/")
+
+	-- Verify priority: saves/ > mods/ > assets/
+	local modId = "priority-probe-mod"
+	local modRoot = (Mods.root or "mods") .. "/" .. modId
+	Storage.writeFile(modRoot .. "/meta.json", '{"name":"Priority Probe"}')
+	Storage.writeFile(modRoot .. "/songs/bopeebo/meta.json",
+		'{"version":"2.2.4","songName":"ModBopeebo","timeChanges":[{"t":0,"bpm":111}],"playData":{"stage":"stage","difficulties":["normal"],"characters":{"player":"bf","opponent":"dad","girlfriend":"gf"}}}')
+	Mods.reload()
+	Mods.currentMod = modId
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == modRoot .. "/songs/bopeebo/meta.json",
+		"mods/ must override assets/ when saves/ has no override")
+
+	Storage.writeFile(savesRoot .. "songs/bopeebo/meta.json",
+		'{"version":"2.2.4","songName":"SaveBopeebo","timeChanges":[{"t":0,"bpm":133}],"playData":{"stage":"stage","difficulties":["normal"],"characters":{"player":"bf","opponent":"dad","girlfriend":"gf"}}}')
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == savesRoot .. "songs/bopeebo/meta.json",
+		"saves/ must have higher priority than mods/ and assets/")
+
+	-- Removing saves/ override restores mods/ or assets/ cleanly
+	if Storage.mounted and Storage.savePath then
+		os.remove(Storage.savePath .. "/songs/bopeebo/meta.json")
+	else
+		love.filesystem.remove("saves/songs/bopeebo/meta.json")
+	end
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == modRoot .. "/songs/bopeebo/meta.json",
+		"Deleting saves/ override must fall back to active mod")
+	Mods.currentMod = nil
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == "assets/songs/bopeebo/meta.json",
+		"Deleting saves/ override with no mod active must restore base assets/")
+
+	Mods.currentMod = prevMod
+	Parser.clearCache()
+	paths.async.stop()
+end)

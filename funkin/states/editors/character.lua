@@ -674,6 +674,10 @@ function CharacterEditor:saveCharacter(useNativeDialog)
 	if useNativeDialog and WindowDialogue and WindowDialogue.askSaveAsFile then
 		local dst = WindowDialogue.askSaveAsFile(nil, {{"JSON Files", "*.json"}}, charId .. ".json")
 		if dst then
+			if Storage.isAssetsSourcePath(dst) then
+				Toast.error("Refusing to overwrite base game assets/; save inside saves/ or mods/ instead")
+				return false, "Refusing to overwrite assets/"
+			end
 			local f = io.open(dst, "wb")
 			if f then
 				f:write(payload)
@@ -685,8 +689,7 @@ function CharacterEditor:saveCharacter(useNativeDialog)
 		end
 	end
 
-	local prefix = (Mods.currentMod and Mods.currentMod ~= "")
-		and ((Mods.root or "mods") .. "/" .. Mods.currentMod .. "/") or "assets/"
+	local prefix = Storage.getEditorSavePrefix()
 	local virtualPath = prefix .. "data/characters/" .. charId .. ".json"
 	local ok, targetOrErr = Storage.writeFile(virtualPath, payload)
 	Parser.clearCache()
