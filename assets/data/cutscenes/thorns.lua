@@ -4,8 +4,8 @@ local function makeDialogueBox()
 	local doof = DialogueBox("pixel", "thorns", paths.formatToSongPath(PlayState.SONG.song))
 	doof.cameras = {camNotes}
 	doof.onFinish = function()
-		music:stop()
-		close()
+		if music then music:stop() end
+		if close then close() end
 	end
 	add(doof)
 end
@@ -48,10 +48,12 @@ function postCreate()
 		add(senpaiEvil)
 		senpaiEvil.alpha = 0
 		add(white)
+		local triggered = false
 		for delay = 1, 7 do
 			Timer():start(0.3 * delay, function()
 				senpaiEvil.alpha = senpaiEvil.alpha + 0.15
-				if senpaiEvil.alpha > 1 then
+				if senpaiEvil.alpha > 1 and not triggered then
+					triggered = true
 					senpaiEvil.alpha = 1
 
 					Tween.tween(game.camera, {zoom = stage.camZoom - 0.2}, 2.4, {ease = Ease.sineIn})

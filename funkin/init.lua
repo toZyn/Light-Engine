@@ -172,6 +172,12 @@ function funkin.load()
 	game:add(SoundTray)
 
 	game.init(Project, TitleState)
+	if Timer and Timer.globalManager then
+		local RecoverableErrors = require "funkin.backend.recoverable-errors"
+		Timer.globalManager.onError = function(message, trace)
+			RecoverableErrors.report(message, trace, {source = "timer"})
+		end
+	end
 	_lastSurfaceW, _lastSurfaceH = love.graphics.getDimensions()
 
 	if ClientPrefs.data.resolution == -1 then

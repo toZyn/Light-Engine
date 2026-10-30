@@ -182,6 +182,7 @@ function PlayState:preload()
 end
 
 function PlayState:enter()
+	self._postCreated = false
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	if not self._preloaded or not self.ratings then
 		self:preload()
@@ -556,6 +557,7 @@ function PlayState:enter()
 	collectgarbage()
 
 	self.scripts:call("postCreate")
+	self._postCreated = true
 
 	game.camera:follow(self.camFollow, nil, 2.4 * self.camSpeed)
 	game.camera:snapToTarget()
@@ -574,14 +576,18 @@ function PlayState:executeCutscene(name, type, onComplete)
 			cutsceneScript:close()
 		end)
 		cutsceneScript.closeCallback:add(function()
+			if self.scripts and self.scripts.scripts then
+				table.delete(self.scripts.scripts, cutsceneScript)
+			end
 			if onComplete then onComplete() end
 			onComplete = nil
 		end)
 
-		cutsceneScript:call("create")
-		cutsceneScript:call("postCreate")
-
 		self.scripts:add(cutsceneScript)
+		cutsceneScript:call("create")
+		if self._postCreated then
+			cutsceneScript:call("postCreate")
+		end
 	else
 		local s, data = pcall(paths.getJSON, "data/cutscenes/" .. name)
 		if not s then

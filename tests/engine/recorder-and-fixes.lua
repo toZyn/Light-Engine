@@ -259,3 +259,51 @@ check("GLSL ES 3.0 shaders (rain, wiggle) and Weekend 1 AnimateAtlas / icon path
 	assert(paths.exists(paths.getPath("images/" .. resolvedPath .. ".png"), "file"),
 		"HealthIcon fallback path does not exist: " .. tostring(resolvedPath))
 end)
+
+check("Cutscenes execute postCreate once, DialogueBox closes idempotently, and Timer.globalManager isolates callback errors visibly", function()
+	PlayState.seenCutscene = false
+	PlayState.loadSong("senpai", "normal")
+	local ps = PlayState(true, {"senpai", "roses"}, "normal")
+	game.switchState(ps, true)
+	for _ = 1, 240 do
+		game.update(1 / 60)
+	end
+
+	local boxes = {}
+	for _, m in ipairs(ps.members) do
+		if m.is and m:is(DialogueBox) then boxes[#boxes + 1] = m end
+	end
+	assert(#boxes == 1, "Cutscene postCreate must spawn exactly 1 DialogueBox, got " .. tostring(#boxes))
+
+	local dlg = boxes[1]
+	dlg:closeDialogue()
+	dlg:closeDialogue() -- idempotent second call must not crash
+	assert(ps.startedCountdown == true, "Closing cutscene DialogueBox must start song countdown")
+
+	-- Reset pixel camera left by school stage before finishing test
+	if ps.stage and ps.stage.script and ps.stage.script.variables.cam then
+		game.cameras.remove(ps.stage.script.variables.cam)
+	end
+	game.camera.pixelPerfect = false
+	game.camera.antialiasing = true
+	game.camera:resize(game.width, game.height)
+
+	-- Verify Timer.globalManager reports broken callback visibly without crashing or repeating
+	local brokenCount, siblingCount = 0, 0
+	Timer.wait(0.02, function()
+		brokenCount = brokenCount + 1
+		error("timer_callback_visible_probe")
+	end)
+	Timer.wait(0.02, function()
+		siblingCount = siblingCount + 1
+	end)
+	game.update(0.05)
+	game.update(0.05)
+	assert(brokenCount == 1 and siblingCount == 1,
+		"Broken global timer must fail once without blocking sibling timers")
+	local report = love.filesystem.read("diagnostics/last-error.txt") or ""
+	assert(report:find("timer_callback_visible_probe", 1, true) ~= nil,
+		"Broken global timer must be visibly logged to diagnostics/last-error.txt")
+	paths.async.stop()
+end)
+

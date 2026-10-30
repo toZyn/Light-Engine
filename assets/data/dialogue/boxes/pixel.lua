@@ -15,34 +15,47 @@ function create(_, kind)
 end
 
 function postCreate()
+	local dlg = self
 	Timer.wait(kindb == "angry" and 1.5 or 2, function()
+		if not dlg or dlg._closed or dlg.allFinished then return end
 		for loop = 1, 5 do
 			Timer.wait(0.83 * loop, function()
+				if not dlg or dlg._closed or dlg.allFinished or not bgFade then return end
 				bgFade.alpha = bgFade.alpha + (1 / 5) * 0.7
 				if bgFade.alpha > 0.7 then
 					bgFade.alpha = 0.7
 				end
 			end)
 		end
-		startDialogue()
+		if not dlg.started and startDialogue then
+			startDialogue()
+		end
 	end)
-	self:startDialogue()
+	dlg:startDialogue()
 	return Event_Cancel
 end
 
 function finishDialogue()
+	local dlg = self
+	local boxRef, charsRef, fadeRef, musicRef = box, characters, bgFade, music
 	util.playSfx(nextSound)
-	if music then music:fade(1, 0.8, 0) end
+	if musicRef then musicRef:fade(1, 0.8, 0) end
 	for loop = 1, 5 do
 		Timer.wait(0.2 * loop, function()
-			box.alpha = box.alpha - 1 / 5
-			characters.alpha = box.alpha
-			bgFade.alpha = bgFade.alpha - 1 / 5 * 0.7
+			if not dlg or dlg._closed then return end
+			if boxRef then
+				boxRef.alpha = boxRef.alpha - 1 / 5
+				if charsRef then charsRef.alpha = boxRef.alpha end
+			end
+			if fadeRef then
+				fadeRef.alpha = fadeRef.alpha - 1 / 5 * 0.7
+			end
 		end)
 	end
 	Timer.wait(1, function()
-		if music then music:stop() end
-		closeDialogue()
+		if not dlg or dlg._closed then return end
+		if musicRef then musicRef:stop() end
+		if closeDialogue then closeDialogue() end
 	end)
 
 	return Event_Cancel

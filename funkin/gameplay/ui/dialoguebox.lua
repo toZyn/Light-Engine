@@ -59,6 +59,7 @@ function DialogueBox:new(box, anim, song, ...)
 	end
 
 	self.started, self.finished, self.allFinished = false, false, false
+	self._closed = false
 
 	local read = love.filesystem.read
 	local file = read(paths.getPath("songs/" .. song .."/dialogue.txt"))
@@ -166,6 +167,7 @@ function DialogueBox:loadBox(anim)
 end
 
 function DialogueBox:startDialogue()
+	if self._closed or self.allFinished then return end
 	self.curDialogue = self.curDialogue or 0
 	local prev = self.dialogues[self.curDialogue - 1]
 	local dialogue = self.dialogues[self.curDialogue]
@@ -189,12 +191,14 @@ function DialogueBox:startDialogue()
 	end
 
 	local function func()
+		if self._closed or self.allFinished or not self.text then return end
 		if self.text:is(TypeText) then
 			self.text:resetText(dialogue[2])
 		else
 			self.text:setTyping(dialogue[2], 0.04, self.textSound)
 		end
 		self.text.completeCallback = function()
+			if self._closed then return end
 			if self.finishSpr then
 				self.finishSpr.visible = true
 				if self.finishSpr.animation:has("enter") then
@@ -246,17 +250,18 @@ function DialogueBox:resetCharacters(chars)
 end
 
 function DialogueBox:update(dt)
+	if self._closed then return end
 	self.script:call("update", dt)
 
 	if controls:pressed("accept") and self.started then
 		if self.finished and self.curDialogue == #self.dialogues then
 			if not self.allFinished then
+				self.allFinished = true
 				local event = self.script:call("finishDialogue")
 				if event ~= Script.Event_Cancel then
 					self:closeDialogue()
 				end
 			end
-			self.allFinished = true
 		elseif self.finished then
 			self.curDialogue = self.curDialogue + 1
 			self:startDialogue()
@@ -267,8 +272,11 @@ function DialogueBox:update(dt)
 		end
 	end
 
+	if self._closed then return end
 	DialogueBox.super.update(self, dt)
-	self.script:call("postUpdate", dt)
+	if self.script and not self.script.closed then
+		self.script:call("postUpdate", dt)
+	end
 end
 
 function DialogueBox:getCachedChar(char, expression)
@@ -302,9 +310,20 @@ function DialogueBox:splitDialogues(data)
 end
 
 function DialogueBox:closeDialogue()
-	if self.button then self:remove(self.button); self.button:destroy() end
-	if self.onFinish then self.onFinish() end
-	self.script:close()
+	if self._closed then return end
+	self._closed = true
+	self.allFinished = true
+	if self.button then
+		self:remove(self.button)
+		self.button:destroy()
+		self.button = nil
+	end
+	local onFinish = self.onFinish
+	self.onFinish = nil
+	if onFinish then onFinish() end
+	if self.script and not self.script.closed then
+		self.script:close()
+	end
 	self:destroy()
 end
 
