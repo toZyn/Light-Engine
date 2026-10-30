@@ -6,11 +6,18 @@ local captureLabels = {
 	entire = "Entire game"
 }
 
+local qualities = {"standard", "high", "ultra"}
+local qualityLabels = {
+	standard = "Standard",
+	high = "High (Recommended)",
+	ultra = "Ultra"
+}
+
 local scales = {0.5, 0.75, 1.0}
 local scaleLabels = {
-	[0.5] = "50% (Low resource)",
-	[0.75] = "75% (Balanced)",
-	[1.0] = "100% (Native)"
+	[0.5] = "50% (Performance)",
+	[0.75] = "75% (HD Balanced)",
+	[1.0] = "100% (Full Native)"
 }
 
 local fpsValues = {24, 30, 60}
@@ -31,9 +38,13 @@ local data = {
 	{"recordingMode", "Capture mode", "string", captureModes, function(value)
 		return captureLabels[value] or "Gameplay only (No UI)"
 	end},
+	{"recordingAudio", "Record game audio", "boolean"},
 	{"recordingAutoGameplay", "Auto-record gameplay", "boolean"},
 
-	{"PERFORMANCE"},
+	{"QUALITY & PERFORMANCE"},
+	{"recordingQuality", "Video quality", "string", qualities, function(value)
+		return qualityLabels[value] or "High (Recommended)"
+	end},
 	{"recordingScale", "Resolution scale", "number", function(add)
 		local idx = nearestIndex(scales, ClientPrefs.data.recordingScale)
 		local nextIdx = math.clamp(idx + add, 1, #scales)

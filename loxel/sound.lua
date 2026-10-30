@@ -19,8 +19,13 @@ local function sourceCall(self, method, ...)
 	error(result, 0)
 end
 
+local nextSoundUid = 0
+
 function Sound:new(x, y)
 	Sound.super.new(self)
+	nextSoundUid = nextSoundUid + 1
+	self._uid = nextSoundUid
+	self._playSeq = 0
 	self:revive()
 	self.visible, self.cameras = nil, nil
 end
@@ -79,6 +84,7 @@ function Sound:cleanup()
 	self._isSource = false
 	self._source = nil
 	self._asset = nil
+	self._sourcePath = nil
 	self._wasPlaying = false
 end
 
@@ -111,6 +117,7 @@ function Sound:load(asset, autoDestroy, onComplete)
 	self._isSource = true
 	-- Preserve the cache asset identity separately from our owned playback clone.
 	self._asset = asset
+	self._sourcePath = (paths and paths.audioPaths and paths.audioPaths[asset]) or nil
 	return self:init(autoDestroy, onComplete)
 end
 
@@ -134,6 +141,7 @@ function Sound:play(volume, looped, pitch, restart)
 	self._paused = false
 	self._isFinished = false
 	self._wasPlaying = false
+	self._playSeq = (self._playSeq or 0) + 1
 	self.volume = volume
 	self.looped = looped
 	self.pitch = pitch

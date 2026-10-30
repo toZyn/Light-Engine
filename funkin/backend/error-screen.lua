@@ -60,8 +60,10 @@ return function(msg, callerTrace)
 		end
 	end
 	if love.window then
-		love.window.setFullscreen(false)
-		love.window.setDisplaySleepEnabled(true)
+		if not (love.system and love.system.getDevice and love.system.getDevice() == "Mobile") then
+			pcall(love.window.setFullscreen, false)
+		end
+		pcall(love.window.setDisplaySleepEnabled, true)
 	end
 	if love.audio then love.audio.stop() end
 	if love.handlers then love.handlers = nil end

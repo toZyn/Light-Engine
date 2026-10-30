@@ -81,9 +81,10 @@ end
 
 function love.quit()
 	if paths and paths.async then paths.async.stop() end
+	if FFT and FFT.stop then pcall(FFT.stop) end
 	funkin.quit()
 	game.quit()
- Diagnostics.finish()
+	Diagnostics.finish()
 end
 
 function love.threaderror(thread, message)

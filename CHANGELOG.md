@@ -5,6 +5,46 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-10-30
+
+### Fixed
+- **FFT / ABot `Cannot use object after it has been released` crash**
+  (`funkin/backend/fft.lua`, `assets/data/classes/abot.lua`, `main.lua`,
+  `funkin/init.lua`): `ABot` now binds `FFT` to the persistent Loxel `Sound`
+  wrapper (`game.sound.music`) rather than raw `game.sound.music._source`
+  userdata (which is released when `PlayState:startSong()` loads `Inst.ogg`),
+  guards `isPlaying`/`tell` and mono/stereo `SoundData` reads with `pcall`,
+  fixes `normalizedDb` scaling, and shuts down `fftThread` cleanly via
+  `FFT.stop()`.
+- **Android re-entry immediate exit / kick-out**
+  (`android/StoragePermissionActivity.java`, `android/AndroidManifest.xml`,
+  `funkin/backend/error-screen.lua`): Added `Application` lifecycle tracking for
+  `GameActivity` so cached Linux processes with torn-down `liblove.so` /
+  `libopenal.so` / `PhysFS` static singletons exit cleanly once `onDestroy()`
+  finishes, while alive backgrounded sessions resume smoothly via
+  `FLAG_ACTIVITY_REORDER_TO_FRONT`. Locked `resizeableActivity="false"` for
+  strict `sensorLandscape` enforcement and guarded `setFullscreen(false)` in the
+  error screen on mobile.
+- **Screen Recorder audio sync, fluidity, visual quality & container integrity**
+  (`funkin/backend/recorder.lua`, `funkin/backend/recorder_encoder_thread.lua`,
+  `funkin/backend/recorder_thread.lua`, `funkin/ui/options/recording.lua`,
+  `loxel/sound.lua`, `funkin/backend/paths/init.lua`,
+  `funkin/backend/paths/async.lua`):
+  - Added real-time 44.1 kHz 16-bit Stereo PCM game audio capture & mixing
+    (`01wb` / `WAVE_FORMAT_PCM`) across streamed `Inst`/`Voices`/music and
+    in-memory `SoundData` SFX with automatic drift resynchronization, vocal-miss
+    muting, and playback-pitch resampling.
+  - Replaced same-frame synchronous GPU readback and per-frame camera FBO
+    toggling with 2-canvas ping-pong delayed readback, steady camera FBO mode,
+    16-pixel aligned dimensions, and monotonic wall-clock frame pacing.
+  - Added a multi-core fixed-point integer AAN DCT MJPEG worker pool (`5.4x`
+    faster per core, `2-4` parallel workers) with high-quality defaults (`75%`
+    HD `960x544`, `60 FPS`, `High` JPEG 88) and English **Record game audio** /
+    **Video quality** controls.
+  - Eliminated corrupt recordings by fixing `idx1` `movi`-relative chunk offsets
+    (`4 + moviDataBytes`), replacing 0-byte drop chunks with valid JPEG frame
+    duplication, and periodically checkpointing RIFF/AVI headers on disk.
+
 ## [0.2.1] - 2026-10-30
 
 ### Added

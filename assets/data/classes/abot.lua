@@ -69,7 +69,7 @@ function ABot:new(x, y)
 	local instDiff = diff ~= "" and (songFolder .. "/Inst-" .. diff .. ".ogg") or nil
 	local path = (instDiff and paths.exists(paths.getPath(instDiff), "file"))
 		and instDiff or (songFolder .. "/Inst.ogg")
-	local fft = FFT(7, path, game.sound.music and game.sound.music._source or nil)
+	local fft = FFT(7, path, game.sound.music)
 	fft.fftSize = 256
 	self.visualizer = Visualizer(x + 200, y + 80, fft)
 	self:add(self.visualizer)
@@ -91,7 +91,10 @@ end
 
 function ABot:update(dt)
 	ABot.super.update(self, dt)
-	self.fft:update(dt)
+	if self.fft then
+		self.fft.externalSource = game.sound and game.sound.music or nil
+		self.fft:update(dt)
+	end
 end
 
 function ABot:setEyeDirection(n)
@@ -108,6 +111,10 @@ function ABot:beat()
 end
 
 function ABot:destroy()
+	if self.fft and self.fft.destroy then
+		self.fft:destroy()
+	end
+	self.fft = nil
 	ABot.super.destroy(self)
 end
 

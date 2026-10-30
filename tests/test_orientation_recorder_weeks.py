@@ -31,6 +31,9 @@ class OrientationRecorderAndWeekFixesTests(unittest.TestCase):
 
         java_src = (ROOT / "android/StoragePermissionActivity.java").read_text(encoding="utf-8")
         self.assertIn("SCREEN_ORIENTATION_SENSOR_LANDSCAPE", java_src)
+        self.assertIn("registerActivityLifecycleCallbacks", java_src)
+        self.assertIn("Process.killProcess(Process.myPid())", java_src)
+        self.assertIn("FLAG_ACTIVITY_REORDER_TO_FRONT", java_src)
 
     def test_mobile_window_mode_locks_landscape_and_polls_surface_resize(self):
         funkin_init = (ROOT / "funkin/init.lua").read_text(encoding="utf-8")
@@ -74,11 +77,35 @@ class OrientationRecorderAndWeekFixesTests(unittest.TestCase):
         self.assertIn('"Gameplay only (No UI)"', rec_ui)
         self.assertIn('"Entire game"', rec_ui)
         self.assertIn('"Capture mode"', rec_ui)
+        self.assertIn('"Record game audio"', rec_ui)
+        self.assertIn('"Video quality"', rec_ui)
         self.assertIn('"Resolution scale"', rec_ui)
         self.assertIn('"Frame rate"', rec_ui)
 
         opts_ui = (ROOT / "funkin/ui/options/init.lua").read_text(encoding="utf-8")
         self.assertIn("function Options:syncRecordingTab()", opts_ui)
+
+    def test_fft_released_source_guard_and_multicore_audio_recorder(self):
+        abot_src = (ROOT / "assets/data/classes/abot.lua").read_text(encoding="utf-8")
+        self.assertNotIn("game.sound.music._source", abot_src)
+        self.assertIn("FFT(7, path, game.sound.music)", abot_src)
+
+        fft_src = (ROOT / "funkin/backend/fft.lua").read_text(encoding="utf-8")
+        self.assertIn("local function safeIsPlaying(src)", fft_src)
+        self.assertIn("function FFT.stop()", fft_src)
+
+        enc_src = (ROOT / "funkin/backend/recorder_encoder_thread.lua").read_text(encoding="utf-8")
+        self.assertIn("encodeFrameMJPG", enc_src)
+        self.assertIn("love.data.newByteData", enc_src)
+
+        mux_src = (ROOT / "funkin/backend/recorder_thread.lua").read_text(encoding="utf-8")
+        self.assertIn('"01wb"', mux_src)
+        self.assertIn('"auds"', mux_src)
+        self.assertIn("4 + s.moviDataBytes", mux_src)
+
+        rec_src = (ROOT / "funkin/backend/recorder.lua").read_text(encoding="utf-8")
+        self.assertIn("recorder_encoder_thread.lua", rec_src)
+        self.assertIn("snapshotActiveAudio", rec_src)
 
 
 if __name__ == "__main__":

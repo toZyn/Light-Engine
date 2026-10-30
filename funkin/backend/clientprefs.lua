@@ -46,9 +46,12 @@ ClientPrefs.data = {
 	screenRecording = false,
 	recordingMode = "gameplay",
 	recordingAutoGameplay = true,
-	recordingScale = desktop and 0.75 or 0.5,
-	recordingFps = 30,
+	recordingAudio = true,
+	recordingQuality = "high",
+	recordingScale = 0.75,
+	recordingFps = 60,
 	recordingIndicator = true,
+	recordingProfileVersion = 0,
 
 	-- stats
 	showFps = false,
@@ -102,5 +105,13 @@ end
 game.save.init("funkin")
 pcall(table.merge, ClientPrefs.data, game.save.data.prefs)
 pcall(table.merge, ClientPrefs.controls, game.save.data.controls)
+
+if (tonumber(ClientPrefs.data.recordingProfileVersion) or 0) < 2 then
+	ClientPrefs.data.recordingAudio = true
+	ClientPrefs.data.recordingQuality = "high"
+	ClientPrefs.data.recordingScale = 0.75
+	ClientPrefs.data.recordingFps = 60
+	ClientPrefs.data.recordingProfileVersion = 2
+end
 
 return ClientPrefs

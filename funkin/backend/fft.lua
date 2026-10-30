@@ -110,9 +110,8 @@ local function processAudioData(samples)
 		if amplitude > 0 then
 			local db = 20 * math_log10(amplitude)
 			db = math_max(minDb, math_min(maxDb, db))
-local normalizeddb = (db - minDb) / (maxDb - minDb)
-normalizedDb = math.pow(normalizeddb, 0.5)
-			bars[i] = math_max(0, math_min(1, normalizeddb))
+			local normalizedDb = math.pow((db - minDb) / (maxDb - minDb), 0.5)
+			bars[i] = math_max(0, math_min(1, normalizedDb))
 		else
 			bars[i] = 0
 		end
@@ -153,6 +152,46 @@ local outputChannel = love.thread.getChannel("fft_output")
 
 local FFT = Classic:extend()
 
+local function safeIsPlaying(src)
+	if not src then return false, false end
+	if type(src) == "table" then
+		if src.exists == false or src.active == false then return true, false end
+		if type(src.isPlaying) == "function" then
+			local ok, playing = pcall(src.isPlaying, src)
+			if ok then return true, playing == true end
+			return false, false
+		end
+		src = rawget(src, "_source")
+		if not src then return true, false end
+	end
+	local ok, playing = pcall(src.isPlaying, src)
+	if not ok then return false, false end
+	return true, playing == true
+end
+
+local function safeTell(src)
+	if not src then return false, 0 end
+	if type(src) == "table" then
+		if type(src.get_time) == "function" then
+			local ok, pos = pcall(src.get_time, src)
+			if ok and type(pos) == "number" then return true, pos end
+		end
+		src = rawget(src, "_source")
+		if not src then return true, 0 end
+	end
+	local ok, pos = pcall(src.tell, src)
+	if not ok or type(pos) ~= "number" then return false, 0 end
+	return true, pos
+end
+
+function FFT.stop()
+	if fftThread and fftThread:isRunning() then
+		inputChannel:push({type = "quit"})
+		pcall(function() fftThread:wait() end)
+	end
+	while outputChannel:pop() do end
+end
+
 function FFT:new(numBars, audioFile, externalSource)
 	self.numBars = numBars or 7
 	self.bars = {}
@@ -186,6 +225,7 @@ function FFT:new(numBars, audioFile, externalSource)
 		fftThread:start()
 	end
 
+	local okRate, rate = pcall(self.audioData.getSampleRate, self.audioData)
 	local initData = {
 		type = "init",
 		numBars = self.numBars,
@@ -193,13 +233,17 @@ function FFT:new(numBars, audioFile, externalSource)
 		maxDb = self.maxDb,
 		minFreq = self.minFreq,
 		maxFreq = self.maxFreq,
-		sampleRate = self.audioData:getSampleRate()
+		sampleRate = (okRate and rate) or 44100
 	}
 	inputChannel:push(initData)
 end
 
 function FFT:update(dt)
-	local isPlaying = self.externalSource and self.externalSource:isPlaying()
+	local validSrc, isPlaying = safeIsPlaying(self.externalSource)
+	if not validSrc then
+		self.externalSource = nil
+		isPlaying = false
+	end
 
 	local result = outputChannel:pop()
 	if result and result.type == "result" then
@@ -208,7 +252,14 @@ function FFT:update(dt)
 	end
 
 	if isPlaying then
-		self.playbackPos = self.externalSource:tell()
+		local okTell, pos = safeTell(self.externalSource)
+		if not okTell then
+			self.externalSource = nil
+			self.playbackPos = 0
+			self.processing = false
+			return
+		end
+		self.playbackPos = pos
 
 		local currentTime = love.timer.getTime()
 		if not self.processing then
@@ -229,27 +280,55 @@ function FFT:requestFFTCalculation()
 		return
 	end
 
-	local sampleStart = math.floor(self.playbackPos * self.audioData:getSampleRate())
-	local samples = {}
-
-	for i = 0, self.fftSize - 1 do
-		local sampleIndex = sampleStart + i
-		if sampleIndex < self.audioData:getSampleCount() and sampleIndex >= 0 then
-			local leftSample = self.audioData:getSample(sampleIndex * 2) or 0
-			local rightSample = self.audioData:getSample(sampleIndex * 2 + 1) or 0
-			samples[i + 1] = (leftSample + rightSample) / 2
-		else
-			samples[i + 1] = 0
-		end
+	local okMeta, sampleRate, sampleCount, channels = pcall(function()
+		return self.audioData:getSampleRate(),
+			self.audioData:getSampleCount(),
+			self.audioData:getChannelCount()
+	end)
+	if not okMeta or not sampleRate or not sampleCount then
+		self.audioData = nil
+		return
 	end
 
-	local requestData = {
+	local sampleStart = math.floor(self.playbackPos * sampleRate)
+	local samples = {}
+	local isStereo = (channels or 1) >= 2
+
+	local okSamples = pcall(function()
+		for i = 0, self.fftSize - 1 do
+			local sampleIndex = sampleStart + i
+			if sampleIndex >= 0 and sampleIndex < sampleCount then
+				if isStereo then
+					local l = self.audioData:getSample(sampleIndex, 1) or 0
+					local r = self.audioData:getSample(sampleIndex, 2) or 0
+					samples[i + 1] = (l + r) * 0.5
+				else
+					samples[i + 1] = self.audioData:getSample(sampleIndex) or 0
+				end
+			else
+				samples[i + 1] = 0
+			end
+		end
+	end)
+	if not okSamples then
+		self.audioData = nil
+		return
+	end
+
+	inputChannel:push({
 		type = "process",
 		samples = samples
-	}
-
-	inputChannel:push(requestData)
+	})
 	self.processing = true
+end
+
+function FFT:destroy()
+	self.externalSource = nil
+	if self.audioData and self.audioData.release then
+		pcall(self.audioData.release, self.audioData)
+	end
+	self.audioData = nil
+	self.processing = false
 end
 
 function FFT:getBars()

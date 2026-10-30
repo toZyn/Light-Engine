@@ -247,7 +247,8 @@ function funkin.fullscreen(f)
 end
 
 function funkin.quit()
-	if Recorder then Recorder.shutdown() end
+	if Recorder then pcall(Recorder.shutdown) end
+	if FFT and FFT.stop then pcall(FFT.stop) end
 	ClientPrefs.saveData()
 	if Discord then Discord.shutdown() end
 end
@@ -256,6 +257,8 @@ function funkin.throwError(msg, trace)
  local Diagnostics = require "funkin.backend.diagnostics"
  -- Persist the original error before shutdown or error-screen preparation.
  local report = Diagnostics.report(msg, trace or debug.traceback("", 2))
+ if Recorder then pcall(Recorder.shutdown) end
+ if FFT and FFT.stop then pcall(FFT.stop) end
  if paths and paths.async and paths.async.stop then
   local ok, err = pcall(paths.async.stop)
   if not ok then print("Error-handler async shutdown failed: " .. Diagnostics.sanitize(err)) end
