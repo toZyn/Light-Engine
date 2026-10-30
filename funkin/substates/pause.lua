@@ -3,13 +3,17 @@ local PauseSubstate = Substate:extend("PauseSubstate")
 function PauseSubstate:new()
 	PauseSubstate.super.new(self)
 
+	local songData = PlayState.SONG
+	local diffs = (songData and type(songData.difficulties) == "table") and songData.difficulties or {}
+
 	self.menuItems = {"Resume", "Restart song", "Options", "Exit to menu"}
-	if #PlayState.SONG.difficulties > 1 then
+	if #diffs > 1 then
 		table.insert(self.menuItems, 3, "Change difficulty")
 	end
 
 	self.blockInput = false
 	self.lock = false
+	self._closed = false
 
 	self:loadMusic()
 
@@ -33,16 +37,18 @@ function PauseSubstate:new()
 		local item = AtlasText(0, 0, self.menuItems[i], "bold")
 		self.menuList:add(item)
 	end
-	for i = 1, #PlayState.SONG.difficulties do
-		if PlayState.SONG.difficulties[i]:lower() ~= PlayState.songDifficulty:lower() then
-			local item = AtlasText(0, 0, PlayState.SONG.difficulties[i], "bold")
+	for i = 1, #diffs do
+		if diffs[i]:lower() ~= (PlayState.songDifficulty or ""):lower() then
+			local item = AtlasText(0, 0, diffs[i], "bold")
 			self.diffList:add(item)
 		end
 	end
 
 	self.menuList:changeSelection()
 
-	local txt, font = PlayState.SONG.metadata.displayName or "?", paths.getFont("vcr.ttf", 32)
+	local displayName = (songData and songData.metadata and songData.metadata.displayName)
+		or (songData and songData.song) or "?"
+	local txt, font = displayName, paths.getFont("vcr.ttf", 32)
 	self.songText = Text(0, 15, txt, font)
 	self.songText.x = game.width - self.songText:getWidth() - 28
 	self.songText.alpha = 0
@@ -63,12 +69,19 @@ end
 
 function PauseSubstate:loadMusic()
 	self.curPauseMusic = self:loadPauseMusic()
-	self.music = game.sound.load(paths.getMusic('pause/' .. self.curPauseMusic))
+	if not self.curPauseMusic or self.curPauseMusic == "" or self.curPauseMusic:lower() == "none" then
+		self.music = nil
+		return
+	end
+	local asset = paths.getMusic('pause/' .. self.curPauseMusic) or paths.getMusic('pause/railways')
+	self.music = asset and game.sound.load(asset) or nil
 end
 
 function PauseSubstate:enter()
-	self.music:play(0, true)
-	self.music:fade(6, 0, ClientPrefs.data.menuMusicVolume / 100)
+	if self.music then
+		self.music:play(0, true)
+		self.music:fade(6, 0, ClientPrefs.data.menuMusicVolume / 100)
+	end
 
 	Tween.tween(self.bg, {alpha = 0.6}, 0.4, {ease = 'quartInOut'})
 	Tween.tween(self.songText, {y = self.songText.y + 5, alpha = 1},
@@ -254,27 +267,36 @@ function PauseSubstate:onSettingChange(setting, option)
 			end
 
 			self.activeTimer = Timer.start(1, function()
-				if not self.parent or ClientPrefs.data.pauseMusic == self.curPauseMusic then return end
-				self.music:fade(0.7, self.music:getVolume(), 0)
-				Timer.start(0.8, function()
-					if ClientPrefs.data.pauseMusic == self.curPauseMusic then return end
-					self.music:stop()
-					self.music:cancelFade()
-					if not self.parent then return end
+				if self._closed or not self.parent or ClientPrefs.data.pauseMusic == self.curPauseMusic then return end
+				if self.music then
+					self.music:fade(0.7, self.music:getVolume(), 0)
+				end
+				self.activeTimer = Timer.start(0.8, function()
+					if self._closed or not self.parent or ClientPrefs.data.pauseMusic == self.curPauseMusic then return end
+					if self.music then
+						self.music:stop()
+						self.music:cancelFade()
+						self.music:destroy()
+						self.music = nil
+					end
 					self:loadMusic()
-					self.music:play(ClientPrefs.data.menuMusicVolume / 100, true)
+					if self.music then
+						self.music:play(ClientPrefs.data.menuMusicVolume / 100, true)
+					end
 				end)
 			end)
 		elseif option == "menuMusicVolume" then
-			self.music:fade(1, self.music:getVolume(), ClientPrefs.data.menuMusicVolume / 100)
+			if self.music then
+				self.music:fade(1, self.music:getVolume(), ClientPrefs.data.menuMusicVolume / 100)
+			end
 		end
 	end
 end
 
 function PauseSubstate:loadPauseMusic()
-	local pauseMusic = ClientPrefs.data.pauseMusic
+	local pauseMusic = ClientPrefs.data.pauseMusic or "railways"
 	if pauseMusic == "breakfast" then
-		local songName = PlayState.SONG.song:lower()
+		local songName = (PlayState.SONG and PlayState.SONG.song or ""):lower()
 		if songName == "pico" or songName == "philly nice" or songName == "blammed" then
 			pauseMusic = pauseMusic .. "-pico"
 		elseif songName == "senpai" or songName == "roses" or songName == "thorns" then
@@ -285,6 +307,12 @@ function PauseSubstate:loadPauseMusic()
 end
 
 function PauseSubstate:close()
+	self._closed = true
+	if self.activeTimer then
+		Timer.cancel(self.activeTimer)
+		self.activeTimer = nil
+	end
+
 	if self.parent and self.parent.pauseButton then
 		self:remove(self.parent.pauseButton)
 		self.parent:add(self.parent.pauseButton)
@@ -302,8 +330,11 @@ function PauseSubstate:close()
 		end
 	end
 
-	self.music:stop()
-	self.music:destroy()
+	if self.music then
+		self.music:stop()
+		self.music:destroy()
+		self.music = nil
+	end
 
 	if self.optionsUI then self.optionsUI:destroy() end
 	self.optionsUI = nil
