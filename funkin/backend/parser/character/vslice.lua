@@ -32,7 +32,7 @@ function vslice.parse(data, name)
 			anim.fps or 24,
 			anim.looped == true,
 			anim.offsets or {0, 0},
-			anim.assetPath
+			anim.assetPath and anim.assetPath:gsub("^shared:", "") or nil
 		}
 
 		table.insert(char.animations, actualAnim)

@@ -32,7 +32,7 @@ function create()
 	tankman:play('tightBars', true)
 	state:insert(state:indexOf(state.stage) + 1, tankman)
 
-	state.camFollow:set(dadY + 380, dadY + 170)
+	state.camFollow:set(dadX + 380, dadY + 170)
 end
 
 function postCreate()

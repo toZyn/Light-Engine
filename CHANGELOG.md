@@ -5,6 +5,36 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-30
+
+### Added
+- **Low-resource Screen Recording** (`funkin/backend/recorder.lua`,
+  `funkin/backend/recorder_thread.lua`, `funkin/ui/options/recording.lua`):
+  English **Screen recording** toggle in **Options -> Display** that dynamically
+  unlocks a dedicated **Recording** tab when enabled and hides it when disabled.
+  Supports **Gameplay only (No UI)** (captures only the stage/match and arrows
+  with `camHUD` and `camOther` excluded) and **Entire game**, configurable
+  resolution scale (`50%`/`75%`/`100%`), frame rate (`24`/`30`/`60 FPS`),
+  auto-record gameplay, `F9` hotkey, and off-thread RIFF AVI (`MJPG`/`MPNG`)
+  encoding with bounded queue drop-frames to prevent lag or memory spikes.
+
+### Fixed
+- **Android / Mobile horizontal orientation & automatic landscape adaptation**:
+  Enforced `sensorLandscape` on `StoragePermissionActivity` and `GameActivity`
+  (`AndroidManifest.xml`, `StoragePermissionActivity.java`,
+  `gradle.properties.example`), prevented LÖVE/SDL2 `resizable=true` from
+  unlocking portrait orientation on mobile in `funkin.load()`, and added
+  automatic surface-dimension resize detection plus `Transition` bounds updates
+  so delayed Android surface rotations adapt `game.width` immediately.
+- **OpenGL ES 3.0 shader & Weekend 1 / Week 6 fixes**: Fixed `S0023` precision
+  qualifier conflicts in `rain.frag` and `wiggle.frag`, added GLSL ES source
+  sanitization and safe compilation fallback in `Shader`, fixed `PlayState`
+  `93%` `LoadScreen` stall by detecting `images/<sprite>/Animation.json` for
+  `AnimateAtlas` characters and preloading `ABot`, silenced optional vocal/icon
+  preload probes, added `icons/icon-*` fallback in `HealthIcon`, and fixed
+  `phillyStreets.lua`, `puddlething.lua`, `abot.lua`, `darnell-blazin.lua`,
+  `pico-blazin.lua`, `tankmengroup.lua`, `dialoguebox.lua`, and `guns.lua`.
+
 ## [0.2.0] - 2026-10-30
 
 ### Added

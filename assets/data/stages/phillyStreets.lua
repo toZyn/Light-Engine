@@ -28,10 +28,20 @@ switch(PlayState.SONG.song:lower(), {
 	end
 })
 
-local rain = Shader("rain")
-rain.scale = game.height / 200
-rain.intensity = rainStartIntensity
-rain.distortionStrength = 0.5
+local rain
+
+local function ensureRainShader()
+	if rain then return rain end
+	rain = Shader("rain")
+	rain.scale = game.height / 200
+	rain.intensity = rainStartIntensity
+	rain.distortionStrength = 0.5
+	return rain
+end
+
+local function randFloat(minVal, maxVal)
+	return minVal + math.random() * (maxVal - minVal)
+end
 
 local function make(x, y, filename, sx, sy, front)
 	local sprite = Sprite(x, y)
@@ -55,16 +65,17 @@ function preload()
 		{"image", SCRIPT_PATH .. "phillyForeground"},
 		{"image", SCRIPT_PATH .. "SpraycanPile"},
 		{"image", SCRIPT_PATH .. "phillyCars"},
-		{"image", SCRIPT_PATH .. "phillyTraffic"}
+		{"image", SCRIPT_PATH .. "phillyTraffic"},
+		{"image", SCRIPT_PATH .. "puddle"}
 	}
 end
 
 local camtable, cam
 function create()
 	camZoom = 0.77
-	boyfriendPos = {x = 2151, y = 500}
-	gfPos = {x = 1200, y = 1150}
-	dadPos = {x = 920, y = 1330}
+	boyfriendPos:set(2151, 500)
+	gfPos:set(1200, 1150)
+	dadPos:set(920, 1330)
 
 	cam = Camera()
 	cam.simple = false
@@ -79,7 +90,7 @@ function create()
 	dadCam:set(500, -100)
 
 	if ClientPrefs.data.shader then
-		game.camera.shader = rain:get()
+		game.camera.shader = ensureRainShader():get()
 	end
 
 	sky = Sprite(-180, -180, paths.getImage(SCRIPT_PATH .. 'phillySkybox'))
@@ -184,8 +195,8 @@ local paths = {
 function finishCarLights(sprite)
 	carWaiting = false
 
-	local duration = math.random() + math.random(1.8, 3)
-	local startdelay = math.random() + math.random(0.2, 1.2)
+	local duration = randFloat(1.8, 3.0)
+	local startdelay = randFloat(0.2, 1.2)
 
 	sprite.angle = -5
 	tween:tween(sprite, {angle = 18}, duration, {ease = Ease.sineIn, startDelay = startdelay})
@@ -205,16 +216,16 @@ function driveCarLights(sprite)
 	local duration = 2
 
 	if variant == 1 then
-		duration = math.random() + math.random(1, 1.7)
+		duration = randFloat(1.0, 1.7)
 	elseif variant == 2 then
 		extraOffset = {20, -15}
-		duration = math.random() + math.random(0.9, 1.5)
+		duration = randFloat(0.9, 1.5)
 	elseif variant == 3 then
 		extraOffset = {30, 50}
-		duration = math.random() + math.random(1.5, 2.5)
+		duration = randFloat(1.5, 2.5)
 	elseif variant == 4 then
 		extraOffset = {10, 60}
-		duration = math.random() + math.random(1.5, 2.5)
+		duration = randFloat(1.5, 2.5)
 	end
 
 	sprite.offset:set(extraOffset[1], extraOffset[2])
@@ -239,16 +250,16 @@ function driveCar(sprite)
 	local duration = 2
 
 	if variant == 1 then
-		duration = math.random() + math.random(1, 1.7)
+		duration = randFloat(1.0, 1.7)
 	elseif variant == 2 then
 		extraOffset = {20, -15}
-		duration = math.random() + math.random(0.6, 1.2)
+		duration = randFloat(0.6, 1.2)
 	elseif variant == 3 then
 		extraOffset = {30, 50}
-		duration = math.random() + math.random(1.5, 2.5)
+		duration = randFloat(1.5, 2.5)
 	elseif variant == 4 then
 		extraOffset = {10, 60}
-		duration = math.random() + math.random(1.5, 2.5)
+		duration = randFloat(1.5, 2.5)
 	end
 	sprite.offset:set(extraOffset[1], extraOffset[2])
 
@@ -269,16 +280,16 @@ function driveCarBack(sprite)
 	local duration = 2
 
 	if variant == 1 then
-		duration = math.random() + math.random(1, 1.7)
+		duration = randFloat(1.0, 1.7)
 	elseif variant == 2 then
 		extraOffset = {20, -15}
-		duration = math.random() + math.random(0.6, 1.2)
+		duration = randFloat(0.6, 1.2)
 	elseif variant == 3 then
 		extraOffset = {30, 50}
-		duration = math.random() + math.random(1.5, 2.5)
+		duration = randFloat(1.5, 2.5)
 	elseif variant == 4 then
 		extraOffset = {10, 60}
-		duration = math.random() + math.random(1.5, 2.5)
+		duration = randFloat(1.5, 2.5)
 	end
 
 	sprite.offset:set(extraOffset[1], extraOffset[2])
@@ -297,9 +308,11 @@ function update(dt)
 	local skyQuad = sky:getCurrentFrame()
 	if skyQuad then skyQuad.quad:setViewport(x, 0, 2922, 900) end
 
-	local remap = math.remapToRange(conductor.time / 1000, 0, game.sound.music.duration,
-		rainStartIntensity, rainEndIntensity)
-	rain.intensity = remap
+	if rain and game.sound.music and (game.sound.music.duration or 0) > 0 then
+		local remap = math.remapToRange(conductor.time / 1000, 0, game.sound.music.duration,
+			rainStartIntensity, rainEndIntensity)
+		rain.intensity = remap
+	end
 end
 
 function beat(b)
@@ -321,9 +334,9 @@ function beat(b)
 end
 
 function onSettingChange(category, setting)
-	if not setting == "shader" then return end
+	if setting ~= "shader" and setting ~= "shaders" then return end
 	if ClientPrefs.data.shader then
-		game.camera.shader = rain:get()
+		game.camera.shader = ensureRainShader():get()
 	else
 		game.camera.shader = nil
 	end

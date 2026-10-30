@@ -28,7 +28,7 @@ local function play(name, force, z)
 	if shakeCallback and (string.find(name, "hit") or name == "block") then
 		local intensity = name == "block" and 0.002 or 0.0025
 		local duration = name == "block" and 0.1 or 0.15
-		game.camera.shake(intensity, duration)
+		game.camera:shake(intensity, duration)
 	end
 end
 
@@ -107,9 +107,9 @@ end
 
 function onNoteHit(event)
 	lastHit = math.huge
-	local type = event.note.type
+	local noteType = event.note and event.note.type
 
-	if not type:sub(1, 10) == "weekend-1-" then return end
+	if type(noteType) ~= "string" or noteType:sub(1, 10) ~= "weekend-1-" then return end
 
 	if shouldDoUppercutPrep(event.rating.name, state.health) then
 		play('punchHigh' .. doAlternate(), true, 3000)
@@ -122,15 +122,15 @@ function onNoteHit(event)
 		return
 	end
 
-	switch(type, hitmap)
+	switch(noteType, hitmap)
 	cantUppercut = false
 end
 
 function onNoteMiss(event)
 	lastHit = math.huge
-	local type = event.note.type
+	local noteType = event.note and event.note.type
 
-	if not type:sub(1, 10) == "weekend-1-" then return end
+	if type(noteType) ~= "string" or noteType:sub(1, 10) ~= "weekend-1-" then return end
 
 	local darnellAnim = getCurrentAnim()
 	if darnellAnim == 'uppercut' or darnellAnim == 'uppercut-hold' then
@@ -149,7 +149,7 @@ function onNoteMiss(event)
 		return
 	end
 
-	switch(type, missmap)
+	switch(noteType, missmap)
 	cantUppercut = false
 end
 

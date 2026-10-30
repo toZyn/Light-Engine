@@ -42,6 +42,14 @@ ClientPrefs.data = {
 	vsync = true,
 	margin = desktop and 0 or 76,
 
+	-- screen recording
+	screenRecording = false,
+	recordingMode = "gameplay",
+	recordingAutoGameplay = true,
+	recordingScale = desktop and 0.75 or 0.5,
+	recordingFps = 30,
+	recordingIndicator = true,
+
 	-- stats
 	showFps = false,
 	showRender = false,

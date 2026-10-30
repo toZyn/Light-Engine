@@ -89,20 +89,20 @@ function PlayState:preload()
 
 	local function getVocals(suffix, fallback, skip)
 		local shortSuffix = suffix:match("^[^%-]*")
-		return async.getVoices(song, suffix .. "-" .. diff)
-			or async.getVoices(song, diff)
-			or async.getVoices(song, shortSuffix .. "-" .. diff)
-			or async.getVoices(song, shortSuffix)
-			or async.getVoices(song, suffix)
-			or (fallback and async.getVoices(song, fallback) or nil)
-			or (not skip and async.getVoices(song, nil) or nil)
+		return async.getVoices(song, suffix .. "-" .. diff, nil, true)
+			or async.getVoices(song, diff, nil, true)
+			or async.getVoices(song, shortSuffix .. "-" .. diff, nil, true)
+			or async.getVoices(song, shortSuffix, nil, true)
+			or async.getVoices(song, suffix, nil, true)
+			or (fallback and async.getVoices(song, fallback, nil, true) or nil)
+			or (not skip and async.getVoices(song, nil, nil, true) or nil)
 	end
 
 	local p1, p2 = PlayState.SONG.player1, PlayState.SONG.player2
 	local playerVocals, enemyVocals =
 		getVocals(p1 or "Player", "Player"),
 		getVocals(p2 or "Opponent", "Opponent", true)
-	if not async.getInst(song, diff) then
+	if not async.getInst(song, diff, nil, true) then
 		async.getInst(song)
 	end
 
@@ -142,19 +142,30 @@ function PlayState:preload()
 	for _, char in pairs({PlayState.SONG.gfVersion, PlayState.SONG.player2, PlayState.SONG.player1}) do
 		if char and char ~= "" then
 			local data = Parser.getCharacter(char)
-			if data then
+			if data and data.sprite then
 				local kind = "image"
-				if paths.exists(paths.getPath(data.sprite .. "/Animation.json")) then kind = "animate" end
-				table.insert(list, {kind, data.sprite})
-				if data.animations and kind ~= "atlas" then
+				if paths.exists(paths.getPath("images/" .. data.sprite .. "/Animation.json"), "file") then
+					kind = "animate"
+				end
+				table.insert(list, {kind, data.sprite, nil, true})
+				if data.animations and kind ~= "animate" then
 					for _, anim in pairs(data.animations) do
-						local atlas = select(7, anim)
-						if atlas then
-							table.insert(list, {"image", atlas})
+						local atlas = type(anim) == "table" and (anim[7] or anim.assetPath or anim.image) or nil
+						if type(atlas) == "string" and atlas ~= "" then
+							table.insert(list, {"image", atlas, nil, true})
 						end
 					end
 				end
-				table.insert(list, {"image", "icons/" .. (data.icon or "face")})
+				local iconPath = HealthIcon and HealthIcon.resolveIconPath
+					and HealthIcon.resolveIconPath(data.icon or "face")
+					or ("icons/" .. (data.icon or "face"))
+				table.insert(list, {"image", iconPath, nil, true})
+			end
+			if char == "nene" or char == "abot" then
+				table.insert(list, {"animate", "characters/abot/abotSystem"})
+				table.insert(list, {"animate", "characters/abot/systemEyes"})
+				table.insert(list, {"image", "characters/abot/aBotViz", nil, true})
+				table.insert(list, {"image", "characters/abot/stereoBG", nil, true})
 			end
 		end
 	end
@@ -720,6 +731,9 @@ function PlayState:playSong(daTime)
 	PlayState.conductor:update(time * 1000)
 
 	self.paused = false
+	if Recorder then
+		Recorder.onSongStart(PlayState.SONG and PlayState.SONG.song)
+	end
 end
 
 function PlayState:pauseSong()
@@ -1570,6 +1584,8 @@ function PlayState:endSong(skip)
 	local event = self.scripts:call("endSong")
 	if event == Script.Event_Cancel then return end
 
+	if Recorder then Recorder.onSongEnd() end
+
 	game.sound.music:reset(true)
 	for _, notefield in pairs(self.notefields) do
 		if notefield.vocals then notefield.vocals:stop() end
@@ -1678,6 +1694,7 @@ function PlayState:updateDiscordRPC(paused)
 end
 
 function PlayState:leave()
+	if Recorder then Recorder.onSongEnd() end
 	self.scripts:call("leave")
 
 	PlayState.prevCamFollow = self.camFollow

@@ -168,7 +168,11 @@ function FFT:new(numBars, audioFile, externalSource)
 	self.maxFreq = 22000
 
 	local path = paths.getPath(audioFile)
-	self.audioData = love.sound.newSoundData(path)
+	local okSound, soundData = false, nil
+	if path and paths.exists(path, "file") then
+		okSound, soundData = pcall(love.sound.newSoundData, path)
+	end
+	self.audioData = okSound and soundData or nil
 
 	for i = 1, self.numBars do
 		self.bars[i] = 0
@@ -176,6 +180,7 @@ function FFT:new(numBars, audioFile, externalSource)
 	end
 
 	self.processing = false
+	if not self.audioData then return end
 
 	if not fftThread:isRunning() then
 		fftThread:start()
