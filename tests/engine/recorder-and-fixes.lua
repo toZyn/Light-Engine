@@ -698,6 +698,13 @@ end)
 --     missing death sprite fallback, PauseSubstate 'none'/missing music, Notefield post-destroy,
 --     ScriptsHandler post-close, Story Mode week score isolation, and Credits fallback icon
 check("Fase 2 regressions: SoundManager, Calibration, GameOver, Pause, Notefield, StoryScore, Credits", function()
+	local function stepFrames(n)
+		for _ = 1, n do
+			game.update(1 / 60)
+			game.draw()
+		end
+	end
+
 	-- SoundManager nil safety
 	local inert = game.sound.play(nil, 1)
 	assert(inert ~= nil, "game.sound.play(nil) should return inert Sound")
@@ -763,6 +770,7 @@ check("Fase 2 regressions: SoundManager, Calibration, GameOver, Pause, Notefield
 	game.switchState(cr, true)
 	stepFrames(2)
 	assert(cr.userList.lastHeight > 600, "CreditsState card layout collapsed without loading.png")
+	paths.async.stop()
 end)
 
 
