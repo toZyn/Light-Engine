@@ -8,7 +8,7 @@ function postCreate()
 	doof.onFinish = close
 	add(doof)
 
-	black:setScrollFactor()
+	black.scrollFactor:set()
 	black.cameras = {camNotes}
 	add(black)
 

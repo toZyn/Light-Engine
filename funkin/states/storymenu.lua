@@ -81,8 +81,8 @@ function StoryMenuState:enter()
 			if week.locked then
 				local lock = Sprite(weekThing.width + 10 + weekThing.x)
 				lock:setFrames(ui_tex)
-				lock:addAnimByPrefix('lock', 'lock')
-				lock:play('lock')
+				lock.animation:addByPrefix('lock', 'lock')
+				lock.animation:play('lock')
 
 				weekThing.attach = lock
 			end
@@ -102,9 +102,9 @@ function StoryMenuState:enter()
 
 		self.leftArrow = Sprite(0, self.weekList.members[1].y)
 		self.leftArrow:setFrames(ui_tex)
-		self.leftArrow:addAnimByPrefix('idle', "arrow left")
-		self.leftArrow:addAnimByPrefix('press', "arrow push left")
-		self.leftArrow:play('idle')
+		self.leftArrow.animation:addByPrefix('idle', "arrow left")
+		self.leftArrow.animation:addByPrefix('press', "arrow push left")
+		self.leftArrow.animation:play('idle')
 		self.difficultySelector:add(self.leftArrow)
 
 		self.sprDifficulty = Sprite(0, self.leftArrow.y)
@@ -112,9 +112,9 @@ function StoryMenuState:enter()
 
 		self.rightArrow = Sprite(self.leftArrow.x + 376, self.leftArrow.y)
 		self.rightArrow:setFrames(ui_tex)
-		self.rightArrow:addAnimByPrefix('idle', "arrow right")
-		self.rightArrow:addAnimByPrefix('press', "arrow push right")
-		self.rightArrow:play('idle')
+		self.rightArrow.animation:addByPrefix('idle', "arrow right")
+		self.rightArrow.animation:addByPrefix('press', "arrow push right")
+		self.rightArrow.animation:play('idle')
 		self.difficultySelector:add(self.rightArrow)
 
 		local grp = self.weekList.members[1]
@@ -233,7 +233,7 @@ function StoryMenuState:selectWeek()
 			self.weekList.members[self.weekList.curSelected]:startFlashing()
 			for _, char in pairs(self.grpWeekCharacters.members) do
 				if char.character ~= '' and char.hasConfirmAnimation then
-					char:play('confirm')
+					char.animation:play('confirm')
 				end
 			end
 			self.selectedWeek = true

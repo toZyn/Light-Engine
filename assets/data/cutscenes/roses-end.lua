@@ -1,7 +1,7 @@
 function create()
 	local black = Graphic(-100, -100, game.width * 2, game.height * 2, Color.BLACK)
 	black.alpha = 0
-	black:setScrollFactor()
+	black.scrollFactor:set()
 	add(black)
 
 	Timer():start(0.5, function()

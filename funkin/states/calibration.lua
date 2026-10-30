@@ -20,7 +20,7 @@ function CalibrationState:enter()
 	end
 
 	self.gray = Graphic(0, 0, game.width, game.height, grayColor)
-	self.gray:setScrollFactor()
+	self.gray.scrollFactor:set()
 	self:add(self.gray)
 
 	CalibrationState.super.enter(self)

@@ -5,32 +5,32 @@ function BackgroundGirls:new(x, y, isPissed)
 
 	self:setFrames(paths.getSparrowAtlas('stages/school/bgFreaks'))
 	if isPissed then
-		self:addAnimByIndices('danceLeft', 'BG fangirls dissuaded', {
+		self.animation:addByIndices('danceLeft', 'BG fangirls dissuaded', {
 			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 		}, nil, 24, false)
-		self:addAnimByIndices('danceRight', 'BG fangirls dissuaded', {
+		self.animation:addByIndices('danceRight', 'BG fangirls dissuaded', {
 			15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
 		}, nil, 24, false)
 	else
-		self:addAnimByIndices('danceLeft', 'BG girls group', {
+		self.animation:addByIndices('danceLeft', 'BG girls group', {
 			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 		}, nil, 24, false)
-		self:addAnimByIndices('danceRight', 'BG girls group', {
+		self.animation:addByIndices('danceRight', 'BG girls group', {
 			15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
 		}, nil, 24, false)
 	end
 
 	self:dance()
-	self:finish()
+	self.animation:finish()
 end
 
 BackgroundGirls.danceDir = false
 function BackgroundGirls:dance()
 	self.danceDir = not self.danceDir
 	if self.danceDir then
-		self:play('danceRight', true)
+		self.animation:play('danceRight', true)
 	else
-		self:play('danceLeft', true)
+		self.animation:play('danceLeft', true)
 	end
 end
 

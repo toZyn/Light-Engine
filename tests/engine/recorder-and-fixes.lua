@@ -693,3 +693,80 @@ check("Recorder Phase 1: native 48kHz ALAC, frame-drop prior-frame hold, muted s
 	assert(maxSampleAbs > 20000 and maxSampleAbs <= 29500,
 		"Expected soft-limited full-scale duet peak around -1.0 dBFS (<=29500, >20000), got " .. tostring(maxSampleAbs))
 end)
+
+-- 14. Fase 2 regressions: SoundManager nil safety, Calibration loop, Week 6 GameOver confirm alias,
+--     missing death sprite fallback, PauseSubstate 'none'/missing music, Notefield post-destroy,
+--     ScriptsHandler post-close, Story Mode week score isolation, and Credits fallback icon
+check("Fase 2 regressions: SoundManager, Calibration, GameOver, Pause, Notefield, StoryScore, Credits", function()
+	-- SoundManager nil safety
+	local inert = game.sound.play(nil, 1)
+	assert(inert ~= nil, "game.sound.play(nil) should return inert Sound")
+	inert.pitch = 1.2
+	local music = game.sound.playMusic(nil, 1)
+	assert(music == game.sound.music and not music:isPlaying(), "game.sound.playMusic(nil) should safely reset music")
+
+	-- CalibrationState loads chartEditorLoop without crashing
+	local cal = CalibrationState()
+	game.switchState(cal, true)
+	stepFrames(3)
+	assert(game.sound.music and game.sound.music:isPlaying(), "CalibrationState music should play")
+
+	-- Case-sensitive Week 6 GameOver confirm jingle alias ('gameOverend-pixel' -> 'gameOverEnd-pixel.ogg')
+	assert(paths.getMusic("gameOverend-pixel") ~= nil, "Expected gameOverend-pixel alias to resolve on Linux/Android")
+
+	-- Missing '-dead' sprite fallback ('bf-holding-gf-dead' -> 'bf-dead')
+	local deadChar = Character(0, 0, "bf-holding-gf-dead", true)
+	assert(deadChar.exists == true and deadChar.char == "bf-dead",
+		"Expected bf-holding-gf-dead with missing sprite to fall back to bf-dead")
+	deadChar:destroy()
+
+	-- Notefield post-destroy safety
+	local nf = Notefield(0, 0, 4, "default", nil, nil, 1)
+	nf:destroy()
+	local notes, hasSustain = nf:getNotes(0, 0, false)
+	assert(#notes == 0 and hasSustain == false, "Notefield:getNotes after destroy must return empty")
+	nf:seekTo(0.5)
+	nf:update(1 / 60)
+
+	-- ScriptsHandler post-close safety
+	local sh = ScriptsHandler()
+	sh:close()
+	sh:close()
+	assert(sh:call("onUpdate", 1 / 60) == Script.Event_Continue, "ScriptsHandler:call after close failed")
+
+	-- PauseSubstate with 'none' and missing pause music
+	PlayState.seenCutscene = true
+	PlayState.loadSong("bopeebo", "normal")
+	local ps = PlayState(false, "bopeebo", "normal")
+	game.switchState(ps, true)
+	stepFrames(10)
+	local prevPauseMusic = ClientPrefs.data.pauseMusic
+	ClientPrefs.data.pauseMusic = "none"
+	local pauseNone = PauseSubstate()
+	ps:openSubstate(pauseNone)
+	stepFrames(2)
+	pauseNone:close()
+	ClientPrefs.data.pauseMusic = "nonexistent_mod_pause_track"
+	local pauseFallback = PauseSubstate()
+	assert(pauseFallback.music ~= nil, "Missing pauseMusic should fall back to railways")
+	pauseFallback:close()
+	ClientPrefs.data.pauseMusic = prevPauseMusic
+
+	-- Story Mode storyScore resets when starting a new week
+	PlayState.storyScore = 77777
+	local psNewWeek = PlayState(true, {"tutorial"}, "normal")
+	assert(PlayState.storyScore == 0, "PlayState(true, ...) must reset PlayState.storyScore to 0")
+	PlayState.storyMode = false
+
+	-- CreditsState layout with generated fallback loading icon
+	local cr = CreditsState()
+	game.switchState(cr, true)
+	stepFrames(2)
+	assert(cr.userList.lastHeight > 600, "CreditsState card layout collapsed without loading.png")
+end)
+
+
+
+
+
+
