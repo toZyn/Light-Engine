@@ -29,17 +29,38 @@ function TimerManager:update(dt)
 	for i, timer in ipairs(self.instances) do snapshot[i] = timer end
 	self._updating = true
 	self._removedDuringUpdate = {}
-	local ok, err = xpcall(function()
-		for i = #snapshot, 1, -1 do
-			local timer = snapshot[i]
-			if not self._removedDuringUpdate[timer] then
-				timer:update(dt * self.timeScale)
+	local onError = self.onError or TimerManager.onError
+	local scaledDt = dt * self.timeScale
+	local propagatedErr = nil
+
+	for i = #snapshot, 1, -1 do
+		local timer = snapshot[i]
+		if not self._removedDuringUpdate[timer] then
+			local ok, err = xpcall(function()
+				timer:update(scaledDt)
+			end, function(e)
+				return {
+					message = tostring(e),
+					trace = debug.traceback(tostring(e), 2)
+				}
+			end)
+			if not ok then
+				if timer.active and not timer.finished then
+					pcall(timer.cancel, timer)
+				end
+				if type(onError) == "function" then
+					onError(err.message, err.trace, timer)
+				else
+					propagatedErr = err.trace
+					break
+				end
 			end
 		end
-	end, debug.traceback)
+	end
+
 	self._removedDuringUpdate = nil
 	self._updating = false
-	if not ok then error(err, 0) end
+	if propagatedErr ~= nil then error(propagatedErr, 0) end
 end
 
 return TimerManager

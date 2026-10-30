@@ -135,7 +135,7 @@ check("Recorder writes a valid 2-stream (mp4v + 44.1kHz Stereo ALAC) ISO-BMFF .m
 	ClientPrefs.data.recordingQuality = prevQual
 end)
 
-check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stage/character positions", function()
+check("Animation boolean guard, Keyboard/VirtualPad resilience, and restored base stage state", function()
 	-- 1. Animation:play boolean frame safety + 3-arg/4-arg Character:playAnim resilience
 	local bf = Character(0, 0, "bf", true)
 	bf:playAnim("idle", true, true)
@@ -143,12 +143,6 @@ check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stag
 	bf.anim:play("idle", true, false, true)
 	assert(bf.anim.curAnim.frame >= 1, "Animation:play must clamp non-numeric Frame safely")
 	bf:destroy()
-
-	-- Missing -dead fallback must resolve to bf-dead cleanly
-	local missingDead = Character(0, 0, "nonexistent-custom-dead", true)
-	assert(missingDead ~= nil and missingDead.anim:has("firstDeath"),
-		"Missing -dead character must fall back to bf-dead with firstDeath animation")
-	missingDead:destroy()
 
 	-- 2. External keyboard unknown/acback/isrepeat + vararg love.keyboard.isDown
 	game.keys.onPressed("unknown", "unknown", false)
@@ -160,26 +154,32 @@ check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stag
 	game.keys.reset()
 	assert(type(love.keyboard.isDown("lctrl", "rctrl")) == "boolean", "Vararg love.keyboard.isDown must work")
 
-	-- 3. V-Slice Erect chart + Pico character mapping + stage Point preservation
-	local erectChart = Parser.getChart("bopeebo", "erect")
-	assert(erectChart and erectChart.stage == "stage", "V-Slice erect chart must resolve stage metadata")
-	local blazinChart = Parser.getChart("blazin", "normal")
-	assert(blazinChart and blazinChart.player1 == "pico-blazin" and blazinChart.stage == "phillyBlazin",
-		"Weekend 1 blazin chart must preserve pico-blazin and phillyBlazin")
-	local darnellChart = Parser.getChart("darnell", "normal")
-	assert(darnellChart and darnellChart.player1 == "pico-playable" and darnellChart.stage == "phillyStreets",
-		"Weekend 1 darnell chart must map 'pico' -> 'pico-playable' and phillyStage -> phillyStreets")
+	-- 3. Restored v0.2.2 (1006f52) stage zooms, positions, and Week 6 pixel camera sizing
+	PlayState.loadSong("bopeebo", "normal")
+	local st1 = Stage("stage")
+	st1:load()
+	assert(math.abs(st1.camZoom - 1) < 1e-4, "Week 1 stage must preserve original camZoom 1")
+	st1:destroy()
 
-	for _, stName in ipairs({"stage", "spooky", "philly", "limo", "mall-evil", "school", "tank"}) do
-		PlayState.SONG = Parser.getDummyChart("bopeebo", true)
-		PlayState.SONG.stage = stName
-		local st = Stage(stName)
-		st:load()
-		assert(type(st.boyfriendPos) == "table" and type(st.boyfriendPos.set) == "function"
-			and type(st.dadCam) == "table" and type(st.dadCam.set) == "function",
-			"Stage " .. stName .. " must preserve Point methods on Pos/Cam fields")
-		st:destroy()
+	PlayState.SONG.stage = "mall-evil"
+	local stEvil = Stage("mall-evil")
+	stEvil:load()
+	assert(math.abs(stEvil.camZoom - 1) < 1e-4 and stEvil.dadPos.x == 100 and stEvil.dadPos.y == 100,
+		"mall-evil must preserve original camZoom 1 and dadPos (100, 100)")
+	stEvil:destroy()
+
+	PlayState.SONG.stage = "school"
+	local stSchool = Stage("school")
+	stSchool:load()
+	assert(game.camera.width == math.floor(1280 / 6) and game.camera.height == math.floor(720 / 6),
+		"Week 6 school must preserve original 213x120 pixel camera")
+	if stSchool.script and stSchool.script.variables.cam then
+		game.cameras.remove(stSchool.script.variables.cam)
 	end
+	game.camera.pixelPerfect = false
+	game.camera.antialiasing = true
+	game.camera:resize(game.width, game.height)
+	stSchool:destroy()
 	paths.async.stop()
 end)
 
@@ -259,3 +259,329 @@ check("GLSL ES 3.0 shaders (rain, wiggle) and Weekend 1 AnimateAtlas / icon path
 	assert(paths.exists(paths.getPath("images/" .. resolvedPath .. ".png"), "file"),
 		"HealthIcon fallback path does not exist: " .. tostring(resolvedPath))
 end)
+
+check("Cutscenes execute postCreate once, DialogueBox closes idempotently, and Timer.globalManager isolates callback errors visibly", function()
+	PlayState.seenCutscene = false
+	PlayState.loadSong("senpai", "normal")
+	local ps = PlayState(true, {"senpai", "roses"}, "normal")
+	game.switchState(ps, true)
+	for _ = 1, 240 do
+		game.update(1 / 60)
+	end
+
+	local boxes = {}
+	for _, m in ipairs(ps.members) do
+		if m.is and m:is(DialogueBox) then boxes[#boxes + 1] = m end
+	end
+	assert(#boxes == 1, "Cutscene postCreate must spawn exactly 1 DialogueBox, got " .. tostring(#boxes))
+
+	local dlg = boxes[1]
+	dlg:closeDialogue()
+	dlg:closeDialogue() -- idempotent second call must not crash
+	assert(ps.startedCountdown == true, "Closing cutscene DialogueBox must start song countdown")
+
+	-- Reset pixel camera left by school stage before finishing test
+	if ps.stage and ps.stage.script and ps.stage.script.variables.cam then
+		game.cameras.remove(ps.stage.script.variables.cam)
+	end
+	game.camera.pixelPerfect = false
+	game.camera.antialiasing = true
+	game.camera:resize(game.width, game.height)
+
+	-- Verify Timer.globalManager reports broken callback visibly without crashing or repeating
+	local brokenCount, siblingCount = 0, 0
+	Timer.wait(0.02, function()
+		brokenCount = brokenCount + 1
+		error("timer_callback_visible_probe")
+	end)
+	Timer.wait(0.02, function()
+		siblingCount = siblingCount + 1
+	end)
+	game.update(0.05)
+	game.update(0.05)
+	assert(brokenCount == 1 and siblingCount == 1,
+		"Broken global timer must fail once without blocking sibling timers")
+	local report = love.filesystem.read("diagnostics/last-error.txt") or ""
+	assert(report:find("timer_callback_visible_probe", 1, true) ~= nil,
+		"Broken global timer must be visibly logged to diagnostics/last-error.txt")
+	paths.async.stop()
+end)
+
+check("B1: Recorder defaults to 1.0x scale, scales pixelPerfect cameras to full frame, and tracks explicit Sound seeks", function()
+	assert(ClientPrefs.data.recordingScale == 1.0,
+		"Default recordingScale must be 1.0 for faithful live capture")
+	assert((ClientPrefs.data.recordingProfileVersion or 0) >= 4,
+		"recordingProfileVersion must be >= 4")
+
+	-- Verify Sound._seekSeq increments on both :seek() and .time = ...
+	local snd = Sound():load(love.sound.newSoundData(4410, 44100, 16, 2))
+	local seq0 = snd._seekSeq or 0
+	snd:seek(0.05)
+	assert((snd._seekSeq or 0) == seq0 + 1, "Sound:seek() must increment _seekSeq")
+	snd.time = 0.02
+	assert((snd._seekSeq or 0) == seq0 + 2, "Sound.time assignment must increment _seekSeq")
+	snd:destroy()
+
+	-- Verify Week 6 pixelPerfect Camera (213x120, zoom=1) draws at 6x to fill 1280x720 target
+	local pixelCam = Camera(0, 0, 213, 120)
+	pixelCam.pixelPerfect = true
+	pixelCam.__forceComplex = true
+	pixelCam:draw()
+	assert(pixelCam.canvas ~= nil, "pixelPerfect camera with __forceComplex must allocate canvas")
+
+	local drawnSx, drawnSy
+	local origDraw = love.graphics.draw
+	love.graphics.draw = function(drawable, x, y, r, sx, sy, ...)
+		if drawable == pixelCam.canvas then
+			drawnSx, drawnSy = sx, sy
+		end
+		return origDraw(drawable, x, y, r, sx, sy, ...)
+	end
+	pixelCam:drawCanvasToTarget(1280, 720)
+	love.graphics.draw = origDraw
+	pixelCam:destroy()
+
+	assert(drawnSx and math.abs(drawnSx - 6) < 0.05 and math.abs(drawnSy - 6) < 0.05,
+		"pixelPerfect 213x120 camera must composite at ~6x onto 1280x720 target, got sx=" .. tostring(drawnSx))
+
+	-- Verify Camera.__forceComplex falls back to non-stencil canvas when stencil8 is unsupported
+	local origFormats = love.graphics.getTextureFormats
+	love.graphics.getTextureFormats = function()
+		return {normal = true, rgba8 = true, stencil8 = false}
+	end
+	Camera.__init()
+	local fallbackCam = Camera(0, 0, 1280, 720)
+	fallbackCam.__forceComplex = true
+	fallbackCam:draw()
+	local hasFallbackCanvas = fallbackCam.canvas ~= nil
+	fallbackCam:destroy()
+	love.graphics.getTextureFormats = origFormats
+	Camera.__init()
+	assert(hasFallbackCanvas, "Camera.__forceComplex must allocate canvas even without stencil8 support")
+end)
+
+check("B2: Keyboard and controller hotplug, focus flickers, and controls:reset never freeze or drop gameplay bindings", function()
+	local mockPad = {
+		_connected = true,
+		_btn = true,
+		isConnected = function(self) return self._connected end,
+		isGamepad = function() return true end,
+		getAxisCount = function() return 4 end,
+		getAxis = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return 0
+		end,
+		getGamepadAxis = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return 0
+		end,
+		isDown = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return self._btn
+		end,
+		isGamepadDown = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return self._btn
+		end,
+		getHat = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return "c"
+		end
+	}
+
+	local pressCalled = 0
+	local function probePress() pressCalled = pressCalled + 1 end
+	controls:bindPress(probePress)
+
+	local cfg = table.clone(ClientPrefs.controls)
+	table.insert(cfg.ui_down, "button:dpdown")
+	controls:reset({controls = cfg, joystick = mockPad})
+	assert(table.find(controls._pressBinds, probePress) ~= nil,
+		"controls:reset must preserve active runtime _pressBinds")
+
+	controls:update()
+	assert(controls:getActiveDevice() == "joy", "Connected gamepad should become active device")
+
+	mockPad._connected = false
+	controls:update()
+	assert(controls:getActiveDevice() ~= "joy" and controls.config.joystick == nil,
+		"Disconnected joystick must cleanly clear activeDevice without throwing")
+
+	controls:onKeyPress("down", "down", false)
+	assert(pressCalled >= 1, "Preserved _pressBinds must still fire after controls:reset and hotplug")
+
+	game.keys.onPressed("left", "left", false)
+	assert(game.keys.pressed.LEFT == true, "Expected LEFT marked pressed before focus loss")
+	;(require "funkin").releaseStuckInputs(true)
+	assert(not game.keys.pressed.LEFT, "releaseStuckInputs must clear stuck held keys on unplug/focus loss")
+
+	controls:unbindPress(probePress)
+	controls:reset({controls = table.clone(ClientPrefs.controls)})
+end)
+
+check("B3: Receptors and baton release cleanly across dual-key spam, holdTime expiry, cross-device input, and VirtualPad:leave", function()
+	local downDuringRelease = {}
+	local function onRelProbe(source)
+		if source == "left" or source == "a" then
+			table.insert(downDuringRelease, {source = source, down = controls:down("note_left")})
+		end
+	end
+	controls:bindRelease(onRelProbe)
+
+	local mockPad = {
+		_connected = true,
+		_buttons = {},
+		isConnected = function(self) return self._connected end,
+		isGamepad = function() return true end,
+		getAxisCount = function() return 4 end,
+		getAxis = function() return 0 end,
+		getGamepadAxis = function() return 0 end,
+		isDown = function(self, b) return self._buttons[b] == true end,
+		isGamepadDown = function(self, b) return self._buttons[b] == true end,
+		getHat = function() return "c" end
+	}
+	local cfg = table.clone(ClientPrefs.controls)
+	if not table.find(cfg.note_right, "button:dpright") then
+		table.insert(cfg.note_right, "button:dpright")
+	end
+	controls:reset({controls = cfg, joystick = mockPad})
+
+	-- 1) Dual-key chord on note_left ("left" + "a") via VirtualPad key state
+	VirtualPad._press("left", 0)
+	controls:onKeyPress("left", "left", false)
+	VirtualPad._press("a", 0)
+	controls:onKeyPress("a", "a", false)
+	VirtualPad._release("left", 0)
+	controls:onKeyRelease("left", "left")
+	assert(#downDuringRelease == 1 and downDuringRelease[1].down == true,
+		"Secondary key 'a' still held: controls:down('note_left') must remain true in onRelease")
+
+	VirtualPad._release("a", 0)
+	controls:onKeyRelease("a", "a")
+	assert(#downDuringRelease == 2 and downDuringRelease[2].down == false,
+		"Last key released: controls:down('note_left') must be false BEFORE _releaseBinds runs")
+
+	-- 2) Cross-device simultaneous hold (gamepad dpright + keyboard left)
+	mockPad._buttons.dpright = true
+	controls:onGamepadPress(mockPad, "dpright")
+	controls:update()
+	VirtualPad._press("left", 0)
+	controls:onKeyPress("left", "left", false)
+	controls:update()
+	mockPad._buttons.dpright = false
+	controls:onGamepadRelease(mockPad, "dpright")
+	assert(not controls:down("note_right"),
+		"Releasing gamepad button while keyboard is active must clear note_right.down")
+	VirtualPad._release("left", 0)
+	controls:onKeyRelease("left", "left")
+
+	-- 3) Receptor confirm holdTime expiry returns to static when key is not held
+	local nf = Notefield(0, 0, 4, "default", nil, nil, 1.0)
+	local receptor = nf.receptors[1]
+	receptor.pressed = false
+	receptor:play("confirm", true)
+	receptor.holdTime = 0.05
+	receptor:update(0.1)
+	assert((receptor.animation.curAnim.name or ""):startsWith("static"),
+		"Receptor holdTime expiry with pressed=false must return to static, got " .. tostring(receptor.animation.curAnim.name))
+	nf:destroy()
+
+	-- 4) VirtualPad:leave() releases active held touch key (e.g. during pause)
+	local vpad = VirtualPad("down", 0, 0, 100, 100)
+	vpad:enter()
+	VirtualPad.press("b3_touch", 50, 50, 1, 0)
+	assert(love.keyboard.isDown("down"), "Expected VirtualPad 'down' held after press")
+	vpad:leave()
+	assert(not love.keyboard.isDown("down"), "VirtualPad:leave() must clear held virtual key")
+	vpad:destroy()
+
+	controls:unbindRelease(onRelProbe)
+	controls:reset({controls = table.clone(ClientPrefs.controls)})
+end)
+
+check("B4: DialogueBox hitboxes, Camera world/screen projection, Mouse/Touch overlaps, and VirtualPad Z-order work across normal/pixel modes and zooms", function()
+	local host = State()
+	game.switchState(host, true)
+	game.update(1 / 60)
+
+	-- 1) Pixel dialogue box: enter -> loop, rejects transparent headroom, accepts visible speech box click
+	local pixDlg = DialogueBox("pixel", "default", "senpai")
+	host:add(pixDlg)
+	for _ = 1, 30 do
+		Timer.globalManager:update(1 / 60)
+		pixDlg:update(1 / 60)
+	end
+	assert(pixDlg.boxSpr.animation.curAnim.name == "loop",
+		"Pixel DialogueBox must transition from enter to loop")
+	assert(not pixDlg:overlapsPoint(640, 200),
+		"Pixel DialogueBox must reject transparent headroom above speech box")
+	assert(pixDlg:overlapsPoint(640, 560),
+		"Pixel DialogueBox must accept clicks inside visible speech box")
+
+	-- 2) Normal dialogue box + zoomed camera (0.5x) + scroll (300, 200)
+	local zCam = Camera(0, 0, 1280, 720)
+	zCam.scroll:set(300, 200)
+	zCam.zoom = 0.5
+	zCam:update(0)
+	local normDlg = DialogueBox("default", "default", "senpai")
+	normDlg.cameras = {zCam}
+	host:add(normDlg)
+	for _ = 1, 50 do
+		Timer.globalManager:update(1 / 60)
+		normDlg:update(1 / 60)
+	end
+	assert(normDlg.boxSpr.animation.curAnim.name == "loop",
+		"Normal DialogueBox must transition from enter to loop")
+	assert(not normDlg:overlapsPoint(640, 620, zCam),
+		"Zoomed 0.5x DialogueBox must reject points outside shrunk screen bounds")
+	assert(normDlg:overlapsPoint(640, 450, zCam),
+		"Zoomed 0.5x DialogueBox must accept points inside shrunk screen bounds")
+	normDlg.text:forceEnd()
+	game.mousemoved(640, 450)
+	game.mousepressed(640, 450, 1)
+	normDlg:update(1 / 60)
+	game.mousereleased(640, 450, 1)
+	game.mouse.reset()
+	assert(normDlg.curDialogue == 2,
+		"Mouse click inside zoomed normal DialogueBox must advance curDialogue")
+
+	-- 3) PixelPerfect (213x120) camera projection in Mouse.overlaps
+	local pCam = Camera(0, 0, 213, 120)
+	pCam.pixelPerfect = true
+	local pObj = Graphic(20, 70, 170, 40, Color.WHITE)
+	pObj.scrollFactor:set(0, 0)
+	pObj.cameras = {pCam}
+	game.mousemoved(640, 540)
+	assert(Mouse.overlaps(pObj), "Mouse.overlaps must project through pixelPerfect 213x120 camera")
+	game.mousemoved(640, 100)
+	assert(not Mouse.overlaps(pObj), "Mouse.overlaps must reject points outside pixelPerfect bounds")
+
+	-- 4) VirtualPad reverse Z-order: top-most overlay receives touch over underlying full-screen pad
+	local bottomPad = VirtualPad("left", 0, 0, 1280, 720)
+	local topPad = VirtualPad("return", 200, 400, 800, 250)
+	bottomPad:enter()
+	topPad:enter()
+	local topHits, bottomHits = 0, 0
+	bottomPad.onPress:add(function() bottomHits = bottomHits + 1 end)
+	topPad.onPress:add(function() topHits = topHits + 1 end)
+	local winW, winH = love.graphics.getDimensions()
+	local sc = math.min(winW / game.width, winH / game.height)
+	local sx = (winW - sc * game.width) / 2 + 640 * sc
+	local sy = (winH - sc * game.height) / 2 + 520 * sc
+	VirtualPad.press("b4_z", sx, sy, 1, 0)
+	VirtualPad.release("b4_z", sx, sy, 1, 0)
+	assert(topHits == 1 and bottomHits == 0,
+		"Top-most VirtualPad must receive touch ahead of underlying pad")
+
+	bottomPad:destroy()
+	topPad:destroy()
+	pixDlg:closeDialogue()
+	normDlg:closeDialogue()
+	zCam:destroy()
+	pCam:destroy()
+	paths.async.stop()
+end)
+
+
+
+

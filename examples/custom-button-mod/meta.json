@@ -1,0 +1,6 @@
+{
+	"name": "Custom Button Mod",
+	"description": "Demonstrates adding interactive buttons to MainMenuState and the gameplay HUD using Mod.addMenuButton and Mod.button.",
+	"color": "#38BDF8",
+	"version": "1.0.0"
+}

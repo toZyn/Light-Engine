@@ -236,3 +236,69 @@ check("ChartingState playback audio seek/tell, Soft-Keyboard TextInput, and dire
 	ps:pauseSong()
 	paths.async.stop()
 end)
+
+check("B5: Mod.button, Mod.addMenuButton, SpriteButton, UIButton touch, and custom-button-mod work cleanly", function()
+	local modRoot = (Mods.root or "mods") .. "/custom-button-mod-test"
+	Storage.ensureDir(modRoot .. "/data/states")
+	Storage.ensureDir(modRoot .. "/data/scripts")
+	Storage.writeFile(modRoot .. "/meta.json", assert(love.filesystem.read("examples/custom-button-mod/meta.json")))
+	Storage.writeFile(modRoot .. "/data/states/mainmenu.lua",
+		assert(love.filesystem.read("examples/custom-button-mod/data/states/mainmenu.lua")))
+	Storage.writeFile(modRoot .. "/data/scripts/hud-button.lua",
+		assert(love.filesystem.read("examples/custom-button-mod/data/scripts/hud-button.lua")))
+
+	Mods.reload()
+	local prevMod = Mods.currentMod
+	Mods.currentMod = "custom-button-mod-test"
+
+	local mm = MainMenuState()
+	game.switchState(mm, true)
+	game.update(1 / 60)
+	assert(mm.menuItems[#mm.menuItems] == "bonusbop",
+		"custom-button-mod must register 'bonusbop' in MainMenuState.menuItems")
+	mm.menuList:setSelection(#mm.menuItems, true)
+	mm:enterSelection("bonusbop")
+	for _ = 1, 80 do
+		Timer.globalManager:update(1 / 60)
+		game.update(1 / 60)
+	end
+	assert(not mm.selectedSomethin and not mm.menuList.lock,
+		"MainMenuState stay=true custom button must unlock menu after selection")
+
+	local uiTouches = 0
+	local btn = ModAPI.button("test_ui_btn", 40, 40, 140, 40, "Tap Test", function()
+		uiTouches = uiTouches + 1
+	end)
+	assert(ModAPI.get("test_ui_btn") == btn, "Mod.get must retrieve tagged Mod.button")
+	game.touchpressed("b5_touch", 80, 60, 0, 0, 1, 0)
+	game.update(1 / 60)
+	game.touchreleased("b5_touch", 80, 60, 0, 0, 1, 0)
+	game.update(1 / 60)
+	assert(uiTouches == 1, "UIButton created via Mod.button must respond to touch, got " .. tostring(uiTouches))
+	assert(ModAPI.remove("test_ui_btn") and ModAPI.get("test_ui_btn") == nil,
+		"Mod.remove must remove and unregister tagged button")
+
+	local sprClicks = 0
+	local sprBtn = SpriteButton(200, 120, "f7", "menus/menuBG", function()
+		sprClicks = sprClicks + 1
+	end)
+	mm:add(sprBtn)
+	game.mousepressed(220, 140, 1)
+	game.update(1 / 60)
+	game.mousereleased(220, 140, 1)
+	game.update(1 / 60)
+	assert(sprClicks == 1, "SpriteButton must load string texture keys and fire callback on click")
+	mm:remove(sprBtn)
+	sprBtn:destroy()
+
+	local timerFired = false
+	ModAPI.timer(0.05, function() timerFired = true end)
+	for _ = 1, 6 do
+		Timer.globalManager:update(1 / 60)
+		game.update(1 / 60)
+	end
+	assert(timerFired, "Mod.timer must fire callback without nil method errors")
+
+	Mods.currentMod = prevMod
+	paths.async.stop()
+end)

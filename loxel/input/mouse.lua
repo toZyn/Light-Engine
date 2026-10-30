@@ -61,23 +61,56 @@ function Mouse.reset()
 	Mouse.deltaScreenY = 0
 end
 
-function Mouse.overlaps(obj, cam)
-	local camera = cam or game.camera
-	local mouseX, mouseY = Mouse.x + camera.scroll.x,
-		Mouse.y + camera.scroll.y
-	if obj then
-		if obj:is(Group) then
-			for _, o in ipairs(obj.members) do
-				if o and Mouse.overlaps(o, cam) then
-					return true
-				end
+local function pointOverlapsObject(gameX, gameY, obj, cam, parentX, parentY, parentSfx, parentSfy)
+	if not obj or obj.exists == false then return false end
+	parentX, parentY = parentX or 0, parentY or 0
+	parentSfx = parentSfx == nil and 1 or parentSfx
+	parentSfy = parentSfy == nil and 1 or parentSfy
+
+	local camera = cam or (obj.cameras and obj.cameras[1]) or game.camera
+	if type(obj.overlapsPoint) == "function" then
+		return obj:overlapsPoint(gameX, gameY, camera)
+	end
+
+	if SpriteGroup and obj.is and obj:is(SpriteGroup) then
+		local ox = parentX + (obj.x or 0) + (obj.offset and obj.offset.x or 0)
+		local oy = parentY + (obj.y or 0) + (obj.offset and obj.offset.y or 0)
+		local sfx = parentSfx * (obj.scrollFactor and obj.scrollFactor.x or 1)
+		local sfy = parentSfy * (obj.scrollFactor and obj.scrollFactor.y or 1)
+		for _, o in ipairs(obj.members) do
+			if o and pointOverlapsObject(gameX, gameY, o, camera, ox, oy, sfx, sfy) then
+				return true
 			end
-		elseif obj:is(Object) then
-			return mouseX >= obj.x and mouseX <= obj.x + obj.width and mouseY >=
-				obj.y and mouseY <= obj.y + obj.height
 		end
+		return false
+	elseif Group and obj.is and obj:is(Group) then
+		for _, o in ipairs(obj.members) do
+			if o and pointOverlapsObject(gameX, gameY, o, cam, parentX, parentY, parentSfx, parentSfy) then
+				return true
+			end
+		end
+		return false
+	elseif Object and obj.is and obj:is(Object) then
+		local sfx = parentSfx * (obj.scrollFactor and obj.scrollFactor.x or 1)
+		local sfy = parentSfy * (obj.scrollFactor and obj.scrollFactor.y or 1)
+		local wx, wy
+		if camera and camera.screenToWorld then
+			wx, wy = camera:screenToWorld(gameX, gameY, sfx, sfy)
+		else
+			wx = gameX + (camera and camera.scroll and camera.scroll.x or 0) * sfx
+			wy = gameY + (camera and camera.scroll and camera.scroll.y or 0) * sfy
+		end
+		local x = (obj.x or 0) + parentX
+		local y = (obj.y or 0) + parentY
+		local w = obj.width or 0
+		local h = obj.height or 0
+		return wx >= x and wx <= x + w and wy >= y and wy <= y + h
 	end
 	return false
+end
+
+function Mouse.overlaps(obj, cam)
+	return pointOverlapsObject(Mouse.x, Mouse.y, obj, cam)
 end
 
 function Mouse.onPressed(button)

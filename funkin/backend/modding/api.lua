@@ -1,6 +1,26 @@
 local JSON = require "funkin.backend.jsonbuilder"
 
-local ModAPI = {}
+local ModAPI = {
+	_objects = {},
+	_stateBound = nil
+}
+
+local function syncObjectStore()
+	local st = game and game.getState and game.getState() or nil
+	if ModAPI._stateBound ~= st then
+		ModAPI._objects = {}
+		ModAPI._stateBound = st
+	end
+	return ModAPI._objects
+end
+
+local function registerTagged(tag, obj)
+	if type(tag) == "string" and tag ~= "" and obj ~= nil then
+		local store = syncObjectStore()
+		store[tag] = obj
+	end
+	return obj
+end
 
 local function resolveCamera(cam)
 	local st = game.getState()
@@ -67,12 +87,44 @@ local function applyObjectOptions(obj, opts)
 	return obj
 end
 
+---Retrieves a tagged object created via Mod.sprite / Mod.text / Mod.graphic / Mod.button.
+function ModAPI.get(tag)
+	if type(tag) ~= "string" or tag == "" then return nil end
+	return syncObjectStore()[tag]
+end
+
+---Removes and destroys a tagged object (or object reference) from the current state.
+function ModAPI.remove(targetOrTag)
+	local store = syncObjectStore()
+	local obj = type(targetOrTag) == "string" and store[targetOrTag] or targetOrTag
+	if type(targetOrTag) == "string" then
+		store[targetOrTag] = nil
+	else
+		for k, v in pairs(store) do
+			if v == obj then store[k] = nil end
+		end
+	end
+	if not obj then return false end
+	local st = game.getState()
+	if st and st.remove then
+		pcall(st.remove, st, obj)
+	end
+	if obj.destroy then
+		pcall(obj.destroy, obj)
+	end
+	return true
+end
+
 ---Creates a Sprite or Animated Atlas Sprite automatically.
----@param key string Image or Atlas key inside images/
----@param x? number
----@param y? number
----@param opts? table {scale, scroll, alpha, camera, anims, play, add, behind, center, color}
-function ModAPI.sprite(key, x, y, opts)
+---Supports both Mod.sprite(key, x, y, opts) and Mod.sprite(tag, key, x, y, opts).
+function ModAPI.sprite(a, b, c, d, e)
+	local tag, key, x, y, opts
+	if type(a) == "string" and type(b) == "string" then
+		tag, key, x, y, opts = a, b, c, d, e
+	else
+		key, x, y, opts = a, b, c, d
+	end
+
 	local spr = Sprite(x or 0, y or 0)
 	if key and key ~= "" then
 		local xmlExists = paths.exists(paths.getPath("images/" .. key .. ".xml"), "file")
@@ -106,62 +158,207 @@ function ModAPI.sprite(key, x, y, opts)
 	if opts and opts.play and spr.animation then
 		spr.animation:play(opts.play, true)
 	end
-	return spr
+	return registerTagged(tag, spr)
 end
 
 ---Creates a styled Text object (defaults to HUD camera when in PlayState).
-function ModAPI.text(content, x, y, size, opts)
-	opts = opts or {}
+---Supports Mod.text(content, x, y, size, opts), Mod.text(tag, content, x, y, opts), and Mod.text(tag, content, x, y, size, opts).
+function ModAPI.text(a, b, c, d, e, f)
+	local tag, content, x, y, size, opts
+	if type(a) == "string" and type(b) == "string" then
+		tag, content, x, y = a, b, c, d
+		if type(e) == "table" then
+			opts = e
+			size = opts.size
+		else
+			size, opts = e, f
+		end
+	else
+		content, x, y = a, b, c
+		if type(d) == "table" then
+			opts = d
+			size = opts.size
+		else
+			size, opts = d, e
+		end
+	end
+	opts = opts and table.clone(opts) or {}
 	local fontName = opts.font or "vcr.ttf"
-	local font = paths.getFont(fontName, size or 20) or love.graphics.getFont()
+	local font = paths.getFont(fontName, size or opts.size or 20) or love.graphics.getFont()
 	local txt = Text(x or 0, y or 0, tostring(content or ""), font,
 		opts.color and {Color.get(opts.color)} or Color.WHITE,
 		opts.align or "left", opts.limit)
 	if opts.outline ~= false then
 		txt.outline.width = opts.outlineWidth or 1.5
 		if opts.outlineColor then
-			local r, g, b, a = Color.get(opts.outlineColor)
-			txt.outline.color = {r, g, b, a}
+			local r, g, b2, a2 = Color.get(opts.outlineColor)
+			txt.outline.color = {r, g, b2, a2}
 		end
 	end
 	if opts.camera == nil then
 		local st = game.getState()
 		if st and st.camHUD then opts.camera = st.camHUD end
 	end
-	return applyObjectOptions(txt, opts)
+	return registerTagged(tag, applyObjectOptions(txt, opts))
 end
 
 ---Creates a solid Graphic rectangle.
-function ModAPI.graphic(x, y, width, height, color, opts)
-	local r, g, b, a = Color.get(color or Color.BLACK)
-	local grp = Graphic(x or 0, y or 0, width or 100, height or 100, {r, g, b})
-	grp.alpha = (opts and opts.alpha) or a or 1
-	return applyObjectOptions(grp, opts)
+---Supports Mod.graphic(x, y, width, height, color, opts) and Mod.graphic(tag, x, y, width, height, color, opts).
+function ModAPI.graphic(a, b, c, d, e, f, g)
+	local tag, x, y, width, height, color, opts
+	if type(a) == "string" then
+		tag, x, y, width, height, color, opts = a, b, c, d, e, f, g
+	else
+		x, y, width, height, color, opts = a, b, c, d, e, f
+	end
+	local r, gr, bl, al = Color.get(color or Color.BLACK)
+	local grp = Graphic(x or 0, y or 0, width or 100, height or 100, {r, gr, bl})
+	grp.alpha = (opts and opts.alpha) or al or 1
+	return registerTagged(tag, applyObjectOptions(grp, opts))
 end
 
----Ergonomic Tween helper supporting string ease names (e.g. "quadOut", "cubeInOut", "sineOut").
-function ModAPI.tween(target, values, duration, ease, onComplete)
-	if not target or not values then return nil end
-	local easeFn = ease
-	if type(ease) == "string" then
-		easeFn = Ease[ease] or Ease.linear
-	elseif ease == nil then
-		easeFn = Ease.quadOut
+---Creates an interactive UIButton or SpriteButton (mouse, touch, and optional keyboard shortcut).
+---Supports:
+---  Mod.button(x, y, width, height, label, callback, opts)
+---  Mod.button(tag, x, y, width, height, label, callback, opts)
+---  Mod.button(tag, x, y, label, callback, opts) / Mod.button(x, y, label, callback, opts)
+function ModAPI.button(...)
+	local args = {...}
+	local idx = 1
+	local tag
+	if type(args[1]) == "string" and type(args[2]) == "number" then
+		tag = args[1]
+		idx = 2
 	end
+	local x = tonumber(args[idx]) or 0
+	local y = tonumber(args[idx + 1]) or 0
+	local width, height, label, callback, opts
+	if type(args[idx + 2]) == "number" and type(args[idx + 3]) == "number" then
+		width = args[idx + 2]
+		height = args[idx + 3]
+		label = args[idx + 4]
+		callback = args[idx + 5]
+		opts = args[idx + 6]
+	else
+		width = 160
+		height = 40
+		label = args[idx + 2]
+		callback = args[idx + 3]
+		opts = args[idx + 4]
+	end
+	if type(label) == "function" then
+		opts = callback
+		callback = label
+		label = tag or "Button"
+	end
+	opts = opts and table.clone(opts) or {}
+	if opts.width then width = opts.width end
+	if opts.height then height = opts.height end
+	if opts.scroll == nil then opts.scroll = 0 end
+	if opts.camera == nil then
+		local st = game.getState()
+		if st and st.camHUD then opts.camera = st.camHUD end
+	end
+
+	local btn
+	local texKey = opts.atlas or opts.image
+	if texKey then
+		btn = SpriteButton(x, y, opts.key or "return", texKey, callback)
+		if opts.anims then
+			for _, anim in ipairs(opts.anims) do
+				local name = anim.name or anim[1]
+				local prefix = anim.prefix or anim[2]
+				local fps = anim.fps or anim[3] or 24
+				local loop = anim.loop ~= nil and anim.loop or (anim[4] or false)
+				if name and prefix then
+					if anim.indices and #anim.indices > 0 then
+						btn.animation:addByIndices(name, prefix, anim.indices, nil, fps, loop)
+					else
+						btn.animation:addByPrefix(name, prefix, fps, loop)
+					end
+				end
+			end
+		end
+		if opts.play and btn.animation then
+			btn.animation:play(opts.play, true)
+		end
+		btn:updateHitbox()
+	else
+		btn = ui.UIButton(x, y, width or 160, height or 40, tostring(label or "Button"), callback)
+		local fontName = opts.font or "vcr.ttf"
+		local fontSize = opts.fontSize or opts.size or 18
+		btn.font = paths.getFont(fontName, fontSize) or btn.font
+		if opts.key then btn.shortcutKey = tostring(opts.key) end
+		if opts.hoveredColor then
+			local r, g, b = Color.get(opts.hoveredColor)
+			btn.hoveredColor = {r, g, b}
+		end
+		if opts.pressedColor then
+			local r, g, b = Color.get(opts.pressedColor)
+			btn.pressedColor = {r, g, b}
+		end
+		if opts.textColor then
+			local r, g, b = Color.get(opts.textColor)
+			btn.textColor = {r, g, b}
+		end
+		if opts.lineColor then
+			local r, g, b = Color.get(opts.lineColor)
+			btn.lineColor = {r, g, b}
+		end
+	end
+
+	return registerTagged(tag, applyObjectOptions(btn, opts))
+end
+
+---Adds a selectable menu button to MainMenuState (or any state exposing :addMenuButton).
+---@param id string Menu option identifier
+---@param labelOrCallback string|function Display text (when using AtlasText) or callback function
+---@param callbackOrOpts? function|table Selection callback or options table
+---@param maybeOpts? table {index, stay, flicker, atlas, idlePrefix, selectedPrefix, useText, font}
+function ModAPI.addMenuButton(id, labelOrCallback, callbackOrOpts, maybeOpts)
 	local st = game.getState()
-	local mgr = (st and st.tween) or Tween
-	return mgr:tween(target, values, duration or 0.5, easeFn, onComplete)
+	if st and type(st.addMenuButton) == "function" then
+		return st:addMenuButton(id, labelOrCallback, callbackOrOpts, maybeOpts)
+	end
+	return nil
+end
+
+---Ergonomic Tween helper supporting string ease names (e.g. "quadOut", "cubeInOut", "sineOut") and tagged targets.
+function ModAPI.tween(targetOrTag, values, duration, ease, onComplete)
+	local target = type(targetOrTag) == "string" and ModAPI.get(targetOrTag) or targetOrTag
+	if not target or not values then return nil end
+
+	local options
+	if type(ease) == "table" then
+		options = table.clone(ease)
+		if onComplete and not options.onComplete then
+			options.onComplete = onComplete
+		end
+	else
+		local easeFn = ease
+		if type(ease) == "string" then
+			easeFn = Ease[ease] or Ease.linear
+		elseif ease == nil then
+			easeFn = Ease.quadOut
+		end
+		options = {ease = easeFn, onComplete = onComplete}
+	end
+
+	local st = game.getState()
+	if st and st.tween and type(st.tween.tween) == "function" then
+		return st.tween:tween(target, values, duration or 0.5, options)
+	end
+	return Tween.tween(target, values, duration or 0.5, options)
 end
 
 ---Ergonomic Timer helper bound to the current state's timer when available.
 function ModAPI.timer(delay, callback, loops)
 	if type(callback) ~= "function" then return nil end
 	local st = game.getState()
-	local mgr = (st and st.timer) or Timer
-	if loops and loops ~= 1 then
-		return mgr:every(delay or 1, callback, loops > 0 and loops or nil)
-	end
-	return mgr:after(delay or 0, callback)
+	local mgr = (st and st.timer) or Timer.globalManager
+	local t = Timer(mgr)
+	t:start(delay or 0, callback, loops or 1)
+	return t
 end
 
 ---Plays a sound effect from sounds/.
@@ -362,7 +559,7 @@ function ModAPI.createTemplate(modId, opts)
 		Storage.writeFile(root .. "/songs/bopeebo/charts/" .. d .. ".json", JSON.encode(starterChart, true) .. "\n")
 	end
 
-	if Mods and Mods.loadMods then Mods.loadMods() end
+	if Mods and Mods.reload then Mods.reload() end
 	if Parser and Parser.clearCache then Parser.clearCache() end
 	return true, dest
 end

@@ -37,9 +37,9 @@
 #endif
 
 #define LR_PBO_COUNT 3
-#define LR_VIDEO_RING 6
-#define LR_AUDIO_CAP_FRAMES (44100 * 4)
-#define LR_EARLY_PKT_MAX 128
+#define LR_VIDEO_RING 10
+#define LR_AUDIO_CAP_FRAMES (44100 * 6)
+#define LR_EARLY_PKT_MAX 192
 
 #define LR_GL_PIXEL_PACK_BUFFER 0x88EB
 #define LR_GL_STREAM_READ       0x88E1
@@ -504,16 +504,36 @@ LR_EXPORT int lightrecorder_start(const char *path, int width, int height, int f
         AMediaFormat_setInt32(vfmt, "color-format", fmts[i]);
         AMediaFormat_setInt32(vfmt, "bitrate", g_lr.bitrate);
         AMediaFormat_setInt32(vfmt, "frame-rate", g_lr.fps);
-        AMediaFormat_setInt32(vfmt, "i-frame-interval", 1);
+        AMediaFormat_setInt32(vfmt, "i-frame-interval", 2);
+        AMediaFormat_setInt32(vfmt, "bitrate-mode", 1); /* VBR */
+        AMediaFormat_setInt32(vfmt, "priority", 0);
         media_status_t st = AMediaCodec_configure(g_lr.v_codec, vfmt, NULL, NULL, AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
         AMediaFormat_delete(vfmt);
-        if (st == AMEDIA_OK && AMediaCodec_start(g_lr.v_codec) == AMEDIA_OK) {
+        if (st != AMEDIA_OK) {
+            AMediaCodec_delete(g_lr.v_codec);
+            g_lr.v_codec = AMediaCodec_createEncoderByType("video/avc");
+            if (g_lr.v_codec) {
+                AMediaFormat *vfmt2 = AMediaFormat_new();
+                AMediaFormat_setString(vfmt2, "mime", "video/avc");
+                AMediaFormat_setInt32(vfmt2, "width", g_lr.width);
+                AMediaFormat_setInt32(vfmt2, "height", g_lr.height);
+                AMediaFormat_setInt32(vfmt2, "color-format", fmts[i]);
+                AMediaFormat_setInt32(vfmt2, "bitrate", g_lr.bitrate);
+                AMediaFormat_setInt32(vfmt2, "frame-rate", g_lr.fps);
+                AMediaFormat_setInt32(vfmt2, "i-frame-interval", 2);
+                st = AMediaCodec_configure(g_lr.v_codec, vfmt2, NULL, NULL, AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+                AMediaFormat_delete(vfmt2);
+            }
+        }
+        if (st == AMEDIA_OK && g_lr.v_codec && AMediaCodec_start(g_lr.v_codec) == AMEDIA_OK) {
             g_lr.color_format = fmts[i];
             configured = 1;
             break;
         }
-        AMediaCodec_delete(g_lr.v_codec);
-        g_lr.v_codec = NULL;
+        if (g_lr.v_codec) {
+            AMediaCodec_delete(g_lr.v_codec);
+            g_lr.v_codec = NULL;
+        }
     }
 
     if (!configured) {
@@ -636,6 +656,7 @@ LR_EXPORT int lightrecorder_capture_gl_frame(int64_t pts_us) {
         glBindBuffer(LR_GL_PIXEL_PACK_BUFFER, g_lr.pbos[write_idx]);
         glReadPixels(0, 0, g_lr.width, g_lr.height, GL_RGBA, GL_UNSIGNED_BYTE, (void *)0);
         glBindBuffer(LR_GL_PIXEL_PACK_BUFFER, 0);
+        glFlush();
 
         g_lr.pbo_pts[write_idx] = pts_us;
         g_lr.pbo_valid[write_idx] = 1;

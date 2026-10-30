@@ -43,12 +43,6 @@ function VirtualPad:enter()
 	end
 end
 
-function VirtualPad:leave()
-	if table.find(VirtualPad.instances, self) then
-		table.delete(VirtualPad.instances, self)
-	end
-end
-
 local function press(button, id, time)
 	if not button or button.pressed then return end
 	button.pressed = true
@@ -61,8 +55,24 @@ local function release(button, id, time)
 	if not button or not button.pressed then return end
 	button.pressed = false
 	VirtualPad._release(button.key, time or love.timer.getTime())
-	VirtualPad.active[id] = nil
+	if id ~= nil then
+		VirtualPad.active[id] = nil
+	end
 	button.onRelease:dispatch(button)
+end
+
+function VirtualPad:leave()
+	if table.find(VirtualPad.instances, self) then
+		table.delete(VirtualPad.instances, self)
+	end
+	for id, actived in pairs(VirtualPad.active) do
+		if actived == self then
+			release(self, id, love.timer.getTime())
+		end
+	end
+	if self.pressed then
+		release(self, nil, love.timer.getTime())
+	end
 end
 
 local activeTouches = {}
@@ -77,8 +87,9 @@ function VirtualPad.updatePress()
 		local active = VirtualPad.active[id]
 		local found = false
 
-		for _, button in ipairs(VirtualPad.instances) do
-			if button:check(x, y) and not found then
+		for i = #VirtualPad.instances, 1, -1 do
+			local button = VirtualPad.instances[i]
+			if button and button:check(x, y) and not found then
 				found = true
 				if not active then
 					press(button, id)
@@ -107,8 +118,9 @@ end
 function VirtualPad.press(id, x, y, p, time)
 	x, y = VirtualPad.remap(x, y)
 	local active = VirtualPad.active[id]
-	for _, button in ipairs(VirtualPad.instances) do
-		if button:check(x, y) and not active then
+	for i = #VirtualPad.instances, 1, -1 do
+		local button = VirtualPad.instances[i]
+		if button and button:check(x, y) and not active then
 			press(button, id, time)
 			break
 		end
@@ -149,7 +161,7 @@ function VirtualPad:destroy()
 end
 
 function VirtualPad:check(x, y)
-	if not self.stunned and x >= self.x and x <= self.x + self.width
+	if self.exists ~= false and not self.stunned and x >= self.x and x <= self.x + self.width
 		and y >= self.y and y <= self.y + self.height then
 		return self
 	end

@@ -186,11 +186,21 @@ function Receptor:spawnSplash()
 end
 
 function Receptor:update(dt)
+	local controlName = PlayState and PlayState.keysControls and PlayState.keysControls[self.direction]
+	local isBot = self.parent and self.parent.bot
+	local held = (not isBot) and controlName and controls and controls:down(controlName) or false
+	local hasInput, anim, note = isBot or held
+
 	if self.holdTime > 0 then
 		self.holdTime = self.holdTime - dt
 		if self.holdTime <= 0 then
 			self.holdTime = 0
-			self:play(self.parent.bot and "static" or "pressed")
+			self:play(held and "pressed" or "static")
+		end
+	elseif not isBot and not held and self.animation and self.animation.curAnim then
+		local curName = self.animation.curAnim.name
+		if curName == "pressed" or (type(curName) == "string" and curName:sub(1, 12) == "pressed-note") then
+			self:play("static")
 		end
 	end
 
@@ -204,7 +214,6 @@ function Receptor:update(dt)
 			splash:kill()
 		end
 	end
-	local hasInput, anim, note = self.parent.bot or controls:down(PlayState.keysControls[self.direction])
 	for _, cover in ipairs(self.covers.members) do
 		if cover.exists then
 			anim, note = cover.animation.curAnim.name, cover.parent

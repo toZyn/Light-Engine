@@ -182,6 +182,7 @@ function PlayState:preload()
 end
 
 function PlayState:enter()
+	self._postCreated = false
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	if not self._preloaded or not self.ratings then
 		self:preload()
@@ -530,7 +531,9 @@ function PlayState:enter()
 	end
 	self:positionText()
 
-	if self.buttons then self:add(self.buttons) end
+	if Recorder then
+		Recorder.onGameplayEnter(PlayState.SONG and PlayState.SONG.song)
+	end
 
 	if PlayState.storyMode and not PlayState.seenCutscene then
 		local name, type = PlayState.getCutscene()
@@ -538,7 +541,10 @@ function PlayState:enter()
 			self:executeCutscene(name, type, function(event)
 				local skipCountdown = event and event.params[1] or false
 				if skipCountdown then
-					self:startSong(self.startPos)
+					if self.buttons and not table.find(self.members, self.buttons) then
+						self:add(self.buttons)
+					end
+					self:playSong(self.startPos)
 					self:fadeReceptors()
 				else
 					self:startCountdown()
@@ -556,6 +562,7 @@ function PlayState:enter()
 	collectgarbage()
 
 	self.scripts:call("postCreate")
+	self._postCreated = true
 
 	game.camera:follow(self.camFollow, nil, 2.4 * self.camSpeed)
 	game.camera:snapToTarget()
@@ -574,14 +581,18 @@ function PlayState:executeCutscene(name, type, onComplete)
 			cutsceneScript:close()
 		end)
 		cutsceneScript.closeCallback:add(function()
+			if self.scripts and self.scripts.scripts then
+				table.delete(self.scripts.scripts, cutsceneScript)
+			end
 			if onComplete then onComplete() end
 			onComplete = nil
 		end)
 
-		cutsceneScript:call("create")
-		cutsceneScript:call("postCreate")
-
 		self.scripts:add(cutsceneScript)
+		cutsceneScript:call("create")
+		if self._postCreated then
+			cutsceneScript:call("postCreate")
+		end
 	else
 		local s, data = pcall(paths.getJSON, "data/cutscenes/" .. name)
 		if not s then
@@ -682,8 +693,20 @@ function PlayState:getRating(a, b)
 	end
 end
 
+function PlayState:hasActiveDialogue()
+	if not self.members or not DialogueBox then return false end
+	for _, m in ipairs(self.members) do
+		if m and not m._closed and m.exists ~= false and m.is and m:is(DialogueBox) then
+			return true
+		end
+	end
+	return false
+end
+
 function PlayState:startCountdown()
-	if self.buttons then self:add(self.buttons) end
+	if self.buttons and not table.find(self.members, self.buttons) then
+		self:add(self.buttons)
+	end
 
 	local event = self.scripts:call("startCountdown")
 	if event == Script.Event_Cancel then return end
@@ -881,6 +904,7 @@ end
 
 function PlayState:focus(f)
 	self.scripts:call("focus", f)
+	self:reconcileReceptors()
 	if Discord and love.autoPause then self:updateDiscordRPC(not f) end
 	self.scripts:call("postFocus", f)
 end
@@ -923,13 +947,13 @@ function PlayState:swapCharacter(slot, newCharName)
 	if not ok or not newChar then return nil end
 
 	local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
+	local camPoint = isBF and self.stage.boyfriendCam or (isGF and self.stage.gfCam or self.stage.dadCam)
 	if posPoint then
-		local ox, oy = posPoint.x, posPoint.y
-		if newChar.__type == "VSlice" and not newChar._animAtlas then
-			ox = ox - newChar.width / 2
-			oy = oy - newChar.height
-		end
-		newChar:setPosition(newChar.x + ox, newChar.y + oy)
+		newChar:setPosition(newChar.x + posPoint.x, newChar.y + posPoint.y)
+	end
+	if camPoint and newChar.cameraPosition then
+		newChar.cameraPosition.x = newChar.cameraPosition.x + camPoint.x
+		newChar.cameraPosition.y = newChar.cameraPosition.y + camPoint.y
 	end
 
 	if oldChar then
@@ -1001,6 +1025,29 @@ function PlayState:resetStroke(notefield, dir, doPress)
 	if receptor then
 		receptor:play((doPress and not notefield.bot)
 			and "pressed" or "static")
+	end
+end
+
+function PlayState:reconcileReceptors()
+	if not self.notefields then return end
+	if controls and controls.update then
+		controls:update()
+	end
+	for _, notefield in pairs(self.notefields) do
+		if notefield and notefield.is and not notefield.bot and notefield.receptors then
+			for dir = 0, #notefield.receptors - 1 do
+				local controlName = PlayState.keysControls[dir]
+				local held = controlName and controls and controls:down(controlName)
+				if not held then
+					local receptor = notefield.receptors[dir + 1]
+					local curName = receptor and receptor.animation and receptor.animation.curAnim
+						and receptor.animation.curAnim.name or ""
+					if curName == "pressed" or curName:sub(1, 12) == "pressed-note" then
+						self:resetStroke(notefield, dir, false)
+					end
+				end
+			end
+		end
 	end
 end
 
@@ -1092,8 +1139,28 @@ function PlayState:update(dt)
 		end
 	end
 
+	local hadDialogue = self:hasActiveDialogue()
+	if hadDialogue then
+		self._dialogueStunnedPads = true
+		if self.buttons then self.buttons:set({stunned = true}) end
+		if self.pauseButton and self.pauseButton.pauseButton and self.pauseButton.pauseButton.button then
+			self.pauseButton.pauseButton.button.stunned = true
+		end
+	end
+
 	self.scripts:call("update", dt)
 	PlayState.super.update(self, dt)
+
+	local inDialogue = hadDialogue or self:hasActiveDialogue()
+	if not inDialogue and self._dialogueStunnedPads then
+		self._dialogueStunnedPads = false
+		if self.buttons and table.find(self.members, self.buttons) and not self.buttons.pendingEnable then
+			self.buttons:set({stunned = false})
+		end
+		if self.pauseButton and self.pauseButton.pauseButton and self.pauseButton.pauseButton.button then
+			self.pauseButton.pauseButton.button.stunned = false
+		end
+	end
 
 	local time = PlayState.conductor.time / 1000
 	local missOffset = time - Note.safeZoneOffset / 1.25
@@ -1168,7 +1235,7 @@ function PlayState:update(dt)
 	self.camHUD.zoom = util.coolLerp(self.camHUD.zoom, 1, 3, dt * self.camZoomSpeed)
 	self.camNotes.zoom = self.camHUD.zoom
 
-	if self.startedCountdown and controls:pressed("pause") then
+	if self.startedCountdown and not inDialogue and controls:pressed("pause") then
 		self:tryPause()
 	end
 
@@ -1511,6 +1578,7 @@ end
 function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 	if isrepeat then return end
 	if self.substate and not self.persistentUpdate then return end
+	if self:hasActiveDialogue() then return end
 	local boundControls = controls:getControlsFromSource(type .. ":" .. key)
 	local ghostTap = ClientPrefs.data.ghostTap and self.ghostTime <= 0
 
@@ -1587,7 +1655,10 @@ function PlayState:closeSubstate()
 		if Discord then self:updateDiscordRPC() end
 	end
 
-	if self.buttons then self:add(self.buttons) end
+	if self.buttons and not table.find(self.members, self.buttons) then
+		self:add(self.buttons)
+	end
+	self:reconcileReceptors()
 
 	self.scripts:call("postSubstateClosed")
 end

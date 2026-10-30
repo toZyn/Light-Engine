@@ -85,31 +85,51 @@ function sourceFunction.keyboardMouse.mouse(button)
 	return (love.mouse and love.mouse.isDown(tonumber(button))) and 1 or 0
 end
 
+local function isJoystickConnected(joystick)
+	if not joystick then return false end
+	if joystick.isConnected then
+		local ok, connected = pcall(joystick.isConnected, joystick)
+		return ok and connected == true
+	end
+	return true
+end
+
 -- checks the position of a joystick axis
 function sourceFunction.joystick.axis(joystick, value)
+	if not isJoystickConnected(joystick) then return 0 end
 	local axis, direction = parseAxis(value)
-	-- "a and b or c" is ok here because b will never be boolean
-	value = tonumber(axis) and joystick:getAxis(tonumber(axis)) or joystick:getGamepadAxis(axis)
-	if direction == '-' then value = -value end
-	return value > 0 and value or 0
+	if not axis then return 0 end
+	local ok, res
+	if tonumber(axis) then
+		ok, res = pcall(joystick.getAxis, joystick, tonumber(axis))
+	else
+		ok, res = pcall(joystick.getGamepadAxis, joystick, axis)
+	end
+	if not ok or type(res) ~= "number" then return 0 end
+	if direction == '-' then res = -res end
+	return res > 0 and res or 0
 end
 
 -- checks whether a joystick button is held down or not
 -- can take a number or a GamepadButton string
 function sourceFunction.joystick.button(joystick, button)
-	-- i'm intentionally not using the "a and b or c" idiom here
-	-- because joystick.isDown returns a boolean
+	if not isJoystickConnected(joystick) then return 0 end
+	local ok, down
 	if tonumber(button) then
-		return joystick:isDown(tonumber(button)) and 1 or 0
+		ok, down = pcall(joystick.isDown, joystick, tonumber(button))
 	else
-		return joystick:isGamepadDown(button) and 1 or 0
+		ok, down = pcall(joystick.isGamepadDown, joystick, button)
 	end
+	return (ok and down) and 1 or 0
 end
 
 -- checks the direction of a joystick hat
 function sourceFunction.joystick.hat(joystick, value)
+	if not isJoystickConnected(joystick) then return 0 end
 	local hat, direction = parseHat(value)
-	return joystick:getHat(hat) == direction and 1 or 0
+	if not hat then return 0 end
+	local ok, res = pcall(joystick.getHat, joystick, tonumber(hat) or hat)
+	return (ok and res == direction) and 1 or 0
 end
 
 -- checks if its belong in joystick or keyboardMouse
@@ -148,12 +168,18 @@ function Player:_loadConfig(config)
 end
 
 -- initializes a control object for each control defined in the config
-function Player:_initControls()
+function Player:_initControls(preserveBinds)
+	local oldControls = preserveBinds and self._controls or nil
 	self._controls = {}
 	self._sourceControls = {keyboardMouse = {}, joystick = {}}
-	self._pressBinds = {}
-	self._releaseBinds = {}
+	if not preserveBinds or not self._pressBinds then
+		self._pressBinds = {}
+	end
+	if not preserveBinds or not self._releaseBinds then
+		self._releaseBinds = {}
+	end
 	for controlName, sources in pairs(self.config.controls) do
+		local prev = oldControls and oldControls[controlName] or nil
 		self._controls[controlName] = {
 			sources = sources,
 			rawValue = 0,
@@ -163,14 +189,16 @@ function Player:_initControls()
 			pressed = false,
 			released = false,
 			debounce = false,
-			pressBinds = {},
-			releaseBinds = {},
+			pressBinds = prev and prev.pressBinds or {},
+			releaseBinds = prev and prev.releaseBinds or {},
 		}
 		for _, source in pairs(sources) do
 			local type, value = parseSource(source)
-			type = sourceFunction.checkType(type)
-			self._sourceControls[type][value] = self._sourceControls[type][value] or {}
-			table.insert(self._sourceControls[type][value], controlName)
+			if type and value then
+				type = sourceFunction.checkType(type)
+				self._sourceControls[type][value] = self._sourceControls[type][value] or {}
+				table.insert(self._sourceControls[type][value], controlName)
+			end
 		end
 	end
 end
@@ -211,23 +239,30 @@ end
 	keyboard or joystick inputs.
 ]]
 function Player:_setActiveDevice()
-	-- if the joystick is unset, then we should make sure _activeDevice
-	-- isn't "joy" anymore, otherwise there will be an error later
-	-- when we try to query a joystick that isn't there
-	if self._activeDevice == 'joy' and not self.config.joystick then
-		self._activeDevice = 'none'
+	-- if the joystick is unset or disconnected, make sure _activeDevice
+	-- isn't "joy" anymore so keyboard/UI input never locks up on unplug
+	local joyConnected = isJoystickConnected(self.config.joystick)
+	if not joyConnected then
+		if self.config.joystick and self.config.joystick.isConnected then
+			self.config.joystick = nil
+		end
+		if self._activeDevice == 'joy' then
+			self._activeDevice = 'none'
+		end
 	end
 	for _, control in pairs(self._controls) do
 		for _, source in ipairs(control.sources) do
 			local type, value = parseSource(source)
-			if sourceFunction.keyboardMouse[type] then
-				if sourceFunction.keyboardMouse[type](value) > self.config.deadzone then
-					self._activeDevice = 'kbm'
-					return
-				end
-			elseif self.config.joystick and sourceFunction.joystick[type] then
-				if sourceFunction.joystick[type](self.config.joystick, value) > self.config.deadzone then
-					self._activeDevice = 'joy'
+			if type and value then
+				if sourceFunction.keyboardMouse[type] then
+					if sourceFunction.keyboardMouse[type](value) > self.config.deadzone then
+						self._activeDevice = 'kbm'
+						return
+					end
+				elseif joyConnected and sourceFunction.joystick[type] then
+					if sourceFunction.joystick[type](self.config.joystick, value) > self.config.deadzone then
+						self._activeDevice = 'joy'
+					end
 				end
 			end
 		end
@@ -238,18 +273,25 @@ end
 	gets the value of a control by running the appropriate source functions
 	for all of its sources. does not apply deadzone.
 ]]
-function Player:_getControlRawValue(control)
+function Player:_getControlRawValue(control, ignoredType, ignoredValue)
 	local rawValue = 0
+	local joyConnected = isJoystickConnected(self.config.joystick)
 	for _, source in ipairs(control.sources) do
 		local type, value = parseSource(source)
-		if sourceFunction.keyboardMouse[type] and self._activeDevice == 'kbm' then
-			if sourceFunction.keyboardMouse[type](value) == 1 then
-				return 1
-			end
-		elseif sourceFunction.joystick[type] and self._activeDevice == 'joy' then
-			rawValue = rawValue + sourceFunction.joystick[type](self.config.joystick, value)
-			if rawValue >= 1 then
-				return 1
+		if type and value and not (type == ignoredType and value == ignoredValue) then
+			if sourceFunction.keyboardMouse[type] then
+				if sourceFunction.keyboardMouse[type](value) == 1 then
+					return 1
+				end
+			elseif joyConnected and sourceFunction.joystick[type] then
+				-- Digital gamepad buttons/hats never suffer analog drift; only gate
+				-- sub-deadzone analog axes when keyboard/mouse is active.
+				if type ~= 'axis' or self._activeDevice == 'joy' then
+					rawValue = rawValue + sourceFunction.joystick[type](self.config.joystick, value)
+					if rawValue >= 1 then
+						return 1
+					end
+				end
 			end
 		end
 	end
@@ -311,19 +353,23 @@ function Player:_updatePairs()
 end
 
 function Player:_pressControls(names, source, type, ...)
-	for _, bind in pairs(self._pressBinds) do
-		bind(source, type, ...)
-	end
-
 	local control
 	for _, name in pairs(names) do
 		control = self._controls[name]
 		control.rawValue = self:_getControlRawValue(control)
-		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
+		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 1
 		control.down = true
 		control.pressed = true
 		control.released = control.debounce and control.released or false
 		control.debounce = true
+	end
+
+	for _, bind in pairs(self._pressBinds) do
+		bind(source, type, ...)
+	end
+
+	for _, name in pairs(names) do
+		control = self._controls[name]
 		for _, bind in pairs(control.pressBinds) do
 			bind(...)
 		end
@@ -331,14 +377,10 @@ function Player:_pressControls(names, source, type, ...)
 end
 
 function Player:_releaseControls(names, source, type, ...)
-	for _, bind in pairs(self._releaseBinds) do
-		bind(source, type, ...)
-	end
-
 	local control
 	for _, name in pairs(names) do
 		control = self._controls[name]
-		control.rawValue = self:_getControlRawValue(control)
+		control.rawValue = self:_getControlRawValue(control, type, source)
 		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
 		local stillDown = control.value > 0
 		control.downPrevious = true
@@ -347,6 +389,16 @@ function Player:_releaseControls(names, source, type, ...)
 			control.pressed = control.debounce and control.pressed or false
 			control.released = true
 			control.debounce = true
+		end
+	end
+
+	for _, bind in pairs(self._releaseBinds) do
+		bind(source, type, ...)
+	end
+
+	for _, name in pairs(names) do
+		control = self._controls[name]
+		if not control.down then
 			for _, bind in pairs(control.releaseBinds) do
 				bind(...)
 			end
@@ -356,11 +408,39 @@ end
 
 -- public API --
 
--- resets the configs
+-- resets the configs while preserving active runtime press/release listeners
 function Player:reset(config)
+	local prevJoystick = self.config and self.config.joystick or nil
 	self:_loadConfig(config)
-	self:_initControls()
+	if self.config.joystick == nil and isJoystickConnected(prevJoystick) then
+		self.config.joystick = prevJoystick
+	end
+	self:_initControls(true)
 	self:_initPairs()
+	if not isJoystickConnected(self.config.joystick) and self._activeDevice == 'joy' then
+		self._activeDevice = 'none'
+	end
+end
+
+-- clears any latched down/pressed state after focus loss or device hotplug
+function Player:releaseAll()
+	for _, control in pairs(self._controls) do
+		control.rawValue = 0
+		control.value = 0
+		control.downPrevious = false
+		control.down = false
+		control.pressed = false
+		control.released = false
+		control.debounce = false
+	end
+	for _, pair in pairs(self._pairs) do
+		pair.rawX, pair.rawY = 0, 0
+		pair.x, pair.y = 0, 0
+		pair.downPrevious = false
+		pair.down = false
+		pair.pressed = false
+		pair.released = false
+	end
 end
 
 -- checks for changes in inputs
@@ -386,6 +466,26 @@ function Player:onKeyRelease(source, ...)
 	local names = self._sourceControls.keyboardMouse[source]
 	if not names then return end
 	self:_releaseControls(names, source, 'key', ...)
+end
+
+-- gamepad/joystick button press handler
+function Player:onGamepadPress(joystick, source, ...)
+	if type(source) ~= "string" or source == "" or source == "unknown" then return end
+	if joystick and isJoystickConnected(joystick) and not isJoystickConnected(self.config.joystick) then
+		self.config.joystick = joystick
+	end
+	self._activeDevice = 'joy'
+	local names = self._sourceControls.joystick[tostring(source)]
+	if not names then return end
+	self:_pressControls(names, tostring(source), 'button', ...)
+end
+
+-- gamepad/joystick button release handler
+function Player:onGamepadRelease(joystick, source, ...)
+	if type(source) ~= "string" or source == "" or source == "unknown" then return end
+	local names = self._sourceControls.joystick[tostring(source)]
+	if not names then return end
+	self:_releaseControls(names, tostring(source), 'button', ...)
 end
 
 --[[

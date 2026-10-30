@@ -19,7 +19,28 @@ function Camera.__init()
 		pcall(love.graphics.setCanvas, cv)
 	end
 
-	if not stencilSupport then Camera.draw = Camera.drawSimple end
+	if not stencilSupport then
+		Camera.draw = function(self)
+			if self.__forceComplex then
+				if not self.canvas then
+					self:resize(self.width, self.height, self.__resolutionX, self.__resolutionY, true)
+				end
+				if not self:canDraw() then
+					if self.canvas then
+						local grap = love.graphics
+						local prev = grap.getCanvas()
+						local c = self.bgColor
+						grap.setCanvas(self.canvas)
+						grap.clear(c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 0)
+						grap.setCanvas(prev)
+					end
+					return
+				end
+				return self:drawComplex(true)
+			end
+			return self:drawSimple(true)
+		end
+	end
 end
 
 function Camera:new(x, y, width, height)
@@ -150,12 +171,14 @@ function Camera:resize(width, height, resX, resY, force)
 	resY = resY or resX
 	if self.pixelPerfect then resX, resY = 1, 1 end
 
+	local wantCanvas = force or self.__forceComplex or Camera.draw ~= Camera.drawSimple
 	if self.width == width and self.height == height
-		and self.__resolutionX == resX and self.__resolutionY == resY then return end
+		and self.__resolutionX == resX and self.__resolutionY == resY
+		and (not wantCanvas or self.canvas ~= nil) then return end
 
 	self.width, self.height, self.resolutionX, self.resolutionY = width, height, resX, resY
 	self.__requestCanvas = not force and self.freezed
-	if not self.__requestCanvas and Camera.draw ~= Camera.drawSimple then
+	if not self.__requestCanvas and wantCanvas then
 		if self.canvas then self.canvas:release() end
 		self.__resolutionX, self.__resolutionY, self.canvas = resX, resY, love.graphics.newCanvas(width * resX, height * resY, {
 			format = "normal",
@@ -248,6 +271,72 @@ function Camera:getZoomXY()
 	return self.__zoom.x, self.__zoom.y
 end
 
+function Camera:worldToScreen(worldX, worldY, sfx, sfy)
+	sfx = sfx == nil and 1 or sfx
+	sfy = sfy == nil and 1 or sfy
+	local w, h = self.width, self.height
+	local w2, h2 = w / 2, h / 2
+	local zoomX, zoomY = self:getZoomXY()
+
+	local dx = (worldX - self.scroll.x * sfx) - w2
+	local dy = (worldY - self.scroll.y * sfy) - h2
+
+	local totalDeg = (self.angle or 0) + (self.rotation or 0)
+	if totalDeg ~= 0 then
+		local r = math.rad(totalDeg)
+		local c, s = math.cos(r), math.sin(r)
+		dx, dy = dx * c - dy * s, dx * s + dy * c
+	end
+
+	local scx, scy, pScale = 1, 1, 1
+	if self.pixelPerfect and w > 0 and h > 0 then
+		scx, scy = game.width / w, game.height / h
+		pScale = math.min(scx, scy)
+	end
+
+	local cx = ((self.clipCam ~= false) and (w2 + self.x) or w2) * scx
+	local cy = ((self.clipCam ~= false) and (h2 + self.y) or h2) * scy
+
+	return cx + dx * zoomX * self.scale.x * pScale,
+		cy + dy * zoomY * self.scale.y * pScale
+end
+
+function Camera:screenToWorld(gameX, gameY, sfx, sfy)
+	sfx = sfx == nil and 1 or sfx
+	sfy = sfy == nil and 1 or sfy
+	local w, h = self.width, self.height
+	local w2, h2 = w / 2, h / 2
+	local zoomX, zoomY = self:getZoomXY()
+
+	local scx, scy, pScale = 1, 1, 1
+	if self.pixelPerfect and w > 0 and h > 0 then
+		scx, scy = game.width / w, game.height / h
+		pScale = math.min(scx, scy)
+	end
+
+	local cx = ((self.clipCam ~= false) and (w2 + self.x) or w2) * scx
+	local cy = ((self.clipCam ~= false) and (h2 + self.y) or h2) * scy
+
+	local ex = zoomX * self.scale.x * pScale
+	local ey = zoomY * self.scale.y * pScale
+	if ex == 0 or ey == 0 then
+		return gameX + self.scroll.x * sfx, gameY + self.scroll.y * sfy
+	end
+
+	local dx = (gameX - cx) / ex
+	local dy = (gameY - cy) / ey
+
+	local totalDeg = (self.angle or 0) + (self.rotation or 0)
+	if totalDeg ~= 0 then
+		local r = -math.rad(totalDeg)
+		local c, s = math.cos(r), math.sin(r)
+		dx, dy = dx * c - dy * s, dx * s + dy * c
+	end
+
+	return w2 + dx + self.scroll.x * sfx,
+		h2 + dy + self.scroll.y * sfy
+end
+
 function Camera:canDraw()
 	self:getZoomXY()
 
@@ -261,16 +350,29 @@ end
 
 function Camera:draw()
 	if self.__freeze then return self:drawComplex(true) end
-	if not self:canDraw() then return end
+	if not self:canDraw() then
+		if self.__forceComplex and self.canvas then
+			local grap = love.graphics
+			local prev = grap.getCanvas()
+			local c = self.bgColor
+			grap.setCanvas(self.canvas)
+			grap.clear(c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 0)
+			grap.setCanvas(prev)
+		end
+		return
+	end
 
 	local winWidth, winHeight = love.graphics.getDimensions()
 	local scale = math.min(winWidth / game.width, winHeight / game.height)
-	if self.pixelPerfect or not self.simple or self.shader or (self.antialiasing and
+	if self.__forceComplex or self.pixelPerfect or not self.simple or self.shader or (self.antialiasing and
 			(self.x ~= math.floor(self.x) or self.y ~= math.floor(self.y) or
 				self.scale.x ~= 1 or self.scale.y ~= 1 or
 				self.__resolutionX ~= scale or self.__resolutionY ~= scale) or
 			scale > 1) or
 		self.alpha < 1 or self.rotation ~= 0 then
+		if not self.canvas then
+			self:resize(self.width, self.height, self.__resolutionX, self.__resolutionY, true)
+		end
 		self:drawComplex(true)
 	else
 		self:drawSimple(true)
@@ -404,7 +506,11 @@ function Camera:drawComplex(_skipCheck)
 		canvas:setFilter(mode, mode, anisotropy)
 
 		local color = self.bgColor
-		grap.setCanvas(canvasTable)
+		if stencilSupport then
+			grap.setCanvas(canvasTable)
+		else
+			grap.setCanvas(canvas)
+		end
 		grap.clear(color[1], color[2], color[3], color[4])
 		grap.push(); grap.origin(); game.__literalBoundScissor(w, h, 1, 1)
 
@@ -485,6 +591,69 @@ function Camera:drawComplex(_skipCheck)
 	grap.setColor(r, g, b, a)
 	grap.setBlendMode(blendMode, alphaMode)
 	if self.shader then grap.setShader(shader) end
+end
+
+function Camera:drawCanvasToTarget(targetW, targetH)
+	if not self.exists or not self.visible or self.alpha <= 0 then return false end
+	local canvas = self.canvas
+	if not canvas then return false end
+	self:getZoomXY()
+	if (self.scale.x * self.__zoom.x) == 0 or (self.scale.y * self.__zoom.y) == 0 then
+		return false
+	end
+
+	local grap = love.graphics
+	local pr, pg, pb, pa = grap.getColor()
+	local prevShader = grap.getShader()
+	local prevBlend, prevAlphaMode = grap.getBlendMode()
+
+	local w, h = self.width, self.height
+	local w2, h2 = w / 2, h / 2
+	local resX, resY = self.__resolutionX or 1, self.__resolutionY or 1
+	local sx, sy = self.scale.x / resX, self.scale.y / resY
+
+	local cmin, cmag, aniso = canvas:getFilter()
+	local filter = self.antialiasing and "linear" or "nearest"
+	if cmin ~= filter or cmag ~= filter then
+		canvas:setFilter(filter, filter, aniso)
+	end
+
+	local alpha = self.alpha
+	local color = self.color
+	grap.setShader(self.shader)
+	grap.setBlendMode("alpha", "premultiplied")
+	grap.setColor(color[1] * alpha, color[2] * alpha, color[3] * alpha, alpha)
+
+	local scx, scy = 1, 1
+	if self.pixelPerfect then
+		scx, scy = game.width / w, game.height / h
+		local pscale = math.min(scx, scy)
+		sx, sy = sx * pscale, sy * pscale
+	end
+
+	local mapX = targetW / game.width
+	local mapY = targetH / game.height
+	local drawX = (self.clipCam and (w2 + self.x) or w2) * scx * mapX
+	local drawY = (self.clipCam and (h2 + self.y) or h2) * scy * mapY
+
+	grap.draw(
+		canvas,
+		drawX,
+		drawY,
+		math.rad(self.rotation or 0),
+		sx * mapX,
+		sy * mapY,
+		w2 * resX,
+		h2 * resY
+	)
+
+	if cmin ~= filter or cmag ~= filter then
+		canvas:setFilter(cmin, cmag, aniso)
+	end
+	grap.setShader(prevShader)
+	grap.setColor(pr, pg, pb, pa)
+	grap.setBlendMode(prevBlend, prevAlphaMode)
+	return true
 end
 
 if Project.flags.loxelForceRenderCameraComplex then

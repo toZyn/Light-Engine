@@ -40,6 +40,7 @@ require "funkin.backend.scripts.events"
 Mods = require "funkin.backend.modding.mods"
 Addons = require "funkin.backend.modding.addons"
 ModAPI = require "funkin.backend.modding.api"
+Script.addToEnv("Mod", ModAPI)
 
 Discord = require "funkin.backend.discord"
 
@@ -144,6 +145,7 @@ function funkin.load()
 	else
 		controls:reset(config)
 	end
+	funkin.refreshJoystick()
 
 	if Project.bgColor then
 		love.graphics.setBackgroundColor(Project.bgColor)
@@ -172,6 +174,12 @@ function funkin.load()
 	game:add(SoundTray)
 
 	game.init(Project, TitleState)
+	if Timer and Timer.globalManager then
+		local RecoverableErrors = require "funkin.backend.recoverable-errors"
+		Timer.globalManager.onError = function(message, trace)
+			RecoverableErrors.report(message, trace, {source = "timer"})
+		end
+	end
 	_lastSurfaceW, _lastSurfaceH = love.graphics.getDimensions()
 
 	if ClientPrefs.data.resolution == -1 then
@@ -228,6 +236,97 @@ end
 
 function funkin.fullscreen(f)
 	ClientPrefs.data.fullscreen = f
+end
+
+local function isJoystickConnected(j)
+	if not j then return false end
+	if j.isConnected then
+		local ok, connected = pcall(j.isConnected, j)
+		return ok and connected == true
+	end
+	return true
+end
+
+local function isGamepadDevice(j)
+	if not isJoystickConnected(j) then return false end
+	if j.isGamepad then
+		local ok, gp = pcall(j.isGamepad, j)
+		if ok and gp then return true end
+	end
+	return false
+end
+
+function funkin.refreshJoystick(preferred)
+	if not controls or not controls.config then return end
+	local current = controls.config.joystick
+	if isGamepadDevice(preferred) then
+		controls.config.joystick = preferred
+		return
+	end
+	if isJoystickConnected(current) and (isGamepadDevice(current) or not love.joystick) then
+		return
+	end
+	controls.config.joystick = nil
+	if not love.joystick or not love.joystick.getJoysticks then return end
+	local ok, sticks = pcall(love.joystick.getJoysticks)
+	if not ok or type(sticks) ~= "table" then return end
+	local fallback = nil
+	for _, j in ipairs(sticks) do
+		if isGamepadDevice(j) then
+			controls.config.joystick = j
+			return
+		elseif not fallback and isJoystickConnected(j) then
+			-- Only use non-gamepad joysticks if they actually expose axes/buttons
+			-- (avoids binding Android keyboard SOURCE_DPAD stubs over keyboard input)
+			local okAxes, axes = pcall(function() return j.getAxisCount and j:getAxisCount() or 0 end)
+			if okAxes and (axes or 0) >= 2 then
+				fallback = j
+			end
+		end
+	end
+	if fallback then
+		controls.config.joystick = fallback
+	elseif isJoystickConnected(preferred) and isGamepadDevice(preferred) then
+		controls.config.joystick = preferred
+	end
+end
+
+function funkin.releaseStuckInputs(forceAllKeys)
+	if game and game.keys and game.keys.loveInput and game.keys.loveInput.pressed then
+		local toRelease = {}
+		for key in pairs(game.keys.loveInput.pressed) do
+			local stillDown = false
+			if not forceAllKeys and love.keyboard and love.keyboard.isDown then
+				local ok, down = pcall(love.keyboard.isDown, key)
+				stillDown = ok and down == true
+			end
+			if not stillDown then
+				toRelease[#toRelease + 1] = key
+			end
+		end
+		for _, key in ipairs(toRelease) do
+			if controls and controls.onKeyRelease then
+				controls:onKeyRelease(key, key)
+			end
+			if game.keyreleased then
+				game.keyreleased(key, key)
+			end
+		end
+		if forceAllKeys and game.keys.releaseAll then
+			game.keys.releaseAll()
+		end
+	end
+	if forceAllKeys and controls and controls.releaseAll then
+		controls:releaseAll()
+	end
+end
+
+function funkin.onDeviceRemoved(joystick)
+	if controls and controls.config and controls.config.joystick == joystick then
+		controls.config.joystick = nil
+	end
+	funkin.refreshJoystick()
+	funkin.releaseStuckInputs(false)
 end
 
 function funkin.quit()
