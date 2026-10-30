@@ -65,6 +65,22 @@ function CutsceneState:enter()
 	self.infoTxt.cameras = {self.camHUD}
 	self:add(self.infoTxt)
 
+	local btnZoomOut = UIButton(12, 196, 140, 28, "Zoom -", function()
+		self.curZoom = math.clamp(self.curZoom - 0.1, 0.2, 3.0)
+		if self.stZoom then self.stZoom.value = self.curZoom; self.stZoom.text = tostring(self.curZoom) end
+	end)
+	btnZoomOut.font = self.smallFont
+	btnZoomOut.cameras = {self.camHUD}
+	self:add(btnZoomOut)
+
+	local btnZoomIn = UIButton(162, 196, 140, 28, "Zoom +", function()
+		self.curZoom = math.clamp(self.curZoom + 0.1, 0.2, 3.0)
+		if self.stZoom then self.stZoom.value = self.curZoom; self.stZoom.text = tostring(self.curZoom) end
+	end)
+	btnZoomIn.font = self.smallFont
+	btnZoomIn.cameras = {self.camHUD}
+	self:add(btnZoomIn)
+
 	self.tabs = UITabMenu(self.panelX, 40, {"Stage", "Cutscene"}, self.panelW, game.height - 52)
 	self.tabs.cameras = {self.camHUD}
 	self:add(self.tabs)
@@ -134,15 +150,20 @@ end
 
 function CutsceneState:applyPositionsToActors()
 	if not self.stage then return end
-	if self.boyfriend then
-		self.boyfriend:setPosition(self.stage.boyfriendPos.x, self.stage.boyfriendPos.y)
+	local function placeActor(ch, pos)
+		if not ch or not pos then return end
+		local bx = (ch._baseOffset and ch._baseOffset.x) or (ch.positionTable and ch.positionTable.x) or 0
+		local by = (ch._baseOffset and ch._baseOffset.y) or (ch.positionTable and ch.positionTable.y) or 0
+		local ox, oy = pos.x, pos.y
+		if ch.__type == "VSlice" and not ch._animAtlas then
+			ox = ox - ch.width / 2
+			oy = oy - ch.height
+		end
+		ch:setPosition(bx + ox, by + oy)
 	end
-	if self.dad then
-		self.dad:setPosition(self.stage.dadPos.x, self.stage.dadPos.y)
-	end
-	if self.gf then
-		self.gf:setPosition(self.stage.gfPos.x, self.stage.gfPos.y)
-	end
+	placeActor(self.boyfriend, self.stage.boyfriendPos)
+	placeActor(self.dad, self.stage.dadPos)
+	placeActor(self.gf, self.stage.gfPos)
 end
 
 function CutsceneState:buildStageTab()
@@ -438,7 +459,7 @@ function CutsceneState:update(dt)
 			self:focusCharacter("dad")
 		elseif game.keys.justPressed.THREE then
 			self:focusCharacter("gf")
-		elseif game.keys.justPressed.ESCAPE then
+		elseif game.keys.justPressed.ESCAPE or controls:pressed("back") then
 			self:exitEditor()
 			return
 		end
@@ -448,7 +469,7 @@ function CutsceneState:update(dt)
 		if game.keys.pressed.W then self.camFollow.y = self.camFollow.y - speed end
 		if game.keys.pressed.S and not ctrl then self.camFollow.y = self.camFollow.y + speed end
 
-		if mouseInStage and Mouse.pressedLeft then
+		if mouseInStage and Mouse.pressedLeft and not (Mouse.x < 312 and Mouse.y < 232) then
 			self.camFollow.x = self.camFollow.x - (Mouse.deltaScreenX / math.max(0.1, self.curZoom))
 			self.camFollow.y = self.camFollow.y - (Mouse.deltaScreenY / math.max(0.1, self.curZoom))
 		end

@@ -156,8 +156,8 @@ function Dropdown:update(dt)
 	local visCount = math.min(#self.options, self.__maxShow)
 
 	if self.isOpen and visCount > 0 then
+		local maxScroll = math.max(0, #self.options - visCount)
 		if game.mouse.wheel ~= 0 and self:containsPoint(mx, my) then
-			local maxScroll = math.max(0, #self.options - visCount)
 			self.curScroll = math.clamp(self.curScroll - game.mouse.wheel, 0, maxScroll)
 		end
 
@@ -168,22 +168,57 @@ function Dropdown:update(dt)
 				self.hoveredRow = row
 			end
 		end
+
+		if self._listPressActive and game.mouse.pressedLeft then
+			local dy = my - (self._dragStartY or my)
+			if math.abs(dy) >= 6 then
+				self._listDragged = true
+				if maxScroll > 0 and self.height > 0 then
+					local deltaRows = math.floor((-dy / self.height) + 0.5)
+					self.curScroll = math.clamp((self._dragStartScroll or 0) + deltaRows, 0, maxScroll)
+				end
+			end
+		end
 	end
 
 	if game.mouse.justPressedLeft then
 		if self.hovered then
 			self.isOpen = not self.isOpen
+			self._listPressActive = false
+			self._listDragged = false
 		elseif self.isOpen and self.hoveredRow then
+			if #self.options > visCount then
+				self._listPressActive = true
+				self._listDragged = false
+				self._dragStartY = my
+				self._dragStartScroll = self.curScroll
+			else
+				local optIdx = self.hoveredRow + self.curScroll
+				if self.options[optIdx] ~= nil then
+					self:selectOption(optIdx, true)
+				end
+				self.isOpen = false
+			end
+		else
+			self.isOpen = false
+			self._listPressActive = false
+			self._listDragged = false
+		end
+	elseif game.mouse.justReleasedLeft and self._listPressActive then
+		local wasDragged = self._listDragged
+		self._listPressActive = false
+		self._listDragged = false
+		if not wasDragged and self.isOpen and self.hoveredRow then
 			local optIdx = self.hoveredRow + self.curScroll
 			if self.options[optIdx] ~= nil then
 				self:selectOption(optIdx, true)
 			end
 			self.isOpen = false
-		else
-			self.isOpen = false
 		end
 	elseif self.isOpen and game.keys.justPressed.ESCAPE then
 		self.isOpen = false
+		self._listPressActive = false
+		self._listDragged = false
 	end
 end
 

@@ -64,7 +64,7 @@ local data = {
 	{"recordingIndicator", "Show REC indicator", "boolean"},
 
 	{"SESSION"},
-	{"recordingToggleNow", "Start / Stop recording now (F9)", function(optionsUI)
+	{"recordingToggleNow", "Start / Stop MP4 recording now (F9)", function(optionsUI)
 		if optionsUI then optionsUI.changingOption = false end
 		if Recorder then
 			Recorder.toggle()

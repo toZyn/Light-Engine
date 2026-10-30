@@ -28,7 +28,7 @@ function event(e)
 	if not target or not anim or anim == "" then return end
 
 	if target.playAnim then
-		target:playAnim(tostring(anim), force, true)
+		target:playAnim(tostring(anim), force, nil, true)
 		if PlayState.conductor then
 			target.lastHit = PlayState.conductor.time
 		end

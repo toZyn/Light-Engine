@@ -79,12 +79,14 @@ function love.fullscreen(f, t)
 	game.fullscreen(f)
 end
 
-function love.quit()
+function love.quit(isError)
 	if paths and paths.async then paths.async.stop() end
 	if FFT and FFT.stop then pcall(FFT.stop) end
 	funkin.quit()
 	game.quit()
-	Diagnostics.finish()
+	if not isError then
+		Diagnostics.finish()
+	end
 end
 
 function love.threaderror(thread, message)

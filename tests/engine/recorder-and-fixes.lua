@@ -82,7 +82,7 @@ check("Gameplay-only capture includes stage and arrows (camNotes) while excludin
 	for _, c in ipairs(allCams) do c:destroy() end
 end)
 
-check("Recorder writes a valid 2-stream (MJPG + 44.1kHz Stereo PCM) RIFF AVI off-thread without HUD leakage", function()
+check("Recorder writes a valid 2-stream (mp4v + 44.1kHz Stereo ALAC) ISO-BMFF .mp4 off-thread and always saves on song end", function()
 	local prevEnabled = ClientPrefs.data.screenRecording
 	local prevMode = ClientPrefs.data.recordingMode
 	local prevScale = ClientPrefs.data.recordingScale
@@ -99,6 +99,7 @@ check("Recorder writes a valid 2-stream (MJPG + 44.1kHz Stereo PCM) RIFF AVI off
 
 	local ok, outPath = Recorder.start("unit_test")
 	assert(ok and type(outPath) == "string", "Recorder failed to start: " .. tostring(outPath))
+	assert(outPath:sub(-4) == ".mp4", "Recorder output must be .mp4, got: " .. tostring(outPath))
 
 	for i = 1, 4 do
 		if i > 1 and love.timer and love.timer.sleep then
@@ -113,17 +114,18 @@ check("Recorder writes a valid 2-stream (MJPG + 44.1kHz Stereo PCM) RIFF AVI off
 	Recorder.stop(true)
 	Recorder.shutdown()
 
-	local f = assert(io.open(outPath, "rb"), "Expected AVI file on disk: " .. tostring(outPath))
+	local f = assert(io.open(outPath, "rb"), "Expected MP4 file on disk: " .. tostring(outPath))
 	local fullBytes = f:read("*a")
 	f:close()
 	os.remove(outPath)
 
-	assert(#fullBytes > 4096, "Expected non-empty encoded video+audio AVI, got " .. tostring(#fullBytes))
-	assert(fullBytes:sub(1, 4) == "RIFF" and fullBytes:sub(9, 12) == "AVI ", "Invalid AVI header")
-	assert(fullBytes:find("00dc", 1, true) ~= nil, "Missing 00dc video chunk in AVI")
-	assert(fullBytes:find("01wb", 1, true) ~= nil, "Missing 01wb PCM audio chunk in AVI")
-	assert(fullBytes:find("auds", 1, true) ~= nil, "Missing auds stream header in AVI")
-	assert(fullBytes:find("idx1", 1, true) ~= nil, "Missing idx1 index chunk in AVI")
+	assert(#fullBytes > 2048, "Expected non-empty encoded video+audio MP4, got " .. tostring(#fullBytes))
+	assert(fullBytes:sub(5, 12) == "ftypisom", "Invalid ISO-BMFF ftyp header in MP4")
+	assert(fullBytes:find("mdat", 1, true) ~= nil, "Missing mdat media data box in MP4")
+	assert(fullBytes:find("moov", 1, true) ~= nil, "Missing moov metadata box in MP4")
+	assert(fullBytes:find("mp4v", 1, true) ~= nil, "Missing mp4v video sample entry in MP4")
+	assert(fullBytes:find("alac", 1, true) ~= nil, "Missing alac lossless stereo audio sample entry in MP4")
+	assert(fullBytes:find("soun", 1, true) ~= nil, "Missing soun audio handler box in MP4")
 
 	ClientPrefs.data.screenRecording = prevEnabled
 	ClientPrefs.data.recordingMode = prevMode
@@ -131,6 +133,54 @@ check("Recorder writes a valid 2-stream (MJPG + 44.1kHz Stereo PCM) RIFF AVI off
 	ClientPrefs.data.recordingFps = prevFps
 	ClientPrefs.data.recordingAudio = prevAudio
 	ClientPrefs.data.recordingQuality = prevQual
+end)
+
+check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stage/character positions", function()
+	-- 1. Animation:play boolean frame safety + 3-arg/4-arg Character:playAnim resilience
+	local bf = Character(0, 0, "bf", true)
+	bf:playAnim("idle", true, true)
+	assert(bf.anim.curAnim ~= nil, "Character:playAnim must tolerate boolean 3rd arg without crashing")
+	bf.anim:play("idle", true, false, true)
+	assert(bf.anim.curAnim.frame >= 1, "Animation:play must clamp non-numeric Frame safely")
+	bf:destroy()
+
+	-- Missing -dead fallback must resolve to bf-dead cleanly
+	local missingDead = Character(0, 0, "nonexistent-custom-dead", true)
+	assert(missingDead ~= nil and missingDead.anim:has("firstDeath"),
+		"Missing -dead character must fall back to bf-dead with firstDeath animation")
+	missingDead:destroy()
+
+	-- 2. External keyboard unknown/acback/isrepeat + vararg love.keyboard.isDown
+	game.keys.onPressed("unknown", "unknown", false)
+	game.keys.onPressed("acback", "acback", false)
+	assert(game.keys.justPressed.ESCAPE == true, "Android acback must normalize to ESCAPE")
+	game.keys.reset()
+	game.keys.onPressed("a", "a", true)
+	assert(not game.keys.justPressed.A, "Key repeat must not fire justPressed")
+	game.keys.reset()
+	assert(type(love.keyboard.isDown("lctrl", "rctrl")) == "boolean", "Vararg love.keyboard.isDown must work")
+
+	-- 3. V-Slice Erect chart + Pico character mapping + stage Point preservation
+	local erectChart = Parser.getChart("bopeebo", "erect")
+	assert(erectChart and erectChart.stage == "stage", "V-Slice erect chart must resolve stage metadata")
+	local blazinChart = Parser.getChart("blazin", "normal")
+	assert(blazinChart and blazinChart.player1 == "pico-blazin" and blazinChart.stage == "phillyBlazin",
+		"Weekend 1 blazin chart must preserve pico-blazin and phillyBlazin")
+	local darnellChart = Parser.getChart("darnell", "normal")
+	assert(darnellChart and darnellChart.player1 == "pico-playable" and darnellChart.stage == "phillyStreets",
+		"Weekend 1 darnell chart must map 'pico' -> 'pico-playable' and phillyStage -> phillyStreets")
+
+	for _, stName in ipairs({"stage", "spooky", "philly", "limo", "mall-evil", "school", "tank"}) do
+		PlayState.SONG = Parser.getDummyChart("bopeebo", true)
+		PlayState.SONG.stage = stName
+		local st = Stage(stName)
+		st:load()
+		assert(type(st.boyfriendPos) == "table" and type(st.boyfriendPos.set) == "function"
+			and type(st.dadCam) == "table" and type(st.dadCam.set) == "function",
+			"Stage " .. stName .. " must preserve Point methods on Pos/Cam fields")
+		st:destroy()
+	end
+	paths.async.stop()
 end)
 
 check("FFT handles released LÖVE Sources and Loxel Sound wrappers without crashing", function()

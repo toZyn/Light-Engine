@@ -36,8 +36,8 @@ function CameraManager.setDefaultDrawTarget(camera, value)
 	if index then
 		index = table.find(defaults, camera)
 		if value and not index then
-			table.remove(defaults, camera)
-		elseif not value then
+			table.insert(defaults, camera)
+		elseif not value and index then
 			table.remove(defaults, index)
 		end
 	end
@@ -48,7 +48,11 @@ function CameraManager:update(dt)
 end
 
 function CameraManager:__render()
-	for _, cam in ipairs(self.list) do cam:draw() end
+	local onBeforeCam = Recorder and Recorder.onBeforeCameraDraw
+	for _, cam in ipairs(self.list) do
+		if onBeforeCam then onBeforeCam(cam) end
+		cam:draw()
+	end
 end
 
 Camera.__defaultCameras = defaults

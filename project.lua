@@ -6,8 +6,8 @@ return {
 	title = "Light Engine",
 	file = "Light Engine",
 	icon = "art/logo.png",
-	version = "0.2.2",
-	androidVersionCode = 202,
+	version = "0.2.3",
+	androidVersionCode = 203,
 	package = "com.zyn.lightengine",
 	width = 1280,
 	height = 720,
@@ -21,7 +21,7 @@ return {
 	flags = {
 		checkForUpdates = false,
 
-		loxelInitialAutoPause = true,
+		loxelInitialAutoPause = not (os == "Android" or os == "iOS"),
 		loxelInitialParallelUpdate = true,
 		loxelInitialAsyncInput = false,
 

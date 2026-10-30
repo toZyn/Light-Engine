@@ -96,7 +96,6 @@ Recorder = require "funkin.backend.recorder"
 
 local TransitionFade = loxreq "transition.transitionfade"
 local _lastSurfaceW, _lastSurfaceH = 0, 0
-local _mobileOrientationRetry = 0
 
 function funkin.load()
 	local res, isMobile = math.abs(ClientPrefs.data.resolution),
@@ -124,12 +123,13 @@ function funkin.load()
 	if game.save.data.prefs then
 		love.FPScap = ClientPrefs.data.fps
 		love.vsync = ClientPrefs.data.vsync
-		love.autoPause = ClientPrefs.data.autoPause
+		love.autoPause = not isMobile and ClientPrefs.data.autoPause
 	else
 		love.FPScap = math.max(select(3, love.window.getMode()).refreshrate, love.FPScap)
 		ClientPrefs.data.fps = love.FPScap
 		ClientPrefs.data.vsync = love.vsync
 		ClientPrefs.data.resolution = 1
+		love.autoPause = not isMobile and ClientPrefs.data.autoPause
 	end
 
 	Object.defaultAntialiasing = ClientPrefs.data.antialiasing
@@ -173,9 +173,6 @@ function funkin.load()
 
 	game.init(Project, TitleState)
 	_lastSurfaceW, _lastSurfaceH = love.graphics.getDimensions()
-	if isMobile and _lastSurfaceW > 0 and _lastSurfaceW < _lastSurfaceH then
-		_mobileOrientationRetry = 0.25
-	end
 
 	if ClientPrefs.data.resolution == -1 then
 		Camera.defaultResolution = love.graphics.getFixedScale()
@@ -210,19 +207,6 @@ function funkin.update(dt)
 		if sw ~= _lastSurfaceW or sh ~= _lastSurfaceH then
 			_lastSurfaceW, _lastSurfaceH = sw, sh
 			game.resize(sw, sh)
-		end
-		if love.system.getDevice() == "Mobile" and sw < sh then
-			_mobileOrientationRetry = _mobileOrientationRetry - (dt or 0)
-			if _mobileOrientationRetry <= 0 then
-				_mobileOrientationRetry = 1.0
-				local res = math.abs(ClientPrefs.data.resolution or 1)
-				pcall(love.window.updateMode, Project.width * res, Project.height * res, {
-					fullscreen = true,
-					fullscreentype = "desktop",
-					resizable = false,
-					usedpiscale = false
-				})
-			end
 		end
 	end
 

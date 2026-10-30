@@ -5,6 +5,74 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-10-30
+
+### Fixed
+- **Fluid `.mp4` Screen Recorder with stereo audio & guaranteed match/manual saving**
+  (`android/jni/lightrecorder.c`, `funkin/backend/mp4_muxer.lua`,
+  `funkin/backend/recorder.lua`, `funkin/backend/recorder_thread.lua`,
+  `funkin/backend/storage.lua`, `.github/workflows/release.yml`):
+  - Switched all screen recordings to ISO-BMFF **`.mp4`** video with synchronized
+    44.1 kHz Stereo audio (`liblightrecorder.so` on Android using OpenGL ES 3.0
+    triple-buffered `GL_PIXEL_PACK_BUFFER` zero-stall async DMA readback +
+    hardware `AMediaCodec` H.264/AAC + `AMediaMuxer`; pure-LuaJIT ISO-BMFF
+    `mp4v` + lossless stereo `alac` muxer on Desktop and universal fallback).
+  - Fixed recordings failing to save or appearing missing: `Storage.getRecordingsDir()`
+    now writes to gallery-visible `Movies/LightEngine` on Android (and
+    `Videos/LightEngine` / `recordings` on Desktop), `Recorder.onSongEnd()` and
+    `Recorder.toggle()` flush synchronously (`Recorder.stop(true)`) even when
+    armed manually before entering a song, and `waitForSessionFlush` waits for
+    terminal session completion instead of returning early on `"started"`.
+- **Editors crashes & full mobile/keyboard usability**
+  (`loxel/sound.lua`, `loxel/init.lua`, `loxel/ui/{inputtextbox,numericstepper,dropdown}.lua`,
+  `funkin/ui/editor/editormenu.lua`, `funkin/states/editors/{charting,character,cutscene}.lua`,
+  `funkin/states/play.lua`):
+  - Fixed `charting.lua:1209: attempt to call method 'seek' (a nil value)` by
+    adding LÖVE `Source`-compatible `:seek`, `:tell`, `:getDuration`,
+    `:setVolume`, `:setPitch`, and `:setLooping` methods to Loxel `Sound`.
+  - Fixed `play.lua:471: bad argument #1 to 'ipairs' (table expected, got nil)`
+    when switching directly from editors into `PlayState` by auto-running
+    `PlayState:preload()` in `enter()` and supporting numeric `startPos` in
+    `PlayState:new(false, startMs)`.
+  - Synced `game.mouse.onMoved(x, y)` inside `mousepressed`/`mousereleased` so
+    first-tap mobile touches hit buttons/tabs accurately, wired Android soft
+    keyboard + `TextInput` into `UIInputTextBox` and `UINumericStepper`, added
+    touch drag-scrolling to `UIDropDown`, fixed `CutsceneState:applyPositionsToActors`
+    `_baseOffset` math, and added touch transport/zoom/exit buttons across
+    `EditorMenu`, `ChartingState`, `CharacterEditor`, and `CutsceneState`.
+- **Animation & character script crashes**
+  (`loxel/animation/instance.lua`, `funkin/gameplay/character.lua`,
+  `assets/data/events/{playanimation,hey}.lua`, `funkin/backend/scripts/compat.lua`,
+  `assets/data/characters/{nene,darnell-blazin,pico-blazin}.lua`):
+  - Fixed `loxel/animation/instance.lua:20` boolean comparison crash, coerced
+    legacy 3-arg `:playAnim` calls safely, guarded nil `curAnim` in character
+    scripts, and added safe `bf-dead`/`bf` fallbacks for missing `-dead`
+    character sprites.
+- **External USB/Bluetooth keyboard, startup black screen & error-screen fixes**
+  (`android/AndroidManifest.xml`, `android/StoragePermissionActivity.java`,
+  `loxel/init.lua`, `loxel/input/keyboard.lua`, `loxel/virtualpad.lua`,
+  `lib/baton.lua`, `funkin/init.lua`, `funkin/backend/{clientprefs,error-screen,diagnostics}.lua`):
+  - Removed `USB_DEVICE_ATTACHED` activity hijacking and expanded `configChanges`
+    so connecting a physical/Bluetooth keyboard never recreates `GameActivity`;
+    hardened `Keyboard`, `VirtualPad`, `baton`, and `PlayState` for unknown
+    keys, `acback`/`kpenter`, key-repeat suppression, vararg `isDown`, and
+    simultaneous touch + keyboard input.
+  - Eliminated mobile portrait/black-screen startup deadlocks by disabling
+    mobile `autoPause` spin-waiting, waiting for landscape display metrics in
+    `StoragePermissionActivity`, and removing mid-frame `love.window.updateMode`
+    GL context destruction on Android.
+  - Flushed queued gameplay touches (`love.event.clear`) on error screen entry
+    and guarded audio/focus redraws so errors stay visible instead of
+    backgrounding or prompting quit immediately.
+- **Stage & character positioning across all weeks**
+  (`funkin/gameplay/{stage,character}.lua`, `funkin/backend/parser/**`,
+  `assets/data/stages/*.lua`):
+  - Fixed `AnimateAtlas` world-space `getMidpoint` and `VSlice` anchoring,
+    preserved `Point` instances across all stage scripts (`stage`, `spooky`,
+    `philly`, `limo`, `mall-evil`, `tank`, `test`), fixed Week 6 widescreen
+    pixel camera sizing & `gf-pixel` scaling, and resolved V-Slice `erect` /
+    `nightmare` metadata, `STAGE_MAP`, and `"pico" -> "pico-playable"`.
+
 ## [0.2.2] - 2026-10-30
 
 ### Fixed

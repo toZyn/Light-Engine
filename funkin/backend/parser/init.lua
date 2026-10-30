@@ -35,8 +35,12 @@ function Parser.getChart(name, diff)
 
 	if data then
 		local parser = chart.getParser(data)
-		local meta = paths.getJSON(path .. "meta")
-		local events = paths.getJSON(path .. "events")
+		local meta = paths.getJSON(path .. "meta-" .. diff)
+			or (diff == "nightmare" and paths.getJSON(path .. "meta-erect"))
+			or paths.getJSON(path .. name .. "-metadata-" .. diff)
+			or paths.getJSON(path .. "meta")
+		local events = paths.getJSON(path .. "events-" .. diff)
+			or paths.getJSON(path .. "events")
 
 		data = parser.parse(data, events, meta, diff)
 		data.metadata = Parser.getMeta(name)
@@ -185,6 +189,9 @@ function Parser.getCharacter(name)
 	end
 
 	local data = character.get(name)
+	if not data and tostring(name):endsWith("-dead") then
+		data = character.get("bf-dead")
+	end
 	if not data then data = character.get("bf") end
 	local parser = character.getParser(data)
 

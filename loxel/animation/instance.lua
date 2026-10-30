@@ -17,7 +17,16 @@ function Animation:new(parent, name, frames, framerate, looped)
 end
 
 function Animation:play(frame, reversed)
-	self.frame = frame and (frame < 1 and math.random(1, #self.frames)) or 1
+	local count = #self.frames
+	if type(frame) == "number" then
+		if frame < 1 then
+			self.frame = count > 0 and math.random(1, count) or 1
+		else
+			self.frame = count > 0 and math.min(frame, count) or 1
+		end
+	else
+		self.frame = 1
+	end
 	self.finished = false
 	self.paused = false
 	self.reversed = reversed or false

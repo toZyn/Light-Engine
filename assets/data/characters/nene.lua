@@ -40,7 +40,7 @@ end
 
 function postMeasure(m)
 	if m % 2 == 0 then
-		if self.anim.curAnim.name == "raiseKnife-loop" then
+		if self.anim and self.anim.curAnim and self.anim.curAnim.name == "raiseKnife-loop" then
 			self.anim:play("raiseKnife-loop", true)
 			self.danced = false
 		end

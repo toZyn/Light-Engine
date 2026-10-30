@@ -1,3 +1,21 @@
+local okFFI, ffi = pcall(require, "ffi")
+
+local nativeLib = nil
+if okFFI and ffi then
+	pcall(ffi.cdef, [[
+		int lightrecorder_is_available(void);
+		int lightrecorder_start(const char *path, int width, int height, int fps, int bitrate, int record_audio);
+		int lightrecorder_capture_gl_frame(int64_t pts_us);
+		void lightrecorder_flush_gl(void);
+		int lightrecorder_push_audio_pcm(const int16_t *pcm, int num_stereo_frames);
+		int lightrecorder_stop(void);
+	]])
+	local okLoad, lib = pcall(ffi.load, "lightrecorder")
+	if okLoad and lib and lib.lightrecorder_is_available() == 1 then
+		nativeLib = lib
+	end
+end
+
 local Recorder = {
 	active = false,
 	autoStarted = false,
@@ -9,6 +27,7 @@ local Recorder = {
 	lastSavedPath = nil,
 	lastError = nil,
 
+	_nativeMode = false,
 	_muxThread = nil,
 	_encoderThreads = {},
 	_workerCount = 2,
@@ -42,6 +61,28 @@ local QUALITY_MAP = {
 	ultra = 95
 }
 
+local BITRATE_720P_MAP = {
+	standard = 4500000,
+	high = 8500000,
+	ultra = 14000000
+}
+
+local function notifyToast(kind, msg)
+	if not Toast then return end
+	if kind == "error" and Toast.error then
+		pcall(Toast.error, msg)
+	elseif kind == "warn" and Toast.warn then
+		pcall(Toast.warn, msg)
+	elseif Toast.info then
+		pcall(Toast.info, msg)
+	end
+end
+
+local function basenameOf(path)
+	if type(path) ~= "string" then return "" end
+	return path:match("([^/\\]+)$") or path
+end
+
 local function sanitizeSegment(name)
 	name = tostring(name or "session"):gsub("[%c%s/\\:%*%?\"<>|]+", "-")
 	name = name:gsub("%-+", "-"):gsub("^%-+", ""):gsub("%-+$", "")
@@ -56,7 +97,14 @@ end
 
 local function ensureOutputDirectory()
 	local baseDir
-	if Storage and type(Storage.getExternalDir) == "function" then
+	if Storage and type(Storage.getRecordingsDir) == "function" then
+		local ok, dir = pcall(Storage.getRecordingsDir)
+		if ok and type(dir) == "string" and dir ~= "" then
+			baseDir = dir
+		end
+	end
+
+	if not baseDir and Storage and type(Storage.getExternalDir) == "function" then
 		local ext = Storage.getExternalDir()
 		if type(ext) == "string" and ext ~= "" then
 			baseDir = ext .. "/recordings"
@@ -79,6 +127,27 @@ local function ensureOutputDirectory()
 	return baseDir
 end
 
+local function buildUniqueMp4Path(dir, prefix)
+	local stamp = os.date("%Y%m%d_%H%M%S")
+	local candidate = string.format("%s/%s_%s.mp4", dir, stamp, prefix)
+	local f = io.open(candidate, "rb")
+	if not f then
+		return candidate
+	end
+	f:close()
+	local suffix = 2
+	while suffix < 1000 do
+		local alt = string.format("%s/%s_%s_%d.mp4", dir, stamp, prefix, suffix)
+		local af = io.open(alt, "rb")
+		if not af then
+			return alt
+		end
+		af:close()
+		suffix = suffix + 1
+	end
+	return candidate
+end
+
 local function computeWorkerCount()
 	local cores = 4
 	if love.system and type(love.system.getProcessorCount) == "function" then
@@ -90,7 +159,7 @@ local function computeWorkerCount()
 	return math.max(2, math.min(4, cores - 1))
 end
 
-local function ensureThreads()
+local function ensureThreads(needSoftwareEncoders)
 	if not Recorder._cmdCh then
 		Recorder._cmdCh = love.thread.getChannel("recorder_cmd")
 		Recorder._encodeCh = love.thread.getChannel("recorder_encode")
@@ -103,15 +172,27 @@ local function ensureThreads()
 		Recorder._muxThread:start("recorder_cmd", "recorder_mux", "recorder_status")
 	end
 
-	local targetWorkers = computeWorkerCount()
-	Recorder._workerCount = targetWorkers
-	for i = 1, targetWorkers do
-		local th = Recorder._encoderThreads[i]
-		if not th or not th:isRunning() then
-			th = love.thread.newThread("funkin/backend/recorder_encoder_thread.lua")
-			th:start("recorder_encode", "recorder_mux")
-			Recorder._encoderThreads[i] = th
+	if needSoftwareEncoders then
+		local targetWorkers = computeWorkerCount()
+		Recorder._workerCount = targetWorkers
+		for i = 1, targetWorkers do
+			local th = Recorder._encoderThreads[i]
+			if not th or not th:isRunning() then
+				th = love.thread.newThread("funkin/backend/recorder_encoder_thread.lua")
+				th:start("recorder_encode", "recorder_mux")
+				Recorder._encoderThreads[i] = th
+			end
 		end
+	end
+end
+
+local function handleStatusMessage(msg)
+	if type(msg) ~= "table" then return end
+	if msg.status == "saved" then
+		Recorder.lastSavedPath = msg.path
+		Recorder.lastError = nil
+	elseif msg.status == "error" then
+		Recorder.lastError = msg.error
 	end
 end
 
@@ -120,11 +201,7 @@ local function drainStatusChannel()
 	while true do
 		local msg = Recorder._statusCh:pop()
 		if not msg then break end
-		if msg.status == "saved" then
-			Recorder.lastSavedPath = msg.path
-		elseif msg.status == "error" then
-			Recorder.lastError = msg.error
-		end
+		handleStatusMessage(msg)
 	end
 end
 
@@ -251,7 +328,22 @@ local function snapshotActiveAudio()
 	return list
 end
 
-local function ensureCaptureCanvases(w, h)
+local function ensureCaptureCanvases(w, h, singleOnly)
+	if singleOnly then
+		if Recorder._canvases[1] and Recorder._canvasW == w and Recorder._canvasH == h then
+			return true
+		end
+		releaseCanvases()
+		local ok1, c1 = pcall(love.graphics.newCanvas, w, h)
+		if not ok1 or not c1 then return false end
+		c1:setFilter("linear", "linear")
+		Recorder._canvases[1] = c1
+		Recorder._canvasW, Recorder._canvasH = w, h
+		Recorder._curSlot = 1
+		Recorder._pendingSlot = nil
+		return true
+	end
+
 	if Recorder._canvases[1] and Recorder._canvases[2]
 		and Recorder._canvasW == w and Recorder._canvasH == h then
 		return true
@@ -311,32 +403,52 @@ local function dispatchPendingSlot(forceFlush)
 	})
 end
 
+function Recorder.onBeforeCameraDraw(_)
+	-- Hook reserved for camera pipeline inspection
+end
+
 function Recorder.start(tag, autoStarted)
 	if not Recorder.isFeatureEnabled() then return false end
 	if Recorder.active then return true, Recorder.outputPath end
 
-	ensureThreads()
 	drainStatusChannel()
 
 	local outW, outH = Recorder.getTargetDimensions()
-	if not ensureCaptureCanvases(outW, outH) then
-		Recorder.lastError = "Unable to allocate capture canvases"
-		return false, Recorder.lastError
-	end
-
 	local fps = math.clamp(tonumber(ClientPrefs.data.recordingFps) or 60, 15, 60)
 	local qualKey = tostring(ClientPrefs.data.recordingQuality or "high")
 	local quality = QUALITY_MAP[qualKey] or 88
 	local recordAudio = ClientPrefs.data.recordingAudio ~= false
-	local hasFFI = pcall(require, "ffi") and pcall(require, "bit")
+	local hasFFI = okFFI and pcall(require, "bit")
 	local fourcc = hasFFI and "MJPG" or "MPNG"
 
 	local dir = ensureOutputDirectory()
-	local stamp = os.date("%Y%m%d_%H%M%S")
 	local prefix = sanitizeSegment(tag or (Recorder.getCaptureMode() == "gameplay" and "gameplay" or "game"))
-	local path = string.format("%s/%s_%s.avi", dir, stamp, prefix)
+	local path = buildUniqueMp4Path(dir, prefix)
+
+	local useNative = false
+	if nativeLib ~= nil then
+		if ensureCaptureCanvases(outW, outH, true) then
+			local baseBr = BITRATE_720P_MAP[qualKey] or 8500000
+			local scaleRatio = (outW * outH) / (1280 * 720)
+			local bitrate = math.max(2500000, math.floor(baseBr * math.max(0.45, scaleRatio)))
+			local rc = nativeLib.lightrecorder_start(path, outW, outH, fps, bitrate, recordAudio and 1 or 0)
+			if rc == 0 then
+				useNative = true
+			end
+		end
+	end
+
+	if not useNative then
+		if not ensureCaptureCanvases(outW, outH, false) then
+			Recorder.lastError = "Unable to allocate capture canvases"
+			return false, Recorder.lastError
+		end
+	end
+
+	ensureThreads(not useNative)
 
 	Recorder._sessionId = Recorder._sessionId + 1
+	Recorder._nativeMode = useNative
 	Recorder._nextSeq = 1
 	Recorder._targetFps = fps
 	Recorder._quality = quality
@@ -360,6 +472,7 @@ function Recorder.start(tag, autoStarted)
 	Recorder._cmdCh:push({
 		type = "start",
 		session = Recorder._sessionId,
+		nativeMode = useNative,
 		path = path,
 		width = outW,
 		height = outH,
@@ -371,11 +484,33 @@ function Recorder.start(tag, autoStarted)
 	return true, path
 end
 
+local function waitForSessionFlush(targetSession, timeoutSec)
+	if not Recorder._statusCh then return nil end
+	local nowFn = (love.timer and love.timer.getTime) or os.clock
+	local deadline = nowFn() + (timeoutSec or 12.0)
+	while nowFn() < deadline do
+		local remaining = math.max(0.05, math.min(0.5, deadline - nowFn()))
+		local msg = Recorder._statusCh:demand(remaining)
+		if msg then
+			handleStatusMessage(msg)
+			if msg.session == targetSession and msg.status ~= "started" then
+				return msg
+			end
+		end
+	end
+	return nil
+end
+
 function Recorder.stop(waitFlush)
 	if not Recorder.active then return nil end
 
-	-- Flush final buffered ping-pong canvas frame so zero trailing frames are lost
-	if Recorder._pendingSlot then
+	local shouldWait = (waitFlush ~= false)
+	local wasNative = Recorder._nativeMode
+	local stoppedSession = Recorder._sessionId
+
+	if wasNative and nativeLib then
+		pcall(nativeLib.lightrecorder_flush_gl)
+	elseif Recorder._pendingSlot then
 		pcall(dispatchPendingSlot, true)
 	end
 
@@ -384,6 +519,7 @@ function Recorder.stop(waitFlush)
 
 	Recorder.active = false
 	Recorder.autoStarted = false
+	Recorder._nativeMode = false
 	Recorder._shouldCaptureFrame = false
 	Recorder._startWallTime = nil
 	Recorder._pausedAtWallTime = nil
@@ -392,30 +528,72 @@ function Recorder.stop(waitFlush)
 	restoreForcedCameras()
 	releaseCanvases()
 
+	local finalStatus = nil
 	if Recorder._cmdCh then
-		Recorder._cmdCh:push({type = "finish", lastSeq = lastSeq})
-		if waitFlush and Recorder._statusCh then
-			local msg = Recorder._statusCh:demand(5.0)
-			if msg and msg.status == "saved" then
-				Recorder.lastSavedPath = msg.path
-			elseif msg and msg.status == "error" then
-				Recorder.lastError = msg.error
+		Recorder._cmdCh:push({type = "finish", session = stoppedSession, lastSeq = lastSeq})
+		if shouldWait or wasNative then
+			finalStatus = waitForSessionFlush(stoppedSession, 15.0)
+		end
+	end
+
+	if wasNative and nativeLib then
+		local okStop, encodedCount = pcall(nativeLib.lightrecorder_stop)
+		if okStop and type(encodedCount) == "number" and encodedCount > 0 then
+			Recorder.lastSavedPath = savedPath
+			Recorder.lastError = nil
+			finalStatus = {status = "saved", path = savedPath, frames = encodedCount}
+		else
+			if lastSeq <= 0 then
+				finalStatus = {status = "empty", path = savedPath}
+			else
+				Recorder.lastError = "Hardware MP4 finalize failed"
+				finalStatus = {status = "error", error = Recorder.lastError, path = savedPath}
 			end
+			savedPath = nil
+		end
+	elseif finalStatus then
+		if finalStatus.status == "empty" or finalStatus.status == "error" then
+			savedPath = nil
 		end
 	end
 
 	Recorder.outputPath = nil
 	drainStatusChannel()
+
+	if finalStatus and finalStatus.status == "saved" and finalStatus.path then
+		notifyToast("info", "Saved MP4: " .. basenameOf(finalStatus.path))
+	elseif finalStatus and finalStatus.status == "error" then
+		notifyToast("error", "Recording failed: " .. tostring(finalStatus.error or "error"))
+	end
+
 	return savedPath
 end
 
 function Recorder.toggle()
 	if not Recorder.isFeatureEnabled() then return false end
 	if Recorder.active then
-		Recorder.stop(false)
+		local saved = Recorder.stop(true)
+		if not saved and not Recorder.lastError then
+			notifyToast("warn", "Recording stopped (enter a song to capture Gameplay Only)")
+		end
 		return false
 	end
-	return Recorder.start(nil, false)
+	local ok, pathOrErr = Recorder.start(nil, false)
+	if ok then
+		if Recorder.getCaptureMode() == "gameplay" then
+			local cams = Recorder.getCaptureCameras()
+			if #cams == 0 then
+				notifyToast("info", "Recording armed — enter a song to capture MP4")
+			else
+				notifyToast("info", "Recording MP4 started")
+			end
+		else
+			notifyToast("info", "Recording MP4 started")
+		end
+	elseif pathOrErr then
+		notifyToast("error", tostring(pathOrErr))
+	end
+	return ok, pathOrErr
 end
 
 function Recorder.onSongStart(songName)
@@ -429,8 +607,11 @@ function Recorder.onSongStart(songName)
 end
 
 function Recorder.onSongEnd()
-	if Recorder.active and Recorder.autoStarted then
-		Recorder.stop(false)
+	if not Recorder.active then return end
+	-- Always finalize and save at the end of a song when auto-recording OR when
+	-- recording in Gameplay Only mode (including sessions armed manually in Options).
+	if Recorder.autoStarted or Recorder.getCaptureMode() == "gameplay" then
+		Recorder.stop(true)
 	end
 end
 
@@ -439,7 +620,7 @@ function Recorder.update(dt)
 
 	if not Recorder.isFeatureEnabled() then
 		if Recorder.active then
-			Recorder.stop(false)
+			Recorder.stop(true)
 		end
 		return
 	end
@@ -489,8 +670,6 @@ function Recorder.preDraw()
 		return
 	end
 
-	-- Keep target cameras in steady FBO mode for the entire recording session
-	-- rather than toggling cam.simple back and forth on alternating frames.
 	for i = 1, #cams do
 		local cam = cams[i]
 		if cam and Recorder._forcedCams[cam] == nil then
@@ -542,11 +721,12 @@ local function drawRecordingBadge()
 	love.graphics.pop()
 end
 
-local function compositeCamerasToSlot(cams, slotIdx)
+local function compositeCamerasToSlot(cams, slotIdx, nativePtsUs)
 	local outW, outH = Recorder.getTargetDimensions()
-	if not ensureCaptureCanvases(outW, outH) then return false end
+	local isNative = Recorder._nativeMode and nativeLib ~= nil
+	if not ensureCaptureCanvases(outW, outH, isNative) then return false end
 
-	local targetCanvas = Recorder._canvases[slotIdx]
+	local targetCanvas = Recorder._canvases[isNative and 1 or slotIdx]
 	local baseW = (game and game.width and game.width > 0) and game.width or Project.width
 	local baseH = (game and game.height and game.height > 0) and game.height or Project.height
 	local sx, sy = outW / baseW, outH / baseH
@@ -611,6 +791,15 @@ local function compositeCamerasToSlot(cams, slotIdx)
 		end
 	end
 
+	if drawnAny and isNative then
+		-- Changing blend mode flushes LÖVE's stream draw batch while targetCanvas FBO is bound
+		love.graphics.setBlendMode("alpha")
+		local rc = nativeLib.lightrecorder_capture_gl_frame(nativePtsUs or 0)
+		if rc ~= 0 then
+			drawnAny = false
+		end
+	end
+
 	love.graphics.pop()
 	return drawnAny
 end
@@ -631,26 +820,42 @@ function Recorder.postDraw()
 				targetFrame = Recorder._lastScheduledFrame + 1
 			end
 
-			-- Delayed ping-pong readback: read the PREVIOUS capture canvas (rendered 16-33ms
-			-- ago, GPU already idle on it) BEFORE drawing the current frame into the other slot.
-			if Recorder._pendingSlot then
-				dispatchPendingSlot(false)
-			end
+			if Recorder._nativeMode and nativeLib then
+				local ptsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps))
+				if compositeCamerasToSlot(cams, 1, ptsUs) then
+					Recorder._lastScheduledFrame = targetFrame
+					local seq = Recorder._nextSeq
+					Recorder._nextSeq = seq + 1
+					Recorder.frames = Recorder.frames + 1
+					if Recorder._muxCh then
+						Recorder._muxCh:push({
+							type = "native_audio",
+							session = Recorder._sessionId,
+							seq = seq,
+							targetFrame = targetFrame,
+							audio = snapshotActiveAudio()
+						})
+					end
+				end
+			else
+				if Recorder._pendingSlot then
+					dispatchPendingSlot(false)
+				end
 
-			local slot = Recorder._curSlot
-			if compositeCamerasToSlot(cams, slot) then
-				Recorder._lastScheduledFrame = targetFrame
-				Recorder._pendingSlot = {
-					slot = slot,
-					targetFrame = targetFrame,
-					audio = snapshotActiveAudio()
-				}
-				Recorder._curSlot = (slot == 1) and 2 or 1
+				local slot = Recorder._curSlot
+				if compositeCamerasToSlot(cams, slot, nil) then
+					Recorder._lastScheduledFrame = targetFrame
+					Recorder._pendingSlot = {
+						slot = slot,
+						targetFrame = targetFrame,
+						audio = snapshotActiveAudio()
+					}
+					Recorder._curSlot = (slot == 1) and 2 or 1
+				end
 			end
 		end
 	end
 
-	-- Drawn directly to screen backbuffer AFTER canvas capture, so it never leaks into video
 	drawRecordingBadge()
 end
 

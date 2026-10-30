@@ -76,6 +76,39 @@ function InputTextBox:new(x, y, width, height, placeholder, font)
 	self.onChanged = nil
 	self.onSubmit = nil
 	self.maxLength = 256
+	self._pendingTextInput = ""
+	self._onTextInput = function(t)
+		if self.focused and self.visible and type(t) == "string" and t ~= "" then
+			self._pendingTextInput = self._pendingTextInput .. t
+		end
+	end
+	if TextInput then
+		TextInput:add(self._onTextInput)
+	end
+end
+
+local function updateSoftKeyboard(self, focused)
+	if not (love.keyboard and love.keyboard.setTextInput) then return end
+	if focused then
+		local cam = self.cameras and self.cameras[1]
+		local sx = self.x + (self.__uiOffsetX or 0) - (cam and cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1) or 0)
+		local sy = self.y + (self.__uiOffsetY or 0) - (cam and cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1) or 0)
+		pcall(love.keyboard.setTextInput, true, sx, sy, self.width, self.height)
+	elseif love.system and love.system.getDevice and love.system.getDevice() == "Mobile" then
+		pcall(love.keyboard.setTextInput, false)
+	end
+end
+
+function InputTextBox:destroy()
+	if self.focused then
+		self.focused = false
+		updateSoftKeyboard(self, false)
+	end
+	if TextInput and self._onTextInput then
+		TextInput:remove(self._onTextInput)
+		self._onTextInput = nil
+	end
+	InputTextBox.super.destroy(self)
 end
 
 function InputTextBox:setText(value, notify)
@@ -93,7 +126,11 @@ end
 function InputTextBox:update(dt)
 	InputTextBox.super.update(self, dt)
 	if not self.visible then
-		self.focused = false
+		if self.focused then
+			self.focused = false
+			updateSoftKeyboard(self, false)
+		end
+		self._pendingTextInput = ""
 		self.hovered = false
 		return
 	end
@@ -109,12 +146,23 @@ function InputTextBox:update(dt)
 			self.cursorTimer = 0
 			self.cursorVisible = true
 			self.cursorPos = #self.text
-		elseif wasFocused and self.onSubmit then
-			self.onSubmit(self.text)
+			if not wasFocused then
+				self._pendingTextInput = ""
+				updateSoftKeyboard(self, true)
+			end
+		elseif wasFocused then
+			self._pendingTextInput = ""
+			updateSoftKeyboard(self, false)
+			if self.onSubmit then
+				self.onSubmit(self.text)
+			end
 		end
 	end
 
-	if not self.focused then return end
+	if not self.focused then
+		self._pendingTextInput = ""
+		return
+	end
 
 	self.cursorTimer = self.cursorTimer + dt
 	if self.cursorTimer >= self.cursorBlinkTime then
@@ -124,27 +172,40 @@ function InputTextBox:update(dt)
 
 	if game.keys.justPressed.ENTER or game.keys.justPressed.ESCAPE then
 		self.focused = false
+		self._pendingTextInput = ""
+		updateSoftKeyboard(self, false)
 		if self.onSubmit then self.onSubmit(self.text) end
 		return
 	end
 
 	local ctrl = game.keys.pressed.CONTROL
 	if ctrl and game.keys.justPressed.V and love.system.getClipboardText then
+		self._pendingTextInput = ""
 		local clip = (love.system.getClipboardText() or ""):gsub("[\r\n]", "")
 		if clip ~= "" then
 			self:input(clip)
 		end
 		return
 	elseif ctrl and game.keys.justPressed.C and love.system.setClipboardText then
+		self._pendingTextInput = ""
 		love.system.setClipboardText(self.text)
 		return
 	elseif ctrl then
+		self._pendingTextInput = ""
 		return
 	end
 
-	for key in pairs(game.keys.input.justPressed) do
-		if type(key) == "string" and #key == 1 then
-			self:input(key)
+	if self._pendingTextInput ~= "" then
+		local pending = self._pendingTextInput:gsub("[\r\n]", "")
+		self._pendingTextInput = ""
+		if pending ~= "" then
+			self:input(pending)
+		end
+	else
+		for key in pairs(game.keys.input.justPressed) do
+			if type(key) == "string" and #key == 1 then
+				self:input(key)
+			end
 		end
 	end
 

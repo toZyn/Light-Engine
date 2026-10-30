@@ -68,6 +68,39 @@ function NumericStepper:new(x, y, stepSize, defaultValue, min, max, width, heigh
 	self.buttonSymbolColor = {1, 1, 1}
 
 	self.onChanged = onChanged
+	self._pendingTextInput = ""
+	self._onTextInput = function(t)
+		if self.focused and self.visible and type(t) == "string" and t ~= "" then
+			self._pendingTextInput = self._pendingTextInput .. t
+		end
+	end
+	if TextInput then
+		TextInput:add(self._onTextInput)
+	end
+end
+
+local function updateSoftKeyboard(self, focused)
+	if not (love.keyboard and love.keyboard.setTextInput) then return end
+	if focused then
+		local cam = self.cameras and self.cameras[1]
+		local sx = self.x + (self.__uiOffsetX or 0) - (cam and cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1) or 0)
+		local sy = self.y + (self.__uiOffsetY or 0) - (cam and cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1) or 0)
+		pcall(love.keyboard.setTextInput, true, sx, sy, self.width, self.height)
+	elseif love.system and love.system.getDevice and love.system.getDevice() == "Mobile" then
+		pcall(love.keyboard.setTextInput, false)
+	end
+end
+
+function NumericStepper:destroy()
+	if self.focused then
+		self.focused = false
+		updateSoftKeyboard(self, false)
+	end
+	if TextInput and self._onTextInput then
+		TextInput:remove(self._onTextInput)
+		self._onTextInput = nil
+	end
+	NumericStepper.super.destroy(self)
 end
 
 function NumericStepper:setValue(val, notify)
@@ -103,7 +136,11 @@ end
 function NumericStepper:update(dt)
 	NumericStepper.super.update(self, dt)
 	if not self.visible then
-		self.focused = false
+		if self.focused then
+			self.focused = false
+			updateSoftKeyboard(self, false)
+		end
+		self._pendingTextInput = ""
 		return
 	end
 
@@ -125,9 +162,17 @@ function NumericStepper:update(dt)
 			self.cursorPos = #self.value
 			self.cursorVisible = true
 			self.cursorTimer = 0
+			if not wasFocused then
+				self._pendingTextInput = ""
+				updateSoftKeyboard(self, true)
+			end
 		else
 			self.focused = false
-			if wasFocused then self:commitText(true) end
+			self._pendingTextInput = ""
+			if wasFocused then
+				updateSoftKeyboard(self, false)
+				self:commitText(true)
+			end
 		end
 
 		if self.hoveredDec then
@@ -142,7 +187,10 @@ function NumericStepper:update(dt)
 		self.pressedInc = false
 	end
 
-	if not self.focused then return end
+	if not self.focused then
+		self._pendingTextInput = ""
+		return
+	end
 
 	self.cursorTimer = self.cursorTimer + dt
 	if self.cursorTimer >= self.cursorBlinkTime then
@@ -152,6 +200,8 @@ function NumericStepper:update(dt)
 
 	if game.keys.justPressed.ENTER or game.keys.justPressed.ESCAPE then
 		self.focused = false
+		self._pendingTextInput = ""
+		updateSoftKeyboard(self, false)
 		self:commitText(true)
 		return
 	elseif game.keys.justPressed.UP then
@@ -162,9 +212,17 @@ function NumericStepper:update(dt)
 		return
 	end
 
-	for key in pairs(game.keys.input.justPressed) do
-		if type(key) == "string" and #key == 1 then
-			self:input(key)
+	if self._pendingTextInput ~= "" then
+		local pending = self._pendingTextInput
+		self._pendingTextInput = ""
+		for i = 1, #pending do
+			self:input(pending:sub(i, i))
+		end
+	else
+		for key in pairs(game.keys.input.justPressed) do
+			if type(key) == "string" and #key == 1 then
+				self:input(key)
+			end
 		end
 	end
 
@@ -241,6 +299,7 @@ function NumericStepper:input(char)
 	if not (isDigit or isDot or isMinus) then return end
 
 	self.value = self.value:sub(1, self.cursorPos) .. char .. self.value:sub(self.cursorPos + 1)
+	self.text = self.value
 	self.cursorPos = self.cursorPos + 1
 	local parsed = tonumber(self.value)
 	if parsed then
@@ -252,6 +311,7 @@ end
 function NumericStepper:backspace()
 	if self.cursorPos > 0 then
 		self.value = self.value:sub(1, self.cursorPos - 1) .. self.value:sub(self.cursorPos + 1)
+		self.text = self.value
 		self.cursorPos = self.cursorPos - 1
 		local parsed = tonumber(self.value)
 		if parsed then
@@ -264,6 +324,7 @@ end
 function NumericStepper:delete()
 	if self.cursorPos < #self.value then
 		self.value = self.value:sub(1, self.cursorPos) .. self.value:sub(self.cursorPos + 2)
+		self.text = self.value
 		local parsed = tonumber(self.value)
 		if parsed then
 			self.numValue = math.clamp(parsed, self.min, self.max)

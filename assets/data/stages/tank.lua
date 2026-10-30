@@ -28,9 +28,9 @@ end
 function create()
 	self.camZoom = 0.9
 
-	self.boyfriendPos = {x = 810, y = 100}
-	self.gfPos = {x = 200, y = 65}
-	self.dadPos = {x = 20, y = 100}
+	self.boyfriendPos:set(810, 100)
+	self.gfPos:set(200, 65)
+	self.dadPos:set(20, 100)
 
 	local bg = Sprite(-380, -400 + 196)
 	bg:loadTexture(paths.getImage(SCRIPT_PATH .. 'tankSky'))

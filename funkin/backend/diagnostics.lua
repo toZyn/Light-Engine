@@ -165,6 +165,7 @@ function Diagnostics.errorHandler(message, trace, savedReport)
   end
  end
  draw()
+ safe(love.event and love.event.clear)
  return function()
   if not love.event then return 1 end
   love.event.pump()

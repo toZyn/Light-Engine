@@ -589,6 +589,17 @@ jobs:
           install -m 0644 ../android/AndroidManifest.xml app/src/main/AndroidManifest.xml
           install -m 0644 ../android/gradle.properties.example gradle.properties
 
+          # Build native hardware H.264/AAC MP4 recorder (GLES3 async PBO + AMediaCodec + AMediaMuxer)
+          NDK_BIN="${{ steps.sdk.outputs.ndk }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/armeabi-v7a
+          "$NDK_BIN/aarch64-linux-android21-clang" -shared -fPIC -O3 -Wall -Wextra -Werror \
+            "$WS/android/jni/lightrecorder.c" -lEGL -lGLESv2 -lmediandk -llog \
+            -o app/src/main/jniLibs/arm64-v8a/liblightrecorder.so
+          "$NDK_BIN/armv7a-linux-androideabi21-clang" -shared -fPIC -O3 -Wall -Wextra -Werror \
+            "$WS/android/jni/lightrecorder.c" -lEGL -lGLESv2 -lmediandk -llog \
+            -o app/src/main/jniLibs/armeabi-v7a/liblightrecorder.so
+          ls -lh app/src/main/jniLibs/*/liblightrecorder.so
+
           # Official direct-AAsset layout: resources remain in the APK and
           # GameActivity cannot copy a nested game.love into private cache.
           rm -f app/src/embed/assets/.gitkeep
@@ -683,6 +694,10 @@ jobs:
               if not abis:
                   print(f"::error::{path} has no native libraries")
                   sys.exit(1)
+              for abi in abis:
+                  if f"lib/{abi}/liblightrecorder.so" not in names:
+                      print(f"::error::{path} is missing lib/{abi}/liblightrecorder.so")
+                      sys.exit(1)
               if not {"assets/main.lua", "assets/conf.lua", "assets/project.lua"}.issubset(names) or "assets/game.love" in names:
                   print(f"::error::{path} does not use the direct APK asset layout")
                   sys.exit(1)

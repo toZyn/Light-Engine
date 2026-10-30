@@ -111,7 +111,14 @@ def main():
                 with logfile.open('a',encoding='utf-8') as log:
                     log.write('\nMissing native test completion marker.\n')
             print(f'{suite}: exit {code} ({logfile})',flush=True)
-            if code: failures.append(suite)
+            if code:
+                failures.append(suite)
+                tail = '\n'.join(output.strip().splitlines()[-30:])
+                if tail:
+                    print(f'--- {suite} failure output ---\n{tail}\n--- end {suite} ---',flush=True)
+                if os.environ.get('GITHUB_ACTIONS') == 'true':
+                    escaped = (tail or f'exit {code}').replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+                    print(f'::error title=Engine suite {suite}::{escaped}',flush=True)
     if failures: print('FAILED: '+', '.join(failures))
     return bool(failures)
 

@@ -7,7 +7,7 @@ ClientPrefs.data = {
 	virtualControls = true,
 
 	-- gameplay
-	autoPause = true,
+	autoPause = desktop,
 	downScroll = false,
 	middleScroll = false,
 	ghostTap = true,
@@ -81,9 +81,9 @@ ClientPrefs.controls = {
 	volume_mute = {"key:0", "key:kp0"},
 
 	reset = {"key:r"},
-	accept = {"key:z", "key:space", "key:return"},
-	back = {"key:x", "key:backspace", "key:escape"},
-	pause = {"key:p", "key:return", "key:escape"},
+	accept = {"key:z", "key:space", "key:return", "key:kpenter"},
+	back = {"key:x", "key:backspace", "key:escape", "key:acback"},
+	pause = {"key:p", "key:return", "key:escape", "key:acback"},
 
 	fullscreen = {"key:f11"},
 	pick_mods = {"key:tab"},
@@ -106,12 +106,24 @@ game.save.init("funkin")
 pcall(table.merge, ClientPrefs.data, game.save.data.prefs)
 pcall(table.merge, ClientPrefs.controls, game.save.data.controls)
 
-if (tonumber(ClientPrefs.data.recordingProfileVersion) or 0) < 2 then
+if (tonumber(ClientPrefs.data.recordingProfileVersion) or 0) < 3 then
 	ClientPrefs.data.recordingAudio = true
 	ClientPrefs.data.recordingQuality = "high"
 	ClientPrefs.data.recordingScale = 0.75
 	ClientPrefs.data.recordingFps = 60
-	ClientPrefs.data.recordingProfileVersion = 2
+	if not desktop then
+		ClientPrefs.data.autoPause = false
+	end
+	ClientPrefs.data.recordingProfileVersion = 3
 end
+
+local function ensureControlBind(list, bind)
+	if type(list) == "table" and not table.find(list, bind) then
+		table.insert(list, bind)
+	end
+end
+ensureControlBind(ClientPrefs.controls.accept, "key:kpenter")
+ensureControlBind(ClientPrefs.controls.back, "key:acback")
+ensureControlBind(ClientPrefs.controls.pause, "key:acback")
 
 return ClientPrefs

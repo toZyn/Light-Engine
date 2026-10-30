@@ -58,10 +58,17 @@ end
 
 function PlayState:new(storyMode, song, diff)
 	PlayState.super.new(self)
+	self.startPos = PlayState.startPos or 0
 
 	if storyMode ~= nil then
 		PlayState.storyMode = storyMode
 		PlayState.storyWeek = ""
+	end
+
+	if type(song) == "number" then
+		self.startPos = song
+		PlayState.startPos = song
+		song = nil
 	end
 
 	if song ~= nil then
@@ -77,6 +84,7 @@ function PlayState:new(storyMode, song, diff)
 end
 
 function PlayState:preload()
+	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	local skin = PlayState.SONG.skin or "default"
 	if type(skin) == "string" then
 		PlayState.SONG.skin = paths.getSkin(PlayState.SONG.skin or "default")
@@ -170,10 +178,16 @@ function PlayState:preload()
 		end
 	end
 	paths.async.loadBatch(list)
+	self._preloaded = true
 end
 
 function PlayState:enter()
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
+	if not self._preloaded or not self.ratings then
+		self:preload()
+	end
+	self.startPos = self.startPos or PlayState.startPos or 0
+	PlayState.startPos = 0
 
 	local songName = paths.formatToSongPath(PlayState.SONG.song)
 
@@ -903,19 +917,19 @@ function PlayState:swapCharacter(slot, newCharName)
 	local isGF = (s == "gf" or s == "girlfriend" or s == "2" or s == "gfversion")
 
 	local oldChar = isBF and self.boyfriend or (isGF and self.gf or self.dad)
-	if oldChar and oldChar.curCharacter == newCharName then return oldChar end
+	if oldChar and (oldChar.char == newCharName or oldChar.curCharacter == newCharName) then return oldChar end
 
 	local ok, newChar = pcall(Character, 0, 0, newCharName, isBF)
 	if not ok or not newChar then return nil end
 
 	local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
-	local camPoint = isBF and self.stage.boyfriendCam or (isGF and self.stage.gfCam or self.stage.dadCam)
 	if posPoint then
-		newChar:setPosition(newChar.x + posPoint.x, newChar.y + posPoint.y)
-	end
-	if camPoint and newChar.cameraPosition then
-		newChar.cameraPosition.x = newChar.cameraPosition.x + camPoint.x
-		newChar.cameraPosition.y = newChar.cameraPosition.y + camPoint.y
+		local ox, oy = posPoint.x, posPoint.y
+		if newChar.__type == "VSlice" and not newChar._animAtlas then
+			ox = ox - newChar.width / 2
+			oy = oy - newChar.height
+		end
+		newChar:setPosition(newChar.x + ox, newChar.y + oy)
 	end
 
 	if oldChar then
@@ -948,6 +962,9 @@ function PlayState:swapCharacter(slot, newCharName)
 		newChar.isGF = true
 		self.gf = newChar
 		self.stage.gf = newChar
+		if self.notefields and self.notefields[3] then
+			self.notefields[3].character = newChar
+		end
 	else
 		self.dad = newChar
 		self.stage.dad = newChar
@@ -955,6 +972,10 @@ function PlayState:swapCharacter(slot, newCharName)
 		if self.healthBar and self.healthBar.iconP2 then
 			self.healthBar.iconP2:changeIcon(newChar.icon)
 		end
+	end
+
+	if newChar.script then
+		newChar.script:call("postCreate")
 	end
 
 	if self.camTarget == oldChar then
@@ -1488,12 +1509,13 @@ function PlayState:getKeyFromEvent(controls)
 end
 
 function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
+	if isrepeat then return end
 	if self.substate and not self.persistentUpdate then return end
-	local controls = controls:getControlsFromSource(type .. ":" .. key)
+	local boundControls = controls:getControlsFromSource(type .. ":" .. key)
 	local ghostTap = ClientPrefs.data.ghostTap and self.ghostTime <= 0
 
-	if not controls then return end
-	key = self:getKeyFromEvent(controls)
+	if not boundControls then return end
+	key = self:getKeyFromEvent(boundControls)
 	if key < 0 then return end
 
 	local pressWallTime = time or love.timer.getTime()
@@ -1534,14 +1556,15 @@ end
 
 function PlayState:onKeyRelease(key, type, scancode, time)
 	if self.substate and not self.persistentUpdate then return end
-	local controls = controls:getControlsFromSource(type .. ":" .. key)
+	local boundControls = controls:getControlsFromSource(type .. ":" .. key)
 
-	if not controls then return end
-	key = self:getKeyFromEvent(controls)
+	if not boundControls then return end
+	key = self:getKeyFromEvent(boundControls)
 
 	if key < 0 then return end
+	local controlName = PlayState.keysControls[key]
+	if controlName and controls:down(controlName) then return end
 
-	local fixedKey = key + 1
 	for _, notefield in pairs(self.notefields) do
 		if notefield.is and not notefield.bot then
 			self:resetStroke(notefield, key)

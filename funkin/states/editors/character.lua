@@ -91,6 +91,36 @@ function CharacterEditor:enter()
 	self.animInfoTxt.cameras = {self.camMenu}
 	self:add(self.animInfoTxt)
 
+	local function addMenuBtn(x, y, w, h, label, cb)
+		local btn = UIButton(x, y, w, h, label, cb)
+		btn.font = self.smallFont
+		btn.cameras = {self.camMenu}
+		self:add(btn)
+		return btn
+	end
+
+	addMenuBtn(14, 312, 88, 28, "< Anim", function() self:changeAnim(-1) end)
+	addMenuBtn(110, 312, 88, 28, "Replay", function()
+		if self.curAnim then self.char:playAnim(self.curAnim[1], true) end
+	end)
+	addMenuBtn(206, 312, 88, 28, "Anim >", function() self:changeAnim(1) end)
+	addMenuBtn(14, 346, 66, 28, "Zoom -", function()
+		self.curZoom = math.clamp(self.curZoom - 0.1, 0.2, 2.5)
+	end)
+	addMenuBtn(86, 346, 66, 28, "Zoom +", function()
+		self.curZoom = math.clamp(self.curZoom + 0.1, 0.2, 2.5)
+	end)
+	addMenuBtn(158, 346, 66, 28, "Save", function() self:saveCharacter(false) end)
+	addMenuBtn(230, 346, 64, 28, "Exit", function()
+		if CharacterEditor.onPlayState then
+			CharacterEditor.onPlayState = false
+			game.switchState(PlayState())
+		else
+			util.playMenuMusic()
+			game.switchState(MainMenuState())
+		end
+	end)
+
 	self.helpTxt = Text(14, game.height - 132, table.concat({
 		"WASD / Drag : Move Camera  |  Wheel / Ctrl+-+ : Zoom",
 		"Q / E : Prev / Next Anim   |  SPACE : Replay Anim",
@@ -703,7 +733,7 @@ function CharacterEditor:update(dt)
 			self:changeAnim(-1)
 		elseif game.keys.justPressed.E then
 			self:changeAnim(1)
-		elseif game.keys.justPressed.ESCAPE then
+		elseif game.keys.justPressed.ESCAPE or controls:pressed("back") then
 			if CharacterEditor.onPlayState then
 				CharacterEditor.onPlayState = false
 				game.switchState(PlayState())
@@ -719,7 +749,7 @@ function CharacterEditor:update(dt)
 		if game.keys.pressed.W then self.camFollow.y = self.camFollow.y - camPan end
 		if game.keys.pressed.S and not ctrl then self.camFollow.y = self.camFollow.y + camPan end
 
-		if mouseInStage and Mouse.pressedLeft and (Mouse.x > 300 or Mouse.y > 310) then
+		if mouseInStage and Mouse.pressedLeft and (Mouse.x > 300 or Mouse.y > 382) then
 			self.camFollow.x = self.camFollow.x - (Mouse.deltaScreenX / math.max(0.1, self.curZoom))
 			self.camFollow.y = self.camFollow.y - (Mouse.deltaScreenY / math.max(0.1, self.curZoom))
 		end

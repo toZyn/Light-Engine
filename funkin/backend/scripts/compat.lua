@@ -447,7 +447,7 @@ function Compat.new(state, script)
 		local ch = (s == "bf" or s == "boyfriend" or s == "0") and self.state.boyfriend
 			or ((s == "gf" or s == "girlfriend" or s == "2") and self.state.gf or self.state.dad)
 		if not ch then fail("missing character: " .. tostring(charType)) end
-		if ch.playAnim then ch:playAnim(tostring(anim), forced ~= false, true) end
+		if ch.playAnim then ch:playAnim(tostring(anim), forced ~= false, nil, true) end
 	end
 	api.triggerEvent = function(name, v1, v2)
 		self:_active()

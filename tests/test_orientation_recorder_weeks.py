@@ -99,13 +99,48 @@ class OrientationRecorderAndWeekFixesTests(unittest.TestCase):
         self.assertIn("love.data.newByteData", enc_src)
 
         mux_src = (ROOT / "funkin/backend/recorder_thread.lua").read_text(encoding="utf-8")
-        self.assertIn('"01wb"', mux_src)
-        self.assertIn('"auds"', mux_src)
-        self.assertIn("4 + s.moviDataBytes", mux_src)
+        self.assertIn('require "funkin.backend.mp4_muxer"', mux_src)
+        self.assertIn("lightrecorder_push_audio_pcm", mux_src)
+
+        mp4_src = (ROOT / "funkin/backend/mp4_muxer.lua").read_text(encoding="utf-8")
+        self.assertIn('"ftyp"', mp4_src)
+        self.assertIn('"mp4v"', mp4_src)
+        self.assertIn('"alac"', mp4_src)
+
+        native_c = (ROOT / "android/jni/lightrecorder.c").read_text(encoding="utf-8")
+        self.assertIn("AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4", native_c)
+        self.assertIn("LR_GL_PIXEL_PACK_BUFFER", native_c)
+        self.assertIn('"video/avc"', native_c)
+        self.assertIn('"audio/mp4a-latm"', native_c)
 
         rec_src = (ROOT / "funkin/backend/recorder.lua").read_text(encoding="utf-8")
         self.assertIn("recorder_encoder_thread.lua", rec_src)
         self.assertIn("snapshotActiveAudio", rec_src)
+        self.assertIn(".mp4", rec_src)
+        self.assertNotIn(".avi", rec_src)
+
+    def test_usb_keyboard_manifest_startup_and_error_screen_hardening(self):
+        tree = ET.parse(ROOT / "android/AndroidManifest.xml")
+        activities = {
+            el.attrib[f"{ANDROID_NS}name"]: el
+            for el in tree.findall(".//activity")
+        }
+        game_act = activities["org.love2d.android.GameActivity"]
+        cfg = game_act.attrib.get(f"{ANDROID_NS}configChanges", "")
+        for token in ("keyboard", "keyboardHidden", "navigation", "touchscreen", "uiMode", "density"):
+            self.assertIn(token, cfg)
+        usb_actions = [
+            el.attrib.get(f"{ANDROID_NS}name")
+            for el in game_act.findall(".//action")
+        ]
+        self.assertNotIn("android.hardware.usb.action.USB_DEVICE_ATTACHED", usb_actions)
+
+        funkin_init = (ROOT / "funkin/init.lua").read_text(encoding="utf-8")
+        self.assertNotIn("love.window.updateMode", funkin_init)
+
+        err_src = (ROOT / "funkin/backend/error-screen.lua").read_text(encoding="utf-8")
+        self.assertIn("pcall(love.event.clear)", err_src)
+        self.assertIn('key == "acback"', err_src)
 
 
 if __name__ == "__main__":

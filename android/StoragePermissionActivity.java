@@ -6,6 +6,7 @@ import android.app.Application;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,10 +15,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 
 public class StoragePermissionActivity extends Activity {
     private static final int REQ_ALL_FILES = 4101;
     private static final int REQ_LEGACY_STORAGE = 4102;
+    private static final int MAX_LANDSCAPE_WAIT_RETRIES = 6;
+    private static final long LANDSCAPE_WAIT_STEP_MS = 25L;
     private static final String PREFS_NAME = "light_engine_storage_perm";
     private static final String KEY_PROMPTED = "prompted";
 
@@ -25,7 +29,11 @@ public class StoragePermissionActivity extends Activity {
     private static volatile boolean gameEverCreated = false;
     private static volatile boolean gameCurrentlyAlive = false;
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean waitingForSettings = false;
+    private boolean waitingForLandscape = false;
+    private boolean gameLaunched = false;
+    private int landscapeRetries = 0;
 
     private static synchronized void ensureLifecycleMonitor(Application app) {
         if (lifecycleRegistered || app == null) {
@@ -36,6 +44,7 @@ public class StoragePermissionActivity extends Activity {
             @Override
             public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
                 if (activity instanceof GameActivity) {
+                    activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
                     gameEverCreated = true;
                     gameCurrentlyAlive = true;
                 }
@@ -45,7 +54,11 @@ public class StoragePermissionActivity extends Activity {
             public void onActivityStarted(Activity activity) {}
 
             @Override
-            public void onActivityResumed(Activity activity) {}
+            public void onActivityResumed(Activity activity) {
+                if (activity instanceof GameActivity) {
+                    activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                }
+            }
 
             @Override
             public void onActivityPaused(Activity activity) {}
@@ -182,7 +195,56 @@ public class StoragePermissionActivity extends Activity {
         }
     }
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (waitingForLandscape && !gameLaunched && isDisplayLandscape()) {
+            waitingForLandscape = false;
+            mainHandler.removeCallbacksAndMessages(null);
+            launchGameActivityNow();
+        }
+    }
+
+    private boolean isDisplayLandscape() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        return dm != null && dm.widthPixels >= dm.heightPixels;
+    }
+
     private void startGame() {
+        if (gameLaunched) {
+            return;
+        }
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        if (!gameCurrentlyAlive && !isDisplayLandscape() && landscapeRetries < MAX_LANDSCAPE_WAIT_RETRIES) {
+            waitingForLandscape = true;
+            landscapeRetries++;
+            mainHandler.removeCallbacksAndMessages(null);
+            mainHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (gameLaunched) {
+                        return;
+                    }
+                    if (isDisplayLandscape() || landscapeRetries >= MAX_LANDSCAPE_WAIT_RETRIES) {
+                        waitingForLandscape = false;
+                        launchGameActivityNow();
+                    } else {
+                        startGame();
+                    }
+                }
+            }, LANDSCAPE_WAIT_STEP_MS);
+            return;
+        }
+        launchGameActivityNow();
+    }
+
+    private void launchGameActivityNow() {
+        if (gameLaunched) {
+            return;
+        }
+        gameLaunched = true;
+        waitingForLandscape = false;
+        mainHandler.removeCallbacksAndMessages(null);
         Intent gameIntent = new Intent(this, GameActivity.class);
         if (gameCurrentlyAlive) {
             gameIntent.addFlags(

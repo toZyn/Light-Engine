@@ -21,7 +21,8 @@ end
 
 local function createDirectory(path)
 	if love.system.getOS() == "Windows" then
-		os.execute('mkdir "' .. path .. '" 2>nul')
+		local winPath = tostring(path):gsub("/", "\\")
+		os.execute('mkdir "' .. winPath .. '" 2>nul')
 	else
 		os.execute('mkdir -p "' .. path .. '" 2>/dev/null')
 	end
@@ -455,6 +456,59 @@ function Storage.installSave(save)
 		Storage.noteSaveWrite(name)
 		return true
 	end
+end
+
+function Storage.ensureNativeDir(path)
+	if type(path) ~= "string" or path == "" then return false end
+	createDirectory(path)
+	return canWrite(path)
+end
+
+function Storage.getExternalDir()
+	if not Storage.initialized then Storage.init() end
+	if Storage.available and type(Storage.root) == "string" and Storage.root ~= "" then
+		return Storage.root
+	end
+	return nil
+end
+
+function Storage.getRecordingsDir()
+	if Storage.recordingsPath and Storage.recordingsPath ~= "" then
+		return Storage.recordingsPath
+	end
+	if not Storage.initialized then Storage.init() end
+
+	local candidates = {}
+	if love.system.getOS() == "Android" then
+		-- Prefer public Gallery-visible Movies/LightEngine (no .nomedia!) so saved
+		-- .mp4 recordings appear immediately in Android Gallery and Files apps.
+		local ext = os.getenv("EXTERNAL_STORAGE")
+		addCandidate(candidates, ext and (ext .. "/Movies/LightEngine"))
+		addCandidate(candidates, "/storage/emulated/0/Movies/LightEngine")
+		addCandidate(candidates, "/sdcard/Movies/LightEngine")
+		addCandidate(candidates, ext and (ext .. "/DCIM/LightEngine"))
+		addCandidate(candidates, "/storage/emulated/0/DCIM/LightEngine")
+		addCandidate(candidates, Storage.root and (Storage.root .. "/recordings"))
+	else
+		addCandidate(candidates, Storage.root and (Storage.root .. "/recordings"))
+		local home = os.getenv("USERPROFILE") or os.getenv("HOME")
+		if home and home ~= "" then
+			addCandidate(candidates, home .. "/Videos/LightEngine")
+		end
+	end
+
+	for _, dir in ipairs(candidates) do
+		if canWrite(dir) then
+			Storage.recordingsPath = dir
+			return dir
+		end
+	end
+
+	pcall(lfs.createDirectory, "recordings")
+	local fallback = lfs.getSaveDirectory() .. "/recordings"
+	createDirectory(fallback)
+	Storage.recordingsPath = fallback
+	return fallback
 end
 
 return Storage

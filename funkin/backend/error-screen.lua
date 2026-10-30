@@ -87,15 +87,24 @@ return function(msg, callerTrace)
 		fnfFont18 = paths.getFont("phantommuff.ttf", 18) or love.graphics.setNewFont(18)
 		fnfFont20 = paths.getFont("phantommuff.ttf", 35) or love.graphics.setNewFont(35)
 
-		bgMusic = paths.getMusic("pause/railways", "static")
-		missSfx = love.audio.newSource(paths.getSound("gameplay/missnote" .. love.math.random(1, 3)), "static")
+		local okMusic, mus = pcall(paths.getMusic, "pause/railways", "static")
+		bgMusic = okMusic and mus or nil
+		local okSnd, sndData = pcall(paths.getSound, "gameplay/missnote" .. love.math.random(1, 3))
+		if okSnd and sndData then
+			local okSrc, src = pcall(love.audio.newSource, sndData, "static")
+			missSfx = okSrc and src or nil
+		end
 
-		bgMusic:setLooping(true)
-		bgMusic:setVolume(0.7)
-		bgMusic:play()
+		if bgMusic then
+			pcall(bgMusic.setLooping, bgMusic, true)
+			pcall(bgMusic.setVolume, bgMusic, 0.7)
+			pcall(bgMusic.play, bgMusic)
+		end
 
-		missSfx:setVolume(0.4)
-		missSfx:play()
+		if missSfx then
+			pcall(missSfx.setVolume, missSfx, 0.4)
+			pcall(missSfx.play, missSfx)
+		end
 	end
 
 	local dontDraw = false
@@ -143,7 +152,7 @@ return function(msg, callerTrace)
 			return 1
 		end,
 		keypressed = function(key)
-			if key == "escape" then return 1 end
+			if key == "escape" or key == "acback" then return 1 end
 			if not love.keyboard.isDown("lctrl", "rctrl") then return end
 			if love.system and key == "c" then
 				copyToClipboard()
@@ -168,7 +177,11 @@ return function(msg, callerTrace)
 			end
 		end,
 		focus = function(f)
-			bgMusic:setVolume(f and 0.7 or 0.3)
+			if bgMusic then pcall(bgMusic.setVolume, bgMusic, f and 0.7 or 0.3) end
+			if f then draw(true) end
+		end,
+		visible = function(v)
+			if v then draw(true) end
 		end,
 		resize = function(w, h)
 			gameW, gameH = w, h
@@ -212,6 +225,9 @@ return function(msg, callerTrace)
 
 	firstPass()
 	eventhandlers.displayrotated(true)
+	-- Flush stale gameplay touch/key events queued before the crash so an
+	-- in-flight note tap on mobile does not immediately trigger Quit.
+	pcall(love.event.clear)
 
 	return function()
 		name, a, b = love.event.wait()
