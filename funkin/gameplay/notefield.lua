@@ -137,11 +137,13 @@ function Notefield:seekTo(timeSec)
 			self.chartIndex = self.chartIndex + 1
 		end
 	end
-	for i = #self.activeNotes, 1, -1 do
-		local note = self.activeNotes[i]
-		if note.time < timeSec - 0.005 then
-			self:removeNoteFromIndex(i)
-			note:destroy()
+	if self.activeNotes then
+		for i = #self.activeNotes, 1, -1 do
+			local note = self.activeNotes[i]
+			if note.time < timeSec - 0.005 then
+				self:removeNoteFromIndex(i)
+				note:destroy()
+			end
 		end
 	end
 	self.time = timeSec or 0
@@ -149,7 +151,7 @@ end
 
 function Notefield:getNotes(time, direction, sustainLoop, outBuffer)
 	local notes = self.activeNotes
-	if #notes == 0 then
+	if not notes or #notes == 0 then
 		if outBuffer then table.clear(outBuffer); return outBuffer, false end
 		return EMPTY_NOTES, false
 	end
@@ -277,6 +279,7 @@ function Notefield:fadeInReceptors(tween)
 end
 
 function Notefield:update(dt)
+	if not self.lanes or not self.activeNotes then return end
 	Notefield.super.update(self, dt)
 
 	local maxSpeed = self.speed
@@ -383,6 +386,7 @@ function Notefield:__prepareLane(direction, lane, time)
 		return
 	end
 
+	if not self.activeNotes then return end
 	local notes, receptor, speed, drawSize, drawSizeOffset =
 		self.activeNotes, lane.receptor,
 		self.speed * lane.speed,
@@ -449,6 +453,7 @@ function Notefield:__prepareLane(direction, lane, time)
 end
 
 function Notefield:__render(camera)
+	if not self.lanes or not self.activeNotes then return end
 	local time = self.time - self.offsetTime
 	for i, lane in ipairs(self.lanes) do
 		self:__prepareLane(i - 1, lane, time)
