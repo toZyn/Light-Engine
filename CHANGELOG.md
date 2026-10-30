@@ -5,6 +5,55 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-30
+
+### Added
+- Rebuilt **Chart Editor** (`ChartingState`) around the native `PlayState.SONG`
+  schema with viewport-culled timeline rendering, 9 interactive tracks (events +
+  enemy + player), `1/4`–`1/64` quantization, note types, mouse/keyboard sustain
+  resizing, undo/redo (`Ctrl+Z`/`Ctrl+Y`), section copy/paste/swap/mirror,
+  hitsounds, metronome, `0.25x`–`2.0x` playback speed, instant playtesting, and
+  lossless cross-platform JSON export (`Ctrl+S`).
+- Completed **Character Editor** **Animations** tab (create/update/delete
+  animations, XML prefixes, frame indices, FPS, loop, live offsets), ghost /
+  onion-skin reference (`G`), and cross-platform JSON export.
+- Rebuilt **Stage & Cutscene Editor** (`CutsceneState`) with stage inspection,
+  camera keyframe capture, live preview (`P`), and JSON export.
+- Rebuilt **Editor Menu** (`EditorMenu`) with shortcuts from Main Menu (`7`/`8`),
+  Freeplay (`7`), and Gameplay (`7`/`8`).
+- Global **`Mod` Lua API** (`funkin/backend/modding/api.lua`) for sprites,
+  graphics, text, tweens, timers, sounds, camera flash/shake/zoom, character
+  swaps, chart events, persistent mod data, and mod template generation.
+- Mod template scaffolder both in-game (`N` in `ModsState`, `Create New Mod` in
+  `EditorMenu`) and via CLI (`tools/create_mod.py`), plus Spanish modding and
+  editor documentation (`docs/crear-mods.md`).
+- Automatic Freeplay discovery of standalone `songs/<song>/` folders without
+  requiring a `week.json`, `pack.json` / `pack.png` metadata fallback, simple
+  native JSON stages, `.ogg`/`.wav`/`.mp3` audio fallback, auto-loaded
+  `data/notetypes/<type>.lua` scripts, and 5 additional built-in chart events
+  (`Add Camera Zoom`, `Change Character`, `Camera Flash`, `Screen Shake`, `Hey!`).
+- Release workflow now publishes the standalone `.love` archive, a modding kit
+  (`Light-Engine-<version>-modding-kit.zip`), bundled docs/tools/examples inside
+  portable desktop archives, and automatic version revision tags when merging to
+  `main` over an already-published version.
+
+### Fixed
+- Overhauled all 10 `loxel/ui` widgets (`UIGrid`, `UIButton`, `UICheckbox`,
+  `UISlider`, `UIInputTextBox`, `UINumericStepper`, `UIDropDown`, `UITabMenu`,
+  `UINavbar`, `UIWindow`) for batched rendering, container/camera coordinate
+  propagation, clipboard shortcuts, float rounding, and dropdown input priority.
+- Eliminated redundant per-frame `texture:setFilter` calls in `Sprite`, `Note`,
+  and `Text`, per-frame table allocations in `Camera:shake` and `Text:__render`,
+  `Color.fromHSL` saturation-zero bug, and shared multi-atlas `Quad`
+  double-release in `Frame:destroy()`.
+- Fixed `Notefield:update` early return that throttled active note/modifier
+  updates to 10 FPS, added `Notefield:seekTo`, fixed 3D sustain shader reference,
+  fixed `PlayState` `startPos` units, $O(1)$ event cursor, `nfTime` hit accuracy,
+  `JSONBuilder` RFC 8259 string escaping, `vanilla.lua` `timeChanges` sorting,
+  and menu `Throttle` cleanup.
+
+Android version code: 200.
+
 ## [0.1.16-advanced.8] - 2026-10-04
 
 ### Fixed

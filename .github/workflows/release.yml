@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'project.lua'
+      - 'CHANGELOG.md'
       - 'main.lua'
       - 'conf.lua'
       - 'funkin/**'
@@ -47,61 +48,49 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      base_version: ${{ steps.meta.outputs.base_version }}
       tag: ${{ steps.meta.outputs.tag }}
       release_name: ${{ steps.meta.outputs.release_name }}
       android_version_code: ${{ steps.meta.outputs.android_version_code }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
 
       - name: Read and validate version from project.lua
         id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
-          python3 - <<'PYCODE'
-          import os
-          from pathlib import Path
-          import re
-
-          source = Path("project.lua").read_text()
-          found = re.search(r'^\s*version\s*=\s*"([^"\n]+)"', source, re.MULTILINE)
-          if not found:
-              raise SystemExit("::error::No version found in project.lua")
-          version = found.group(1)
-          semver = re.fullmatch(
-              r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-              r"(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
-              r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", version)
-          if not semver:
-              raise SystemExit("::error::project.lua version must be a safe semantic version")
-          override = re.search(r"^\s*androidVersionCode\s*=\s*([^,\n]+)", source, re.MULTILINE)
-          if override:
-              raw_code = override.group(1).split("--", 1)[0].strip()
-              if not re.fullmatch(r"[0-9]+", raw_code):
-                  raise SystemExit("::error::androidVersionCode must be a positive integer")
-              code = int(raw_code)
-          else:
-              major, minor, patch = map(int, semver.group(1, 2, 3))
-              if minor > 99 or patch > 99:
-                  raise SystemExit("::error::Set androidVersionCode explicitly when minor or patch exceeds 99")
-              code = major * 10000 + minor * 100 + patch
-          if not 1 <= code <= 2100000000:
-              raise SystemExit("::error::Android version code must be between 1 and 2100000000")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"version={version}\ntag=v{version}\n")
-              output.write(f"release_name=Light Engine {version}\nandroid_version_code={code}\n")
-          print(f"Release {version}; Android versionCode {code}")
-          PYCODE
+          python3 tools/stamp_release_version.py --resolve \
+            --repo "$REPO" --sha "$SHA" \
+            --output inputs/release-meta.json \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Build release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          BASE_VERSION: ${{ steps.meta.outputs.base_version }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.meta.outputs.version }}"
-          PATTERN="^## \[$(printf '%s' "$VERSION" | sed 's/\./\\./g')\]"
-          awk -v pat="$PATTERN" '
-            $0 ~ pat { found = 1; next }
-            /^## \[/ && found { exit }
-            found { print }
-          ' CHANGELOG.md > changelog-section.md
+          extract_section() {
+            local ver="$1"
+            local pat
+            pat="^## \[$(printf '%s' "$ver" | sed 's/\./\\./g')\]"
+            awk -v pat="$pat" '
+              $0 ~ pat { found = 1; next }
+              /^## \[/ && found { exit }
+              found { print }
+            ' CHANGELOG.md
+          }
+
+          extract_section "$VERSION" > changelog-section.md
+          if [ ! -s changelog-section.md ] && [ "$VERSION" != "$BASE_VERSION" ]; then
+            extract_section "$BASE_VERSION" > changelog-section.md
+          fi
 
           {
             echo "## Light Engine ${VERSION}"
@@ -111,13 +100,22 @@ jobs:
             else
               echo "See [CHANGELOG.md](CHANGELOG.md) and the commit history."
             fi
+            if [ "$VERSION" != "$BASE_VERSION" ]; then
+              echo
+              echo "### Recent Commits"
+              echo
+              git log -n 10 --pretty=format:'- %s (`%h`)' || true
+              echo
+            fi
             echo
-            echo "## Install"
+            echo "## Downloads & Install"
             echo
-            echo "- **Windows**: unzip and run \`Light Engine.exe\`."
-            echo "- **Linux AppImage**: \`chmod +x\`, then run it."
-            echo "- **Linux portable**: unpack the tar.gz and run \`light-engine.sh\`."
-            echo "- **Android**: install the APK matching your CPU (\`arm64-v8a\`, \`armeabi-v7a\`) or the universal one."
+            echo "- **Windows (x64 / x86)**: unzip \`Light-Engine-${VERSION}-windows-x64.zip\` (or \`x86\`) and run \`Light Engine.exe\`. Includes modding docs, \`tools/create_mod.py\`, and \`examples/\`."
+            echo "- **Linux AppImage**: \`chmod +x Light-Engine-${VERSION}-x86_64.AppImage\`, then run it."
+            echo "- **Linux portable**: unpack \`Light-Engine-${VERSION}-linux-x86_64.tar.gz\` and run \`light-engine.sh\`. Includes modding docs, \`tools/create_mod.py\`, and \`examples/\`."
+            echo "- **Android**: install the APK matching your CPU (\`arm64-v8a\`, \`armeabi-v7a\`) or the universal \`Light-Engine-${VERSION}-android.apk\`."
+            echo "- **Universal LÖVE 11.5 package**: \`Light-Engine-${VERSION}.love\` (macOS / Linux / Windows / BSD)."
+            echo "- **Modding Kit**: \`Light-Engine-${VERSION}-modding-kit.zip\` (mod generator CLI, guides, and example mods/addons)."
           } > notes.md
           cat notes.md
 
@@ -146,12 +144,23 @@ jobs:
           cp notes.md inputs/notes.md
           find inputs -type f | sort
 
-      - name: Package the optional addon separately
-        run: python3 tools/make_addon_release.py Light-Engine-screen-overlay-addon.zip
+      - name: Package universal .love archive, modding kit, and optional addon
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 tools/make_game_love.py "Light-Engine-${VERSION}.love"
+          python3 tools/make_modding_kit.py --archive "Light-Engine-${VERSION}-modding-kit.zip"
+          python3 tools/make_addon_release.py Light-Engine-screen-overlay-addon.zip
+          sha256sum \
+            "Light-Engine-${VERSION}.love" \
+            "Light-Engine-${VERSION}-modding-kit.zip" \
+            Light-Engine-screen-overlay-addon.zip > sha256-core.txt
 
       - name: Open draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
           TAG: ${{ steps.meta.outputs.tag }}
           RELEASE_NAME: ${{ steps.meta.outputs.release_name }}
         run: |
@@ -163,8 +172,12 @@ jobs:
               --title "$RELEASE_NAME" --notes-file notes.md
           fi
           gh release edit "$TAG" --notes-file notes.md
-          gh release upload "$TAG" CHANGELOG.md --clobber
-          gh release upload "$TAG" Light-Engine-screen-overlay-addon.zip --clobber
+          gh release upload "$TAG" \
+            CHANGELOG.md \
+            "Light-Engine-${VERSION}.love" \
+            "Light-Engine-${VERSION}-modding-kit.zip" \
+            Light-Engine-screen-overlay-addon.zip \
+            --clobber
 
       - name: Upload build inputs
         uses: actions/upload-artifact@v4
@@ -172,6 +185,13 @@ jobs:
           name: build-inputs
           path: inputs/
           if-no-files-found: error
+          retention-days: 1
+
+      - name: Store core checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-core
+          path: sha256-core.txt
           retention-days: 1
 
   build-windows:
@@ -198,7 +218,9 @@ jobs:
 
       - name: Build game.love
         shell: bash
-        run: python tools/make_game_love.py game.love
+        run: |
+          python tools/stamp_release_version.py --apply inputs/release-meta.json
+          python tools/make_game_love.py game.love
 
       - name: Download LÖVE ${{ env.LOVE_VERSION }} for Windows
         shell: bash
@@ -244,6 +266,7 @@ jobs:
           LOVE_EXE_SIZE=$(stat -c%s "$DIST/Light Engine.exe")
           cat "$DIST/Light Engine.exe" game.love > "$DIST/fused.exe"
           mv "$DIST/fused.exe" "$DIST/Light Engine.exe"
+          python tools/make_modding_kit.py --populate-bundle "$DIST"
           echo "LOVE_EXE_SIZE=$LOVE_EXE_SIZE" >> "$GITHUB_ENV"
           echo "OUT=$OUT" >> "$GITHUB_ENV"
 
@@ -337,7 +360,9 @@ jobs:
           path: inputs
 
       - name: Build game.love
-        run: python3 tools/make_game_love.py game.love
+        run: |
+          python3 tools/stamp_release_version.py --apply inputs/release-meta.json
+          python3 tools/make_game_love.py game.love
 
       - name: Download the LÖVE AppImage runtime
         run: |
@@ -392,6 +417,7 @@ jobs:
             D="Light-Engine-${VERSION}-linux-x86_64"
             mv AppDir "$D"
             install -m 0755 "$D/AppRun" "$D/light-engine.sh"
+            python3 tools/make_modding_kit.py --populate-bundle "$D"
             tar -czf "Light-Engine-${VERSION}-${{ matrix.suffix }}" "$D"
             OUT="Light-Engine-${VERSION}-${{ matrix.suffix }}"
           fi
@@ -529,7 +555,9 @@ jobs:
             "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build game.love
-        run: python3 tools/make_game_love.py game.love
+        run: |
+          python3 tools/stamp_release_version.py --apply inputs/release-meta.json
+          python3 tools/make_game_love.py game.love
 
       - name: Clone love-android
         run: |
@@ -742,6 +770,10 @@ jobs:
             "Light-Engine-${VERSION}-android.apk"
             "Light-Engine-${VERSION}-android-arm64-v8a.apk"
             "Light-Engine-${VERSION}-android-armeabi-v7a.apk"
+            "Light-Engine-${VERSION}.love"
+            "Light-Engine-${VERSION}-modding-kit.zip"
+            "Light-Engine-screen-overlay-addon.zip"
+            "Light-Engine-screen-overlay-android.apk"
             "CHANGELOG.md"
             "SHA256SUMS.txt"
           )
@@ -757,6 +789,21 @@ jobs:
             exit 1
           fi
 
-          gh release edit "$TAG" --repo "$REPO" --draft=false --title "$RELEASE_NAME" --notes-file inputs/notes.md
+          gh release edit "$TAG" --repo "$REPO" \
+            --draft=false --latest \
+            --title "$RELEASE_NAME" \
+            --notes-file inputs/notes.md
           echo "Published $TAG"
           printf '%s\n' "$ATTACHED" | sort
+
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "## Published Release: [${RELEASE_NAME}](https://github.com/${REPO}/releases/tag/${TAG})"
+              echo
+              echo "All compiled binaries, universal \`.love\` package, modding kit, addons, and SHA-256 checksums have been uploaded:"
+              echo
+              while IFS= read -r asset; do
+                [ -n "$asset" ] && echo "- [\`${asset}\`](https://github.com/${REPO}/releases/download/${TAG}/${asset})"
+              done < <(printf '%s\n' "$ATTACHED" | sort)
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
