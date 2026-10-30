@@ -749,7 +749,7 @@ function ChartingState:buildInspectorUI()
 	self.ddStage.callback = function(v) self.song.stage = v end
 
 	lbl(gSong, 276, 200, "Note Skin:")
-	self.ddSkin = UIDropDown(276, 218, skinList, math.max(1, table.find(skinList, self.song.skin or "default") or 1), 240, 26)
+	self.ddSkin = UIDropDown(276, 218, skinList, math.max(1, table.find(skinList, resolveSkinName(self.song.skin)) or 1), 240, 26)
 	self.ddSkin.callback = function(v) self.song.skin = v end
 
 	gSong:add(self.ddStage)

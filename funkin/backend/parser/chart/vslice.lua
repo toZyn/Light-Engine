@@ -71,6 +71,9 @@ local function updateFromMeta(chart, meta)
 	Parser.pset(chart, "stage", STAGE_MAP[rawStage] or rawStage)
 
 	local rawStyle = (info and info.noteStyle) or meta.skin
+	if type(rawStyle) == "table" then
+		rawStyle = rawStyle.skin or rawStyle.name or "default"
+	end
 	if rawStyle ~= nil and type(rawStyle) ~= "string" then
 		error("field 'playData.noteStyle' must be a string", 0)
 	end

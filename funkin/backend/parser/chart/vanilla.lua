@@ -3,7 +3,8 @@ local vanilla = {name = "Vanilla/Psych"}
 local function getFromMeta(data, tbl)
 	Parser.pset(tbl, "song", data.songName or data.song or data.name)
 	Parser.pset(tbl, "stage", data.stage)
-	Parser.pset(tbl, "skin", data.skin)
+	local metaSkin = type(data.skin) == "table" and (data.skin.skin or data.skin.name) or data.skin
+	Parser.pset(tbl, "skin", metaSkin)
 
 	Parser.pset(tbl, "difficulties", data.difficulties)
 
@@ -129,8 +130,9 @@ function vanilla.parse(data, events, meta, diff)
 	Parser.pset(chart, "bpm", data.bpm)
 	Parser.pset(chart, "speed", data.speed)
 
+	local rawSkin = type(data.skin) == "table" and (data.skin.skin or data.skin.name) or data.skin
 	Parser.pset(chart, "stage", data.stage)
-	Parser.pset(chart, "skin", data.skin)
+	Parser.pset(chart, "skin", rawSkin)
 
 	Parser.pset(chart, "player1", data.player1)
 	Parser.pset(chart, "player2", data.player2)

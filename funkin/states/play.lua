@@ -104,11 +104,8 @@ end
 
 function PlayState:preload()
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
-	local skin = PlayState.SONG.skin or "default"
-	if type(skin) == "string" then
-		PlayState.SONG.skin = paths.getSkin(PlayState.SONG.skin or "default")
-		skin = PlayState.SONG.skin
-	end
+	local skin = paths.getSkin(PlayState.SONG and PlayState.SONG.skin or "default")
+	PlayState.SONG.skin = skin
 
 	local function skinPath(type, name) return {type, skin:getPath(name, type)} end
 	local song = paths.formatToSongPath(PlayState.SONG.song)
@@ -139,12 +136,13 @@ function PlayState:preload()
 		skinPath("sound", "introGo"), {"sound", "hitsound"}
 	}
 
-	local path, sprite = "skins/" .. PlayState.SONG.skin.skin .. "/"
-	for i, part in pairs(PlayState.SONG.skin.data) do
-		sprite = part.sprite
-		if part.skin then path = "skins/" .. part.skin .. "/" end
+	local defaultSkinPath = "skins/" .. tostring(skin.skin or "default") .. "/"
+	for _, part in pairs(skin.data or {}) do
+		local sprite = type(part) == "table" and part.sprite or nil
+		local partPath = (type(part) == "table" and part.skin)
+			and ("skins/" .. part.skin .. "/") or defaultSkinPath
 		if sprite then
-			table.insert(list, {"image", path .. sprite})
+			table.insert(list, {"image", partPath .. sprite})
 		end
 	end
 
@@ -211,9 +209,7 @@ function PlayState:enter()
 
 	local songName = paths.formatToSongPath(PlayState.SONG.song)
 
-	if type(PlayState.SONG.skin) == "string" then
-		PlayState.SONG.skin = paths.getSkin(PlayState.SONG.skin or "default")
-	end
+	PlayState.SONG.skin = paths.getSkin(PlayState.SONG and PlayState.SONG.skin or "default")
 	local skin = PlayState.SONG.skin
 
 	local difficulty = PlayState.songDifficulty:lower()

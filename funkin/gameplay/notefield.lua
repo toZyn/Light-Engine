@@ -7,7 +7,9 @@ local function sortActiveNotes(a, b) return a.time < b.time end
 function Notefield:new(x, y, keys, skin, character, vocals, speed)
 	if keys == nil then keys = 4 end
 	if skin == nil then skin = "default" end
-	if type(skin) == "string" then skin = Skin(skin) end
+	if type(skin) ~= "table" or type(skin.getPath) ~= "function" then
+		skin = (paths and paths.getSkin and paths.getSkin(skin)) or Skin(skin)
+	end
 	if speed == nil then speed = 1 end
 
 	Notefield.super.new(self, x, y)

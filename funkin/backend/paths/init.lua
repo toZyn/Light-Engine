@@ -261,7 +261,13 @@ function paths.getXML(key)
 end
 
 function paths.getSkin(key)
-	return generate(paths.skins, key, function() return Skin(key) end, "skin")
+	if type(key) == "table" and type(key.getPath) == "function" and type(key.get) == "function" then
+		return key
+	end
+	local resolvedName = (Skin and Skin.resolveName and Skin.resolveName(key))
+		or (type(key) == "string" and key ~= "" and key)
+		or "default"
+	return generate(paths.skins, resolvedName, function() return Skin(resolvedName) end, "skin")
 end
 
 function paths.getFont(key, size, logError)

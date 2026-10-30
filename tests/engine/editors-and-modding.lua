@@ -413,3 +413,42 @@ check("FreeplayState survives malformed metadata.json, displays Toast notice, an
 	Mods.currentMod = prevMod
 	paths.async.stop()
 end)
+
+check("PlayState:preload and LoadScreen resolve default, pixel, mod skins, and plain serialized skin tables", function()
+	local prevMod = Mods.currentMod
+	local modId = "skin-probe-mod"
+	local modRoot = (Mods.root or "mods") .. "/" .. modId
+	Storage.ensureDir(modRoot .. "/data/skins")
+	local baseSkinJson = assert(love.filesystem.read("assets/data/skins/default.json"))
+	Storage.writeFile(modRoot .. "/meta.json", '{"name":"Skin Probe Mod"}')
+	Storage.writeFile(modRoot .. "/data/skins/mod-neon.json", baseSkinJson)
+	Mods.reload()
+	Mods.currentMod = modId
+	paths.clearCache()
+
+	for _, testCase in ipairs({
+		{song = "bopeebo", diff = "normal", overrideSkin = nil, expected = "default"},
+		{song = "senpai", diff = "normal", overrideSkin = nil, expected = "default-pixel"},
+		{song = "bopeebo", diff = "normal", overrideSkin = "mod-neon", expected = "mod-neon"},
+		-- Plain JSON table without metatable (reproducing legacy editor-serialized skin object)
+		{song = "thorns", diff = "hard", overrideSkin = {skin = "default-pixel", isPixel = true, data = {}}, expected = "default-pixel"}
+	}) do
+		assert(PlayState.loadSong(testCase.song, testCase.diff))
+		if testCase.overrideSkin ~= nil then
+			PlayState.SONG.skin = testCase.overrideSkin
+		end
+		local loadState = LoadState(PlayState(false, nil, testCase.diff))
+		game.switchState(loadState, true)
+		game.update(1 / 60)
+		assert(type(PlayState.SONG.skin) == "table" and type(PlayState.SONG.skin.getPath) == "function",
+			"PlayState:preload must resolve PlayState.SONG.skin into a Skin instance with :getPath()")
+		assert(PlayState.SONG.skin.skin == testCase.expected,
+			"Expected skin '" .. testCase.expected .. "', got '" .. tostring(PlayState.SONG.skin.skin) .. "'")
+		paths.async.stop()
+	end
+
+	Mods.currentMod = prevMod
+	Parser.clearCache()
+	paths.clearCache()
+	paths.async.stop()
+end)
