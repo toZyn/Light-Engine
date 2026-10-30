@@ -1,19 +1,31 @@
 ---@class UIButton:Object
 local Button = Object:extend("UIButton")
 
-local function getMousePos(self)
-	local mx, my = game.mouse.x, game.mouse.y
+local function getPointerPos(self, gx, gy)
+	local sfx = self.scrollFactor and self.scrollFactor.x or 1
+	local sfy = self.scrollFactor and self.scrollFactor.y or 1
 	local cam = self.cameras and self.cameras[1]
+	local mx, my = gx, gy
 	if cam then
-		local z = cam.zoom or 1
-		if z ~= 0 and z ~= 1 then
-			mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
-			my = (my - cam.height * 0.5) / z + cam.height * 0.5
+		if cam.screenToWorld then
+			mx, my = cam:screenToWorld(gx, gy, sfx, sfy)
+		else
+			local z = type(cam.zoom) == "number" and cam.zoom or (cam.zoom and cam.zoom.x or 1)
+			if z ~= 0 and z ~= 1 then
+				mx = (mx - cam.width * 0.5) / z + cam.width * 0.5
+				my = (my - cam.height * 0.5) / z + cam.height * 0.5
+			end
+			mx = mx + cam.scroll.x * sfx
+			my = my + cam.scroll.y * sfy
 		end
-		mx = mx + cam.scroll.x * (self.scrollFactor and self.scrollFactor.x or 1)
-		my = my + cam.scroll.y * (self.scrollFactor and self.scrollFactor.y or 1)
 	end
 	return mx - (self.__uiOffsetX or 0), my - (self.__uiOffsetY or 0)
+end
+
+local function isInside(self, gx, gy)
+	local px, py = getPointerPos(self, gx, gy)
+	return px >= self.x and px <= self.x + self.width and
+		py >= self.y and py <= self.y + self.height
 end
 
 function Button:new(x, y, width, height, text, callback)
@@ -44,22 +56,56 @@ end
 function Button:update(dt)
 	Button.super.update(self, dt)
 
-	if self.disabled or not self.visible then
+	if self.disabled or not self.visible or self.exists == false then
 		self.hovered = false
 		self.pressed = false
+		self._touchSlot = nil
 		return
 	end
 
-	local mx, my = getMousePos(self)
-	self.hovered = (mx >= self.x and mx <= self.x + self.width and
-		my >= self.y and my <= self.y + self.height)
+	-- Touch tracking (mobile / touchscreens)
+	local touchSys = game and game.touch
+	if touchSys and touchSys.touches then
+		if self._touchSlot ~= nil then
+			local t = touchSys.touches[self._touchSlot]
+			if not t or not t.active then
+				self._touchSlot = nil
+				self.pressed = false
+				self.hovered = false
+			else
+				local over = isInside(self, t.x, t.y)
+				self.hovered = over
+				if t.justReleased then
+					self._touchSlot = nil
+					self.pressed = false
+					if over and self.callback then self.callback(self) end
+					return
+				elseif t.pressed then
+					self.pressed = true
+					return
+				end
+			end
+		else
+			for i = 0, (touchSys.maxTouches or 10) - 1 do
+				local t = touchSys.touches[i]
+				if t and t.active and t.justPressed and isInside(self, t.x, t.y) then
+					self._touchSlot = i
+					self.hovered = true
+					self.pressed = true
+					return
+				end
+			end
+		end
+	end
+
+	self.hovered = isInside(self, game.mouse.x, game.mouse.y)
 
 	if self.hovered then
 		if game.mouse.justPressedLeft then
 			self.pressed = true
 		elseif game.mouse.justReleasedLeft and self.pressed then
 			self.pressed = false
-			if self.callback then self.callback() end
+			if self.callback then self.callback(self) end
 		elseif not game.mouse.pressedLeft then
 			self.pressed = false
 		end
@@ -67,6 +113,10 @@ function Button:update(dt)
 		if not game.mouse.pressedLeft then
 			self.pressed = false
 		end
+	end
+
+	if self.shortcutKey and game.keys and game.keys.justPressed[self.shortcutKey:upper()] then
+		if self.callback then self.callback(self) end
 	end
 end
 

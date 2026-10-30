@@ -76,17 +76,46 @@ end
 ```
 
 ### Funciones principales de `Mod`:
-- `Mod.sprite(tag, imagePath, x, y, opts)` — Crea y registra un `Sprite` (estático o atlas Sparrow con `opts.animated = true`).
-- `Mod.graphic(tag, x, y, width, height, color, opts)` — Crea un rectángulo/forma vectorial.
-- `Mod.text(tag, text, x, y, opts)` — Crea un `Text` con borde y fuente automática.
+- `Mod.sprite([tag,] imagePath, x, y, opts)` — Crea y registra un `Sprite` (estático o atlas Sparrow automático).
+- `Mod.graphic([tag,] x, y, width, height, color, opts)` — Crea un rectángulo/forma vectorial.
+- `Mod.text([tag,] text, x, y, [size,] opts)` — Crea un `Text` con borde y fuente automática.
+- `Mod.button([tag,] x, y, width, height, label, callback, opts)` — Crea un botón interactivo (`UIButton`, o `SpriteButton` con `opts.image` / `opts.atlas`) compatible con ratón, pantalla táctil y tecla rápida (`opts.key`).
+- `Mod.addMenuButton(id, label, callback, opts)` — Añade una opción seleccionable al Menú Principal desde `data/states/mainmenu.lua` (`opts.stay = true` para acciones sin cambiar de pantalla, o `opts.atlas` para usar un atlas Sparrow).
 - `Mod.get(tag)` / `Mod.remove(tag)` — Obtiene o destruye un objeto creado con `Mod`.
 - `Mod.tween(targetOrTag, props, duration, ease, onComplete)` — Tween seguro sincronizado con pausa/gameplay.
 - `Mod.timer(seconds, callback, loops)` — Temporizador sincronizado con el estado.
-- `Mod.sound(soundKey, volume)` — Reproduce un efecto de sonido de `sounds/`.
+- `Mod.sound(soundKey, volume, pitch)` — Reproduce un efecto de sonido de `sounds/`.
 - `Mod.flash(color, duration, camera)` / `Mod.shake(intensity, duration, camera)` / `Mod.zoom(gameAdd, hudAdd)` — Efectos de cámara instantáneos.
 - `Mod.swapCharacter(slot, charName)` — Cambia `"bf"`, `"dad"` o `"gf"` en mitad de la canción actualizando íconos y cámara.
 - `Mod.triggerEvent(name, params)` — Dispara cualquier evento de chart desde código.
-- `Mod.saveData(key, table)` / `Mod.loadData(key, default)` — Guarda progreso o datos persistentes de tu mod.
+- `Mod.saveData(key, value)` / `Mod.loadData(key, default)` — Guarda progreso o datos persistentes de tu mod.
+
+### Ejemplo: Añadir Botones en Menús y en Partida
+Consulta el mod de ejemplo completo en [`examples/custom-button-mod/`](../examples/custom-button-mod/):
+
+```lua
+-- data/states/mainmenu.lua
+function postCreate()
+    Mod.addMenuButton("bonus", "Bonus Mode", function(menu, id, item)
+        local enabled = not Mod.loadData("bonusMode", false)
+        Mod.saveData("bonusMode", enabled)
+        return true -- permanece en MainMenuState sin bloquear la lista
+    end, {stay = true})
+end
+```
+
+```lua
+-- data/scripts/hud-button.lua
+function postCreate()
+    Mod.button("boost_btn", 20, 96, 170, 38, "Camera Bop [B]", function(btn)
+        Mod.zoom(0.025, 0.04)
+    end, {key = "b", camera = "hud"})
+end
+
+function leave()
+    Mod.remove("boost_btn")
+end
+```
 
 ---
 

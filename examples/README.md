@@ -8,6 +8,7 @@ Enable the addon in the Mods menu, select the mod, then play any existing song.
 | --- | --- | --- |
 | `beat-meter-mod` | `tempo-tools-addon` | Shows beat position and BPM, including tempo changes. |
 | `timing-trainer-mod` | `judgement-tools-addon` | Shows signed timing bias, mean absolute error, and miss counts. |
+| `custom-button-mod` | *(none)* | Adds a custom `MainMenuState` button (`Mod.addMenuButton`) and a clickable/touch/key gameplay HUD button (`Mod.button`). |
 
 The examples keep the game's chart, scoring and saved preferences. Each removes
 its HUD objects and subscriptions in `leave()`. A disabled or absent addon omits

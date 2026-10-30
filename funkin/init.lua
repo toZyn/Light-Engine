@@ -40,6 +40,7 @@ require "funkin.backend.scripts.events"
 Mods = require "funkin.backend.modding.mods"
 Addons = require "funkin.backend.modding.addons"
 ModAPI = require "funkin.backend.modding.api"
+Script.addToEnv("Mod", ModAPI)
 
 Discord = require "funkin.backend.discord"
 
