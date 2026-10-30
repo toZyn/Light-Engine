@@ -10,7 +10,24 @@ end
 
 local Skin = Basic:extend("Skin")
 
+function Skin.resolveName(raw)
+	if type(raw) == "table" then
+		if type(raw.skin) == "string" and raw.skin ~= "" then
+			return raw.skin
+		elseif type(raw.name) == "string" and raw.name ~= "" then
+			return raw.name
+		elseif type(raw.data) == "table" and type(raw.data.skin) == "string" and raw.data.skin ~= "" then
+			return raw.data.skin
+		end
+		return "default"
+	elseif type(raw) == "string" and raw ~= "" then
+		return raw
+	end
+	return "default"
+end
+
 function Skin:new(name)
+	name = Skin.resolveName(name)
 	local s, d = pcall(paths.getJSON, "data/skins/" .. name)
 
 	if s and d ~= nil then

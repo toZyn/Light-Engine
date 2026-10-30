@@ -33,13 +33,31 @@ PlayState.prevCamFollow = nil
 PlayState.chartingMode = false
 PlayState.startPos = 0
 
+local function showSongLoadNotice(err)
+	local text = tostring(err or "Failed to load chart")
+	if Toast and Toast.error then
+		local prev = Toast.showErrors
+		Toast.showErrors = true
+		pcall(Toast.error, text)
+		Toast.showErrors = prev
+	end
+end
+
 function PlayState.loadSong(song, diff)
 	diff = diff or PlayState.defaultDifficulty
 	PlayState.songDifficulty = diff
 
-	PlayState.SONG = Parser.getChart(song, diff)
+	local chart, err = Parser.getChart(song, diff, {strict = true})
+	if not chart then
+		PlayState.SONG = nil
+		PlayState.lastLoadError = err
+		showSongLoadNotice(err)
+		return false, err
+	end
 
-	return true
+	PlayState.SONG = chart
+	PlayState.lastLoadError = nil
+	return true, chart
 end
 
 function PlayState.getCutscene(isEnd)
@@ -77,19 +95,17 @@ function PlayState:new(storyMode, song, diff)
 			song = song[1]
 		end
 		if not PlayState.loadSong(song, diff) then
-			setmetatable(self, TitleState)
-			TitleState.new(self)
+			local Fallback = PlayState.storyMode and StoryMenuState or FreeplayState
+			setmetatable(self, Fallback)
+			Fallback.new(self)
 		end
 	end
 end
 
 function PlayState:preload()
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
-	local skin = PlayState.SONG.skin or "default"
-	if type(skin) == "string" then
-		PlayState.SONG.skin = paths.getSkin(PlayState.SONG.skin or "default")
-		skin = PlayState.SONG.skin
-	end
+	local skin = paths.getSkin(PlayState.SONG and PlayState.SONG.skin or "default")
+	PlayState.SONG.skin = skin
 
 	local function skinPath(type, name) return {type, skin:getPath(name, type)} end
 	local song = paths.formatToSongPath(PlayState.SONG.song)
@@ -120,12 +136,13 @@ function PlayState:preload()
 		skinPath("sound", "introGo"), {"sound", "hitsound"}
 	}
 
-	local path, sprite = "skins/" .. PlayState.SONG.skin.skin .. "/"
-	for i, part in pairs(PlayState.SONG.skin.data) do
-		sprite = part.sprite
-		if part.skin then path = "skins/" .. part.skin .. "/" end
+	local defaultSkinPath = "skins/" .. tostring(skin.skin or "default") .. "/"
+	for _, part in pairs(skin.data or {}) do
+		local sprite = type(part) == "table" and part.sprite or nil
+		local partPath = (type(part) == "table" and part.skin)
+			and ("skins/" .. part.skin .. "/") or defaultSkinPath
 		if sprite then
-			table.insert(list, {"image", path .. sprite})
+			table.insert(list, {"image", partPath .. sprite})
 		end
 	end
 
@@ -192,9 +209,7 @@ function PlayState:enter()
 
 	local songName = paths.formatToSongPath(PlayState.SONG.song)
 
-	if type(PlayState.SONG.skin) == "string" then
-		PlayState.SONG.skin = paths.getSkin(PlayState.SONG.skin or "default")
-	end
+	PlayState.SONG.skin = paths.getSkin(PlayState.SONG and PlayState.SONG.skin or "default")
 	local skin = PlayState.SONG.skin
 
 	local difficulty = PlayState.songDifficulty:lower()
@@ -492,7 +507,12 @@ function PlayState:enter()
 		local w, h = (game.width - pad * 2) / 4, game.height
 
 		self.buttons = VirtualPadGroup()
-		self.pauseButton = PauseButton(game.width - 130 - ClientPrefs.data.margin, 20, skin)
+		self.pauseButton = PauseButton(game.width - 130 - ClientPrefs.data.margin, 20, skin, function()
+			if self.startedCountdown and self.canPause and not self.isDead
+				and not self.substate and not self:hasActiveDialogue() then
+				self:tryPause()
+			end
+		end)
 		self:add(self.pauseButton)
 		self.buttons.cameras = {self.camOther}
 		self.pauseButton.cameras = self.buttons.cameras
@@ -513,6 +533,7 @@ function PlayState:enter()
 			releasedAlpha = 0,
 			config = {round = {0, 0}}
 		})
+		self.pauseButton:promotePad()
 	end
 	if self.buttons then self.buttons:disable() end
 
@@ -543,6 +564,9 @@ function PlayState:enter()
 				if skipCountdown then
 					if self.buttons and not table.find(self.members, self.buttons) then
 						self:add(self.buttons)
+					end
+					if self.pauseButton and self.pauseButton.promotePad then
+						self.pauseButton:promotePad()
 					end
 					self:playSong(self.startPos)
 					self:fadeReceptors()
@@ -706,6 +730,9 @@ end
 function PlayState:startCountdown()
 	if self.buttons and not table.find(self.members, self.buttons) then
 		self:add(self.buttons)
+	end
+	if self.pauseButton and self.pauseButton.promotePad then
+		self.pauseButton:promotePad()
 	end
 
 	local event = self.scripts:call("startCountdown")
@@ -1658,6 +1685,9 @@ function PlayState:closeSubstate()
 	if self.buttons and not table.find(self.members, self.buttons) then
 		self:add(self.buttons)
 	end
+	if self.pauseButton and self.pauseButton.promotePad then
+		self.pauseButton:promotePad()
+	end
 	self:reconcileReceptors()
 
 	self.scripts:call("postSubstateClosed")
@@ -1717,8 +1747,15 @@ function PlayState:endSong(skip)
 				})
 			end
 
-			PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty)
-			self:resetState()
+			if not PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty) then
+				GameOverSubstate.deaths = 0
+				PlayState.canFadeInReceptors = true
+				local stickers = Stickers(nil, StoryMenuState())
+				self:add(stickers)
+				util.playMenuMusic()
+			else
+				self:resetState()
+			end
 		else
 			GameOverSubstate.deaths = 0
 			PlayState.canFadeInReceptors = true

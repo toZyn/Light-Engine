@@ -394,6 +394,22 @@ function Storage.getContentRoot(name)
 	return name
 end
 
+function Storage.getEditorSavePrefix()
+	if Mods and Mods.currentMod and Mods.currentMod ~= "" then
+		return (Mods.root or Storage.getContentRoot("mods")) .. "/" .. Mods.currentMod .. "/"
+	end
+	return Storage.getContentRoot("saves") .. "/"
+end
+
+function Storage.isAssetsSourcePath(nativePath)
+	if type(nativePath) ~= "string" or nativePath == "" then return false end
+	local src = love.filesystem.getSource and love.filesystem.getSource() or ""
+	if src == "" then return false end
+	local normDst = nativePath:gsub("\\", "/"):lower()
+	local normAssets = (src:gsub("\\", "/"):gsub("/+$", "") .. "/assets/"):lower()
+	return normDst:sub(1, #normAssets) == normAssets
+end
+
 function Storage.installSave(save)
 	if save.externalStorageInstalled then return end
 	save.externalStorageInstalled = true
@@ -437,6 +453,9 @@ function Storage.installSave(save)
 		if ClientPrefs then
 			pcall(table.merge, ClientPrefs.data, data.prefs)
 			pcall(table.merge, ClientPrefs.controls, data.controls)
+			if ClientPrefs.ensureDefaultBinds then
+				ClientPrefs.ensureDefaultBinds(ClientPrefs.controls)
+			end
 			if controls then controls:reset({controls = table.clone(ClientPrefs.controls)}) end
 		end
 		if Highscore then Highscore.scores = data.scores or {songs = {}, weeks = {}} end

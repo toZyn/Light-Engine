@@ -78,14 +78,21 @@ function PauseSubstate:enter()
 	Tween.tween(self.deathsText, {y = self.deathsText.y + 5, alpha = 1},
 		0.4, {ease = 'quartInOut', startDelay = 0.4})
 
+	self._openingFrame = true
+
 	if love.system.getDevice() == "Mobile" then
 		self.buttons = util.createButtons("b")
 		self:add(self.buttons)
 
-		self.parent:remove(self.parent.pauseButton)
-		self:add(self.parent.pauseButton)
-		Tween.cancelTweensOf(self.parent.pauseButton)
-		Tween.tween(self.parent.pauseButton, {alpha = 0}, 0.6, {ease = Ease.quartOut, startDelay = 0.5});
+		if self.parent and self.parent.pauseButton then
+			self.parent:remove(self.parent.pauseButton)
+			self:add(self.parent.pauseButton)
+			if self.parent.pauseButton.setPadStunned then
+				self.parent.pauseButton:setPadStunned(true)
+			end
+			Tween.cancelTweensOf(self.parent.pauseButton)
+			Tween.tween(self.parent.pauseButton, {alpha = 0}, 0.6, {ease = Ease.quartOut, startDelay = 0.5});
+		end
 	end
 end
 
@@ -166,8 +173,19 @@ function PauseSubstate:update(dt)
 	end
 	PauseSubstate.super.update(self, dt)
 
-	if controls:pressed("back") and self.diffList.open then
-		self:closeDifficultyMenu()
+	if self._openingFrame then
+		self._openingFrame = false
+		return
+	end
+
+	if self.lock or self.blockInput or self.optionsUI then return end
+
+	if self.diffList.open then
+		if controls:pressed("back") then
+			self:closeDifficultyMenu()
+		end
+	elseif controls:pressed("back") or (controls:pressed("pause") and not controls:pressed("accept")) then
+		self:close()
 	end
 end
 
@@ -270,6 +288,12 @@ function PauseSubstate:close()
 	if self.parent and self.parent.pauseButton then
 		self:remove(self.parent.pauseButton)
 		self.parent:add(self.parent.pauseButton)
+		if self.parent.pauseButton.setPadStunned then
+			self.parent.pauseButton:setPadStunned(false)
+		end
+		if self.parent.pauseButton.promotePad then
+			self.parent.pauseButton:promotePad()
+		end
 		Tween.cancelTweensOf(self.parent.pauseButton)
 		Tween.tween(self.parent.pauseButton, {alpha = 1}, 0.25, {ease = Ease.quartOut})
 		if self.parent.pauseCircle then

@@ -69,7 +69,8 @@ function Controls:getOptionString(id, bind)
 	local option = self.settings[id]
 	if option[1] == "asyncInput" then return Settings.getOptionString(self, id, 1) end
 	local str = ClientPrefs.controls[option[1]][bind]
-	return str and str:sub(5):capitalize() or "None"
+	if type(str) ~= "string" or str:startsWith("button:") then return "None" end
+	return str:sub(5):capitalize()
 end
 
 function Controls:enterOption(id, optionsUI)
@@ -127,6 +128,9 @@ function Controls:setNewBind(key, optionsUI)
 
 	if controlsTable[keyName][self.curBind] == controlsTable[keyName][secBind] then
 		controlsTable[keyName][secBind] = oldBind
+	end
+	if ClientPrefs.ensureDefaultBinds then
+		ClientPrefs.ensureDefaultBinds(controlsTable)
 	end
 
 	ClientPrefs.controls = controlsTable

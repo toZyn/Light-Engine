@@ -79,6 +79,61 @@ function love.load()
 		near(initial:getTimeInSteps(400), 4)
 		initial:destroy()
 	end)
+	check('legacy charts carrying version field (test.json) route to Vanilla and all 27 base songs parse cleanly', function()
+		Parser.clearCache()
+		local testChart, testErr = Parser.getChart('test', 'normal', {strict = true})
+		assert(testChart ~= nil and testErr == nil, 'test song must parse cleanly: ' .. tostring(testErr))
+		assert(type(testChart.speed) == 'number', 'test song speed must be numeric, got ' .. type(testChart.speed))
+		assert(#testChart.notes.player + #testChart.notes.enemy > 0, 'test song must contain parsed notes')
+
+		for _, songDir in ipairs(love.filesystem.getDirectoryItems('assets/songs')) do
+			if paths.exists('assets/songs/' .. songDir, 'directory') then
+				local meta = Parser.getMeta(songDir)
+				local diffs = (meta and meta.difficulties) or {'normal'}
+				for _, diff in ipairs(diffs) do
+					local c, err = Parser.getChart(songDir, diff, {strict = true})
+					assert(c ~= nil, string.format('Song "%s" [%s] failed to parse: %s',
+						tostring(songDir), tostring(diff), tostring(err)))
+				end
+			end
+		end
+	end)
+	check('malformed metadata.json logs song + path + field, shows Toast notice, and keeps Freeplay alive', function()
+		local root, mod = Mods.root, Mods.currentMod
+		Mods.root, Mods.currentMod = 'tests-chart-mods', 'broken-meta-mod'
+		local songDir = Mods.root .. '/' .. Mods.currentMod .. '/songs/corrupt-probe'
+		assert(love.filesystem.createDirectory(songDir))
+		assert(love.filesystem.write(songDir .. '/chart.json',
+			'{"version":"2.0.0","scrollSpeed":{"normal":1.2},"notes":{"normal":[{"t":500,"d":1,"l":0}]},"events":[]}'))
+
+		-- 1) Missing playData in V-Slice metadata
+		assert(love.filesystem.write(songDir .. '/meta.json', '{"version":"2.2.4"}'))
+		Parser.clearCache()
+		paths.clearCache()
+		local okLoad, loadErr = PlayState.loadSong('corrupt-probe', 'normal')
+		assert(okLoad == false, 'PlayState.loadSong must fail gracefully on invalid V-Slice metadata')
+		assert(type(loadErr) == 'string'
+			and loadErr:find('corrupt%-probe')
+			and loadErr:find('meta%.json')
+			and loadErr:find('playData'),
+			'Error must include song name, file path, and failing field; got: ' .. tostring(loadErr))
+
+		-- 2) Invalid JSON syntax in meta.json
+		assert(love.filesystem.write(songDir .. '/meta.json', '{ broken json !!!'))
+		Parser.clearCache()
+		paths.clearCache()
+		local safeMeta = Parser.getMeta('corrupt-probe')
+		assert(type(safeMeta) == 'table' and safeMeta.song == 'corrupt-probe',
+			'Parser.getMeta must return fallback metadata without crashing on broken JSON')
+		local openOk, openErr = PlayState.loadSong('corrupt-probe', 'normal')
+		assert(openOk == false, 'PlayState.loadSong must fail gracefully on broken JSON syntax')
+		assert(type(openErr) == 'string' and openErr:find('corrupt%-probe') and openErr:find('meta%.json'),
+			'Broken JSON error must cite song and meta.json path; got: ' .. tostring(openErr))
+
+		Mods.root, Mods.currentMod = root, mod
+		Parser.clearCache()
+		paths.clearCache()
+	end)
 	paths.async.stop()
 	print(('CHART TIMING: %d passed, %d failed'):format(passed, failed))
 	love.event.quit(failed == 0 and 0 or 1)

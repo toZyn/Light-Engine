@@ -66,24 +66,24 @@ ClientPrefs.data = {
 }
 
 ClientPrefs.controls = {
-	note_left = {"key:a", "key:left"},
-	note_down = {"key:s", "key:down"},
-	note_up = {"key:w", "key:up"},
-	note_right = {"key:d", "key:right"},
+	note_left = {"key:a", "key:left", "button:dpleft"},
+	note_down = {"key:s", "key:down", "button:dpdown"},
+	note_up = {"key:w", "key:up", "button:dpup"},
+	note_right = {"key:d", "key:right", "button:dpright"},
 
-	ui_left = {"key:a", "key:left"},
-	ui_down = {"key:s", "key:down"},
-	ui_up = {"key:w", "key:up"},
-	ui_right = {"key:d", "key:right"},
+	ui_left = {"key:a", "key:left", "button:dpleft"},
+	ui_down = {"key:s", "key:down", "button:dpdown"},
+	ui_up = {"key:w", "key:up", "button:dpup"},
+	ui_right = {"key:d", "key:right", "button:dpright"},
 
 	volume_down = {"key:-", "key:kp-"},
 	volume_up = {"key:+", "key:kp+", "key:="},
 	volume_mute = {"key:0", "key:kp0"},
 
-	reset = {"key:r"},
-	accept = {"key:z", "key:space", "key:return", "key:kpenter"},
-	back = {"key:x", "key:backspace", "key:escape", "key:acback"},
-	pause = {"key:p", "key:return", "key:escape", "key:acback"},
+	reset = {"key:r", "button:y"},
+	accept = {"key:z", "key:space", "key:return", "key:kpenter", "button:a"},
+	back = {"key:x", "key:backspace", "key:escape", "key:acback", "button:b", "button:back"},
+	pause = {"key:p", "key:return", "key:escape", "key:acback", "button:start"},
 
 	fullscreen = {"key:f11"},
 	pick_mods = {"key:tab"},
@@ -122,8 +122,27 @@ local function ensureControlBind(list, bind)
 		table.insert(list, bind)
 	end
 end
-ensureControlBind(ClientPrefs.controls.accept, "key:kpenter")
-ensureControlBind(ClientPrefs.controls.back, "key:acback")
-ensureControlBind(ClientPrefs.controls.pause, "key:acback")
+
+function ClientPrefs.ensureDefaultBinds(ctrlTbl)
+	if type(ctrlTbl) ~= "table" then return end
+	ensureControlBind(ctrlTbl.note_left, "button:dpleft")
+	ensureControlBind(ctrlTbl.note_down, "button:dpdown")
+	ensureControlBind(ctrlTbl.note_up, "button:dpup")
+	ensureControlBind(ctrlTbl.note_right, "button:dpright")
+	ensureControlBind(ctrlTbl.ui_left, "button:dpleft")
+	ensureControlBind(ctrlTbl.ui_down, "button:dpdown")
+	ensureControlBind(ctrlTbl.ui_up, "button:dpup")
+	ensureControlBind(ctrlTbl.ui_right, "button:dpright")
+	ensureControlBind(ctrlTbl.reset, "button:y")
+	ensureControlBind(ctrlTbl.accept, "key:kpenter")
+	ensureControlBind(ctrlTbl.accept, "button:a")
+	ensureControlBind(ctrlTbl.back, "key:acback")
+	ensureControlBind(ctrlTbl.back, "button:b")
+	ensureControlBind(ctrlTbl.back, "button:back")
+	ensureControlBind(ctrlTbl.pause, "key:acback")
+	ensureControlBind(ctrlTbl.pause, "button:start")
+end
+
+ClientPrefs.ensureDefaultBinds(ClientPrefs.controls)
 
 return ClientPrefs

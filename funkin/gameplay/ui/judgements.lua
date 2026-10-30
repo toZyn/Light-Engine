@@ -7,16 +7,15 @@ function Judgements:new(x, y, skin)
 	self.ratingVisible = true
 	self.comboNumVisible = true
 
-	self.skin = skin
-	self.antialiasing = not skin.isPixel
+	self.skin = paths.getSkin(skin or "default")
+	self.antialiasing = not self.skin.isPixel
 
 	self.noStack = false
 end
 
 function Judgements:createSprite(name, scale, duration)
 	local sprite = self:recycle()
-	local skinObj = (self.skin and self.skin.get and self.skin)
-		or (PlayState.SONG and type(PlayState.SONG.skin) == "table" and PlayState.SONG.skin)
+	local skinObj = (self.skin and type(self.skin.get) == "function" and self.skin)
 		or paths.getSkin((PlayState.SONG and PlayState.SONG.skin) or "default")
 	sprite:loadTexture(skinObj:get(name, "image"))
 	sprite:setGraphicSize(math.floor(sprite.width * scale))

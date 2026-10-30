@@ -78,15 +78,21 @@ end
 function FreeplayState:openSong(song)
 	PlayState.storyMode = false
 	PlayState.META = song.meta
-	local diff = song.diffs[FreeplayState.curDifficulty]
+	local diff = song.diffs[FreeplayState.curDifficulty] or "normal"
+	local ok, err = PlayState.loadSong(song.songName, diff)
+	if not ok then
+		self.songs.lock = false
+		util.playSfx(paths.getSound('cancelMenu'))
+		return false, err
+	end
 
 	if game.keys.pressed.SHIFT then
-		PlayState.loadSong(song.songName, diff)
 		PlayState.storyDifficulty = diff
 		game.switchState(ChartingState())
 	else
-		game.switchState(LoadState(PlayState(nil, song.songName, diff)))
+		game.switchState(LoadState(PlayState(false, nil, diff)))
 	end
+	return true
 end
 
 function FreeplayState:update(dt)
@@ -115,10 +121,14 @@ function FreeplayState:update(dt)
 			if controls:pressed("debug_1") then
 				local selected = self.songs:getSelected()
 				if selected then
-					local diff = selected.diffs[FreeplayState.curDifficulty]
+					local diff = selected.diffs[FreeplayState.curDifficulty] or "normal"
 					PlayState.storyMode = false
 					PlayState.META = selected.meta
-					PlayState.loadSong(selected.songName, diff)
+					if not PlayState.loadSong(selected.songName, diff) then
+						self.songs.lock = false
+						util.playSfx(paths.getSound('cancelMenu'))
+						return
+					end
 					PlayState.storyDifficulty = diff
 					game.switchState(ChartingState())
 					return

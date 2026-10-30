@@ -380,10 +380,7 @@ function CutsceneState:previewCutscene()
 end
 
 function CutsceneState:getModPrefix()
-	if Mods.currentMod and Mods.currentMod ~= "" then
-		return (Mods.root or "mods") .. "/" .. Mods.currentMod .. "/"
-	end
-	return "assets/"
+	return Storage.getEditorSavePrefix()
 end
 
 function CutsceneState:saveStageJSON()

@@ -229,6 +229,15 @@ function TimelineCanvas:__render(camera)
 	love.graphics.setColor(r, g, b, a)
 end
 
+local function resolveSkinName(rawSkin)
+	if type(rawSkin) == "table" then
+		return tostring(rawSkin.skin or rawSkin.name or "default")
+	elseif type(rawSkin) == "string" and rawSkin ~= "" then
+		return rawSkin
+	end
+	return "default"
+end
+
 -- Build Psych/Vanilla-compatible export table that round-trips losslessly with Parser
 function ChartingState.buildExportData(song, sections)
 	local bpm = tonumber(song.bpm) or 120
@@ -344,7 +353,7 @@ function ChartingState.buildExportData(song, sections)
 			player2 = song.player2 or "dad",
 			gfVersion = song.gfVersion or "gf",
 			stage = song.stage or "stage",
-			skin = song.skin or "default",
+			skin = resolveSkinName(song.skin),
 			format = "psych_v1",
 			notes = outSections,
 			events = groupedEvents
@@ -740,7 +749,7 @@ function ChartingState:buildInspectorUI()
 	self.ddStage.callback = function(v) self.song.stage = v end
 
 	lbl(gSong, 276, 200, "Note Skin:")
-	self.ddSkin = UIDropDown(276, 218, skinList, math.max(1, table.find(skinList, self.song.skin or "default") or 1), 240, 26)
+	self.ddSkin = UIDropDown(276, 218, skinList, math.max(1, table.find(skinList, resolveSkinName(self.song.skin)) or 1), 240, 26)
 	self.ddSkin.callback = function(v) self.song.skin = v end
 
 	gSong:add(self.ddStage)
@@ -1300,10 +1309,7 @@ function ChartingState:checkPlaybackHitsounds(prevMs, nowMs)
 end
 
 function ChartingState:getSaveBasePrefix()
-	if Mods.currentMod and Mods.currentMod ~= "" then
-		return (Mods.root or "mods") .. "/" .. Mods.currentMod .. "/"
-	end
-	return "assets/"
+	return Storage.getEditorSavePrefix()
 end
 
 function ChartingState:saveChart(useNativeDialog)
@@ -1318,6 +1324,10 @@ function ChartingState:saveChart(useNativeDialog)
 	if useNativeDialog and WindowDialogue and WindowDialogue.askSaveAsFile then
 		local dst = WindowDialogue.askSaveAsFile(nil, {{"JSON Files", "*.json"}}, diffSlug .. ".json")
 		if dst then
+			if Storage.isAssetsSourcePath(dst) then
+				Toast.error("Refusing to overwrite base game assets/; save inside saves/ or mods/ instead")
+				return false, "Refusing to overwrite assets/"
+			end
 			local f = io.open(dst, "wb")
 			if f then
 				f:write(encoded)
@@ -1343,15 +1353,36 @@ end
 
 function ChartingState:saveSongMeta()
 	local songSlug = paths.formatToSongPath(self.song.song or "bopeebo")
+	local skinName = resolveSkinName(self.song.skin)
+	local diffs = self.song.difficulties or {"easy", "normal", "hard"}
+	local stageName = self.song.stage or "stage"
+	local chars = {
+		player = self.song.player1 or "bf",
+		opponent = self.song.player2 or "dad",
+		girlfriend = self.song.gfVersion or "gf"
+	}
+	local bpm = tonumber(self.song.bpm) or 120
+	local timeChanges = self.song.timeChanges
+	if type(timeChanges) ~= "table" or #timeChanges == 0 then
+		timeChanges = {{t = 0, bpm = bpm, n = 4, d = 4}}
+	end
+	local noteStyle = skinName == "default" and "funkin"
+		or (skinName == "default-pixel" and "pixel" or skinName)
+
 	local metaTbl = {
+		version = "2.2.4",
 		songName = self.song.song or songSlug,
-		difficulties = self.song.difficulties or {"easy", "normal", "hard"},
-		stage = self.song.stage or "stage",
-		skin = self.song.skin or "default",
-		characters = {
-			player = self.song.player1 or "bf",
-			opponent = self.song.player2 or "dad",
-			girlfriend = self.song.gfVersion or "gf"
+		timeFormat = "ms",
+		timeChanges = timeChanges,
+		difficulties = diffs,
+		stage = stageName,
+		skin = skinName,
+		characters = chars,
+		playData = {
+			stage = stageName,
+			noteStyle = noteStyle,
+			difficulties = diffs,
+			characters = chars
 		}
 	}
 	local virtualPath = self:getSaveBasePrefix() .. "songs/" .. songSlug .. "/meta.json"
@@ -1359,8 +1390,10 @@ function ChartingState:saveSongMeta()
 	Parser.clearCache()
 	if ok then
 		Toast.info("Saved meta: " .. tostring(targetOrErr))
+		return true, targetOrErr
 	else
 		Toast.error("Meta save failed: " .. tostring(targetOrErr))
+		return false, targetOrErr
 	end
 end
 

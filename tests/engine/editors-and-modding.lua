@@ -302,3 +302,275 @@ check("B5: Mod.button, Mod.addMenuButton, SpriteButton, UIButton touch, and cust
 	Mods.currentMod = prevMod
 	paths.async.stop()
 end)
+
+check("Editor saves target saves/ by default with saves/ > mods/ > assets/ priority", function()
+	local prevMod = Mods.currentMod
+	Mods.currentMod = nil
+
+	PlayState.loadSong("bopeebo", "normal")
+	local charter = ChartingState()
+	game.switchState(charter, true)
+	game.update(1 / 60)
+
+	local prefix = charter:getSaveBasePrefix()
+	local savesRoot = Storage.getContentRoot("saves") .. "/"
+	assert(prefix == savesRoot,
+		"Editor save prefix without active mod must be '" .. savesRoot .. "', got '" .. tostring(prefix) .. "'")
+	assert(prefix ~= "assets/", "Editor save prefix must never be 'assets/'")
+
+	charter.song.song = "priority-probe-song"
+	charter.curDifficulty = "normal"
+	charter.song.bpm = 148
+	local okChart, savedChartPath = charter:saveChart(false)
+	assert(okChart, "ChartingState:saveChart(false) must succeed: " .. tostring(savedChartPath))
+	local okMeta, savedMetaPath = charter:saveSongMeta()
+	assert(okMeta, "ChartingState:saveSongMeta() must succeed: " .. tostring(savedMetaPath))
+
+	local expectedRelChart = savesRoot .. "songs/priority-probe-song/charts/normal.json"
+	local expectedRelMeta = savesRoot .. "songs/priority-probe-song/meta.json"
+	assert(paths.exists(expectedRelChart, "file"), "Saved chart must exist in saves/: " .. expectedRelChart)
+	assert(paths.exists(expectedRelMeta, "file"), "Saved meta must exist in saves/: " .. expectedRelMeta)
+	assert(not paths.exists("assets/songs/priority-probe-song/charts/normal.json", "file"),
+		"Editor must never write charts under assets/")
+
+	-- Verify priority: saves/ > mods/ > assets/
+	local modId = "priority-probe-mod"
+	local modRoot = (Mods.root or "mods") .. "/" .. modId
+	Storage.writeFile(modRoot .. "/meta.json", '{"name":"Priority Probe"}')
+	Storage.writeFile(modRoot .. "/songs/bopeebo/meta.json",
+		'{"version":"2.2.4","songName":"ModBopeebo","timeChanges":[{"t":0,"bpm":111}],"playData":{"stage":"stage","difficulties":["normal"],"characters":{"player":"bf","opponent":"dad","girlfriend":"gf"}}}')
+	Mods.reload()
+	Mods.currentMod = modId
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == modRoot .. "/songs/bopeebo/meta.json",
+		"mods/ must override assets/ when saves/ has no override")
+
+	Storage.writeFile(savesRoot .. "songs/bopeebo/meta.json",
+		'{"version":"2.2.4","songName":"SaveBopeebo","timeChanges":[{"t":0,"bpm":133}],"playData":{"stage":"stage","difficulties":["normal"],"characters":{"player":"bf","opponent":"dad","girlfriend":"gf"}}}')
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == savesRoot .. "songs/bopeebo/meta.json",
+		"saves/ must have higher priority than mods/ and assets/")
+
+	-- Removing saves/ override restores mods/ or assets/ cleanly
+	if Storage.mounted and Storage.savePath then
+		os.remove(Storage.savePath .. "/songs/bopeebo/meta.json")
+	else
+		love.filesystem.remove("saves/songs/bopeebo/meta.json")
+	end
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == modRoot .. "/songs/bopeebo/meta.json",
+		"Deleting saves/ override must fall back to active mod")
+	Mods.currentMod = nil
+	paths.clearCache()
+	assert(paths.getPath("songs/bopeebo/meta.json") == "assets/songs/bopeebo/meta.json",
+		"Deleting saves/ override with no mod active must restore base assets/")
+
+	Mods.currentMod = prevMod
+	Parser.clearCache()
+	paths.async.stop()
+end)
+
+check("FreeplayState survives malformed metadata.json, displays Toast notice, and stays interactive", function()
+	local prevMod = Mods.currentMod
+	Mods.currentMod = nil
+	local savesRoot = Storage.getContentRoot("saves") .. "/"
+
+	-- Write a purposefully malformed metadata.json in saves/songs/bopeebo/meta.json
+	Storage.writeFile(savesRoot .. "songs/bopeebo/meta.json", '{"version":"2.2.4"}')
+	Parser.clearCache()
+	paths.clearCache()
+
+	local fp = FreeplayState()
+	game.switchState(fp, true)
+	game.update(1 / 60)
+
+	local openOk, openErr = fp:openSong({
+		songName = "bopeebo",
+		diffs = {"normal"},
+		meta = Parser.getMeta("bopeebo")
+	})
+	assert(openOk == false, "FreeplayState:openSong must refuse invalid metadata without crashing")
+	assert(type(openErr) == "string"
+		and openErr:find("bopeebo")
+		and openErr:find("meta%.json")
+		and openErr:find("playData"),
+		"Error must report song, path, and failing field; got: " .. tostring(openErr))
+	assert(fp.songs.lock == false, "FreeplayState must unlock song list after error")
+	assert(game.getState() == fp, "Game must remain in FreeplayState")
+	assert(Toast and #Toast.instances > 0, "Visible Toast error notice must be displayed")
+
+	-- Clean up malformed override and verify bopeebo loads cleanly again
+	if Storage.mounted and Storage.savePath then
+		os.remove(Storage.savePath .. "/songs/bopeebo/meta.json")
+	else
+		love.filesystem.remove("saves/songs/bopeebo/meta.json")
+	end
+	Parser.clearCache()
+	paths.clearCache()
+	local okClean = PlayState.loadSong("bopeebo", "normal")
+	assert(okClean == true, "Restoring saves/ override must let bopeebo load cleanly again")
+
+	Mods.currentMod = prevMod
+	paths.async.stop()
+end)
+
+check("PlayState:preload and LoadScreen resolve default, pixel, mod skins, and plain serialized skin tables", function()
+	local prevMod = Mods.currentMod
+	local modId = "skin-probe-mod"
+	local modRoot = (Mods.root or "mods") .. "/" .. modId
+	Storage.ensureDir(modRoot .. "/data/skins")
+	local baseSkinJson = assert(love.filesystem.read("assets/data/skins/default.json"))
+	Storage.writeFile(modRoot .. "/meta.json", '{"name":"Skin Probe Mod"}')
+	Storage.writeFile(modRoot .. "/data/skins/mod-neon.json", baseSkinJson)
+	Mods.reload()
+	Mods.currentMod = modId
+	paths.clearCache()
+
+	for _, testCase in ipairs({
+		{song = "bopeebo", diff = "normal", overrideSkin = nil, expected = "default"},
+		{song = "senpai", diff = "normal", overrideSkin = nil, expected = "default-pixel"},
+		{song = "bopeebo", diff = "normal", overrideSkin = "mod-neon", expected = "mod-neon"},
+		-- Plain JSON table without metatable (reproducing legacy editor-serialized skin object)
+		{song = "thorns", diff = "hard", overrideSkin = {skin = "default-pixel", isPixel = true, data = {}}, expected = "default-pixel"}
+	}) do
+		assert(PlayState.loadSong(testCase.song, testCase.diff))
+		if testCase.overrideSkin ~= nil then
+			PlayState.SONG.skin = testCase.overrideSkin
+		end
+		local loadState = LoadState(PlayState(false, nil, testCase.diff))
+		game.switchState(loadState, true)
+		game.update(1 / 60)
+		assert(type(PlayState.SONG.skin) == "table" and type(PlayState.SONG.skin.getPath) == "function",
+			"PlayState:preload must resolve PlayState.SONG.skin into a Skin instance with :getPath()")
+		assert(PlayState.SONG.skin.skin == testCase.expected,
+			"Expected skin '" .. testCase.expected .. "', got '" .. tostring(PlayState.SONG.skin.skin) .. "'")
+		paths.async.stop()
+	end
+
+	if Timer and Timer.globalManager then Timer.globalManager:clear() end
+	Mods.currentMod = prevMod
+	Parser.clearCache()
+	paths.clearCache()
+	paths.async.stop()
+end)
+
+check("B6: Pause & resume work across keyboard, gamepad, and mobile touch in normal gameplay, post-dialogue, post-cutscene, and post-alt-tab", function()
+	local origGetDevice = love.system.getDevice
+	local origJoystick = controls.config.joystick
+
+	-- Mock connected gamepad for baton
+	local padState = {}
+	local mockJoy = {
+		isConnected = function() return true end,
+		isGamepad = function() return true end,
+		isGamepadDown = function(_, btn) return padState[btn] == true end,
+		isDown = function() return false end,
+		getGamepadAxis = function() return 0 end,
+		getAxis = function() return 0 end,
+		getHat = function() return "c" end
+	}
+	controls.config.joystick = mockJoy
+
+	local function stepFrame(dt)
+		dt = dt or (1 / 60)
+		controls:update()
+		game.update(dt)
+	end
+
+	-- Boot PlayState under Mobile device mode so VirtualPad + PauseButton + lane pads are all active
+	love.system.getDevice = function() return "Mobile" end
+	PlayState.storyMode = false
+	assert(PlayState.loadSong("fresh", "normal"))
+	local ps = PlayState(false, nil, "normal")
+	game.switchState(ps, true)
+	for _ = 1, 8 do
+		stepFrame()
+	end
+	assert(ps.startedCountdown and ps.pauseButton ~= nil and ps.buttons ~= nil,
+		"Mobile PlayState must create both pauseButton and 4-lane VirtualPad buttons")
+
+	local pausePad = ps.pauseButton.pauseButton.button
+	local px = pausePad.x + pausePad.width * 0.5
+	local py = pausePad.y + pausePad.height * 0.5
+
+	local function verifyAllThreeInputs(phaseLabel)
+		-- 1) Mobile touch on top-right PauseButton pauses, and Mobile 'B' button resumes
+		assert(ps.substate == nil, phaseLabel .. ": expected unpaused before mobile touch")
+		game.touchpressed("b6_mob", px, py, 0, 0, 1, 0)
+		stepFrame()
+		game.touchreleased("b6_mob", px, py, 0, 0, 1, 0)
+		assert(ps.substate ~= nil and ps.substate:is(PauseSubstate),
+			phaseLabel .. ": Mobile touch on PauseButton must open PauseSubstate")
+		for _ = 1, 14 do stepFrame() end
+		local bBtn = ps.substate.buttons and ps.substate.buttons.members[1]
+		assert(bBtn ~= nil, phaseLabel .. ": PauseSubstate on Mobile must create 'B' back button")
+		local bx, by = bBtn.x + bBtn.width * 0.5, bBtn.y + bBtn.height * 0.5
+		game.touchpressed("b6_back", bx, by, 0, 0, 1, 0)
+		stepFrame()
+		game.touchreleased("b6_back", bx, by, 0, 0, 1, 0)
+		stepFrame()
+		assert(ps.substate == nil, phaseLabel .. ": Mobile 'B' button must resume gameplay from PauseSubstate")
+
+		-- 2) Gamepad 'start' pauses and Gamepad 'start' resumes
+		padState.start = true
+		controls:onGamepadPress(mockJoy, "start")
+		stepFrame()
+		padState.start = false
+		controls:onGamepadRelease(mockJoy, "start")
+		stepFrame()
+		assert(ps.substate ~= nil and ps.substate:is(PauseSubstate),
+			phaseLabel .. ": Gamepad Start must open PauseSubstate")
+		padState.start = true
+		controls:onGamepadPress(mockJoy, "start")
+		stepFrame()
+		padState.start = false
+		controls:onGamepadRelease(mockJoy, "start")
+		stepFrame()
+		assert(ps.substate == nil, phaseLabel .. ": Gamepad Start must resume from PauseSubstate")
+
+		-- 3) Keyboard Return pauses and Keyboard Escape resumes
+		controls:onKeyPress("return", "return", false)
+		controls:onKeyRelease("return", "return")
+		stepFrame()
+		assert(ps.substate ~= nil and ps.substate:is(PauseSubstate),
+			phaseLabel .. ": Keyboard Return must open PauseSubstate")
+		stepFrame()
+		controls:onKeyPress("escape", "escape", false)
+		controls:onKeyRelease("escape", "escape")
+		stepFrame()
+		assert(ps.substate == nil, phaseLabel .. ": Keyboard Escape must resume from PauseSubstate")
+	end
+
+	-- Phase 1: Normal gameplay
+	verifyAllThreeInputs("Normal gameplay")
+
+	-- Phase 2: Right after dialogue closes
+	local dlg = DialogueBox("pixel", "normal", "senpai")
+	ps:add(dlg)
+	stepFrame()
+	assert(ps:hasActiveDialogue(), "DialogueBox must be active during dialogue")
+	dlg._closed = true
+	if dlg.button and dlg.button.leave then dlg.button:leave() end
+	ps:remove(dlg)
+	stepFrame() -- clears hadDialogue latching frame cleanly
+	verifyAllThreeInputs("Right after dialogue")
+
+	-- Phase 3: Right after cutscene completion (both startCountdown and skipCountdown paths)
+	ps:remove(ps.buttons)
+	ps:startCountdown()
+	stepFrame()
+	verifyAllThreeInputs("Right after cutscene")
+
+	-- Phase 4: Right after alt-tab (focus lost -> focus regained)
+	if funkin and funkin.releaseStuckInputs then funkin.releaseStuckInputs(true) end
+	game.focus(false)
+	stepFrame()
+	game.focus(true)
+	stepFrame()
+	verifyAllThreeInputs("After alt-tab")
+
+	ps:pauseSong()
+	controls.config.joystick = origJoystick
+	love.system.getDevice = origGetDevice
+	paths.async.stop()
+end)
