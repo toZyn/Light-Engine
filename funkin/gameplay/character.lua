@@ -50,28 +50,9 @@ function Character:new(x, y, char, isPlayer)
 	elseif spriteName ~= "" and (paths.exists(paths.getPath('images/' .. spriteName .. ".xml"), "file")
 		or paths.exists(paths.getPath('images/' .. spriteName .. ".txt"), "file")) then
 		self:setFrames(paths.getAtlas(spriteName, not data.antialiasing))
-	elseif spriteName ~= "" and paths.exists(paths.getPath('images/' .. spriteName .. ".png"), "file") then
-		self:loadTexture(paths.getImage(spriteName))
 	else
-		local fallbackChar = tostring(self.char):endsWith("-dead") and "bf-dead" or "bf"
-		if self.char ~= fallbackChar then
-			Logger.log("warn", "Character \"" .. tostring(char) .. "\" missing sprite \"" .. fullpath .. "\", falling back to " .. fallbackChar)
-			data, type = Parser.getCharacter(fallbackChar)
-			self.data = data
-			spriteName = tostring(data.sprite or "")
-			fullpath = paths.getPath('images/' .. spriteName)
-			if spriteName ~= "" and paths.exists(fullpath, "directory") and paths.exists(fullpath .. "/Animation.json", "file") then
-				self._animAtlas = AnimateAtlas(0, 0, paths.getAnimateAtlas(spriteName))
-			elseif spriteName ~= "" and (paths.exists(paths.getPath('images/' .. spriteName .. ".xml"), "file")
-				or paths.exists(paths.getPath('images/' .. spriteName .. ".txt"), "file")) then
-				self:setFrames(paths.getAtlas(spriteName, not data.antialiasing))
-			else
-				self.exists = false
-			end
-		else
-			Logger.log("error", "Character \"" .. tostring(char) .. "\" has invalid image path: \"" .. fullpath .. "\"")
-			self.exists = false
-		end
+		Logger.log("error", "Character \"" .. char .. "\" has invalid image path: \"" .. fullpath .. "\"")
+		self.exists = false
 	end
 
 	self.anim = self._animAtlas and self._animAtlas.animation or self.animation
@@ -168,17 +149,11 @@ function Character:new(x, y, char, isPlayer)
 	end
 	self.idleIndex = 1
 
-	self._baseOffset = Point(position.x, position.y)
 	self:setPosition(self.x + position.x, self.y + position.y)
 	self.type = type
 
 	self:dance()
 	self.anim:finish()
-	if self._animAtlas then
-		self._animAtlas:updateHitbox()
-		self.width = self._animAtlas.width * math.abs(self.scale.x)
-		self.height = self._animAtlas.height * math.abs(self.scale.y)
-	end
 end
 
 function Character:__animFinished(name)
@@ -231,7 +206,6 @@ function Character:playAnim(anim, force, frame, waitFinish)
 		waitFinish = frame
 		frame = nil
 	end
-
 	local result = Script.Event_Continue
 	if self.script then
 		result = self.script:call("onPlayAnim", anim, force, frame, waitFinish) or result
@@ -292,27 +266,17 @@ function Character:hasAnim(name)
 	return self.anim:has(name)
 end
 
-function Character:getMidpoint(point)
+function Character:getMidpoint(...)
 	if self._animAtlas then
-		local at = self._animAtlas
-		local ox, oy = at:getBoundTopLeft()
-		local bw, bh = at:getBoundDimensions()
-		local sx = math.abs(self.scale and self.scale.x or 1)
-		local sy = math.abs(self.scale and self.scale.y or 1)
-		local mx = self.x + (ox + bw * 0.5) * sx
-		local my = self.y + (oy + bh * 0.5) * sy
-		if point then return point:set(mx, my) end
-		return mx, my
+		return self._animAtlas:getMidpoint(...)
 	end
-	return Character.super.getMidpoint(self, point)
+	return Character.super.getMidpoint(self, ...)
 end
 
 function Character:updateHitbox()
 	if self._animAtlas then
 		local at = self._animAtlas
 		at:updateHitbox()
-		self.width = at.width * math.abs(self.scale.x)
-		self.height = at.height * math.abs(self.scale.y)
 		self.offset:set(at.offset.x, at.offset.y)
 		self.origin:set(at.origin.x, at.origin.y)
 

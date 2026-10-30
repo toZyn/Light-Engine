@@ -135,7 +135,7 @@ check("Recorder writes a valid 2-stream (mp4v + 44.1kHz Stereo ALAC) ISO-BMFF .m
 	ClientPrefs.data.recordingQuality = prevQual
 end)
 
-check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stage/character positions", function()
+check("Animation boolean guard, Keyboard/VirtualPad resilience, and restored base stage state", function()
 	-- 1. Animation:play boolean frame safety + 3-arg/4-arg Character:playAnim resilience
 	local bf = Character(0, 0, "bf", true)
 	bf:playAnim("idle", true, true)
@@ -143,12 +143,6 @@ check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stag
 	bf.anim:play("idle", true, false, true)
 	assert(bf.anim.curAnim.frame >= 1, "Animation:play must clamp non-numeric Frame safely")
 	bf:destroy()
-
-	-- Missing -dead fallback must resolve to bf-dead cleanly
-	local missingDead = Character(0, 0, "nonexistent-custom-dead", true)
-	assert(missingDead ~= nil and missingDead.anim:has("firstDeath"),
-		"Missing -dead character must fall back to bf-dead with firstDeath animation")
-	missingDead:destroy()
 
 	-- 2. External keyboard unknown/acback/isrepeat + vararg love.keyboard.isDown
 	game.keys.onPressed("unknown", "unknown", false)
@@ -160,26 +154,32 @@ check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stag
 	game.keys.reset()
 	assert(type(love.keyboard.isDown("lctrl", "rctrl")) == "boolean", "Vararg love.keyboard.isDown must work")
 
-	-- 3. V-Slice Erect chart + Pico character mapping + stage Point preservation
-	local erectChart = Parser.getChart("bopeebo", "erect")
-	assert(erectChart and erectChart.stage == "stage", "V-Slice erect chart must resolve stage metadata")
-	local blazinChart = Parser.getChart("blazin", "normal")
-	assert(blazinChart and blazinChart.player1 == "pico-blazin" and blazinChart.stage == "phillyBlazin",
-		"Weekend 1 blazin chart must preserve pico-blazin and phillyBlazin")
-	local darnellChart = Parser.getChart("darnell", "normal")
-	assert(darnellChart and darnellChart.player1 == "pico-playable" and darnellChart.stage == "phillyStreets",
-		"Weekend 1 darnell chart must map 'pico' -> 'pico-playable' and phillyStage -> phillyStreets")
+	-- 3. Restored v0.2.2 (1006f52) stage zooms, positions, and Week 6 pixel camera sizing
+	PlayState.loadSong("bopeebo", "normal")
+	local st1 = Stage("stage")
+	st1:load()
+	assert(math.abs(st1.camZoom - 1) < 1e-4, "Week 1 stage must preserve original camZoom 1")
+	st1:destroy()
 
-	for _, stName in ipairs({"stage", "spooky", "philly", "limo", "mall-evil", "school", "tank"}) do
-		PlayState.SONG = Parser.getDummyChart("bopeebo", true)
-		PlayState.SONG.stage = stName
-		local st = Stage(stName)
-		st:load()
-		assert(type(st.boyfriendPos) == "table" and type(st.boyfriendPos.set) == "function"
-			and type(st.dadCam) == "table" and type(st.dadCam.set) == "function",
-			"Stage " .. stName .. " must preserve Point methods on Pos/Cam fields")
-		st:destroy()
+	PlayState.SONG.stage = "mall-evil"
+	local stEvil = Stage("mall-evil")
+	stEvil:load()
+	assert(math.abs(stEvil.camZoom - 1) < 1e-4 and stEvil.dadPos.x == 100 and stEvil.dadPos.y == 100,
+		"mall-evil must preserve original camZoom 1 and dadPos (100, 100)")
+	stEvil:destroy()
+
+	PlayState.SONG.stage = "school"
+	local stSchool = Stage("school")
+	stSchool:load()
+	assert(game.camera.width == math.floor(1280 / 6) and game.camera.height == math.floor(720 / 6),
+		"Week 6 school must preserve original 213x120 pixel camera")
+	if stSchool.script and stSchool.script.variables.cam then
+		game.cameras.remove(stSchool.script.variables.cam)
 	end
+	game.camera.pixelPerfect = false
+	game.camera.antialiasing = true
+	game.camera:resize(game.width, game.height)
+	stSchool:destroy()
 	paths.async.stop()
 end)
 

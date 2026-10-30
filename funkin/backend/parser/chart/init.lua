@@ -8,26 +8,18 @@ local ChartParse = {}
 
 function ChartParse.get(song, diff)
 	song = paths.formatToSongPath(song)
-	diff = diff and diff:lower() or "normal"
 
 	local path = "songs/" .. song .. "/"
 	local function getFolder(dir)
 		return {paths.getPath(path .. dir .. ".json"), path .. dir}
 	end
 
-	local candidates = {
+	for _, p in ipairs({
 		getFolder("charts/" .. diff),
 		getFolder("chart-" .. diff),
-		getFolder(song .. "-chart-" .. diff),
-		getFolder(diff)
-	}
-	if diff == "nightmare" then
-		table.insert(candidates, getFolder("charts/erect"))
-		table.insert(candidates, getFolder("chart-erect"))
-	end
-	table.insert(candidates, getFolder("chart"))
-
-	for _, p in ipairs(candidates) do
+		getFolder(diff),
+		getFolder("chart")
+	}) do
 		if paths.exists(p[1], "file") then
 			return paths.getJSON(p[2]), path
 		end

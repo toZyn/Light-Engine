@@ -65,14 +65,6 @@ function Stage:load()
 		self.script:call("create")
 	end
 
-	-- Keep position/camera fields as Point objects even if a stage script assigned plain {x, y} tables.
-	for _, field in ipairs({"boyfriendPos", "gfPos", "dadPos", "boyfriendCam", "gfCam", "dadCam"}) do
-		local val = self[field]
-		if type(val) == "table" and not (val.is and val:is(Point)) then
-			self[field] = Point(val.x or val[1] or 0, val.y or val[2] or 0)
-		end
-	end
-
 	local characters = {
 		gf = {"gfVersion", "gf", false, 100},
 		dad = {"player2", "dad", false, 300},
@@ -91,25 +83,16 @@ function Stage:load()
 			self:add(character)
 
 			character:dance()
-			if character.type == "VSlice" and not character._animAtlas then
+			if character.type == "VSlice" then
 				character:updateHitbox()
 				character.x = character.x - character.width / 2
 				character.y = character.y - character.height
-			elseif character._animAtlas then
-				character:updateHitbox()
 			end
 		end
 	end
-	if self.dad and self.dad.char:startsWith("gf") then
-		if self.gf then
-			self.gf.visible = false
-			self.dad:setPosition(self.gf.x, self.gf.y)
-		else
-			local offX = self.dad._baseOffset and self.dad._baseOffset.x or 0
-			local offY = self.dad._baseOffset and self.dad._baseOffset.y or 0
-			self.dad:setPosition(self.gfPos.x + offX, self.gfPos.y + offY)
-		end
-		self.dadCam:set(self.gfCam.x, self.gfCam.y)
+	if self.gf and self.dad and self.dad.char:startsWith("gf") then
+		self.gf.visible = false
+		self.dad:setPosition(self.gf.x, self.gf.y)
 	end
 
 	if self.data then
@@ -173,21 +156,6 @@ function Stage:add(obj, foreground)
 	end
 	Stage.super.add(self, obj)
 	if not obj.zIndex then obj.zIndex = #self.members end
-end
-
-function Stage:destroy()
-	if self.script then
-		if not self.script.closed then
-			self.script:call("close")
-			self.script:close()
-		end
-		self.script = nil
-	end
-	if self.foreground then
-		self.foreground:destroy()
-		self.foreground = nil
-	end
-	Stage.super.destroy(self)
 end
 
 return Stage

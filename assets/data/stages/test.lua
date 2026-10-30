@@ -1,13 +1,13 @@
 function create()
 	self.camZoom = 0.9
 
-	self.boyfriendPos:set(1100, 100)
-	self.gfPos:set(480, 130)
-	self.dadPos:set(300, 100)
+	self.boyfriendPos = {x = 1100, y = 100}
+	self.gfPos = {x = 480, y = 130}
+	self.dadPos = {x = 300, y = 100}
 
 	if PlayState.SONG.player2 == 'bf-pixel' then
-		self.dadPos:set(300, 240)
-		self.dadCam:set(-200, -90)
+		self.dadPos = {x = 300, y = 240}
+		self.dadCam = {x = -200, y = -90}
 	end
 
 	local ground = ActorSprite(270, 460, 300, paths.getImage('menus/menuDesat'))

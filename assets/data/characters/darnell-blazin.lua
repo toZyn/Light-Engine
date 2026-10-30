@@ -33,8 +33,7 @@ local function play(name, force, z)
 end
 
 local function getCurrentAnim()
-	local anim = _animAtlas and _animAtlas.animation or animation
-	return anim and anim.curAnim and anim.curAnim.name or nil
+	return (_animAtlas and _animAtlas.animation or animation).curAnim.name
 end
 
 local function handleTaunt()

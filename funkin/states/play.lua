@@ -923,13 +923,13 @@ function PlayState:swapCharacter(slot, newCharName)
 	if not ok or not newChar then return nil end
 
 	local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
+	local camPoint = isBF and self.stage.boyfriendCam or (isGF and self.stage.gfCam or self.stage.dadCam)
 	if posPoint then
-		local ox, oy = posPoint.x, posPoint.y
-		if newChar.__type == "VSlice" and not newChar._animAtlas then
-			ox = ox - newChar.width / 2
-			oy = oy - newChar.height
-		end
-		newChar:setPosition(newChar.x + ox, newChar.y + oy)
+		newChar:setPosition(newChar.x + posPoint.x, newChar.y + posPoint.y)
+	end
+	if camPoint and newChar.cameraPosition then
+		newChar.cameraPosition.x = newChar.cameraPosition.x + camPoint.x
+		newChar.cameraPosition.y = newChar.cameraPosition.y + camPoint.y
 	end
 
 	if oldChar then
