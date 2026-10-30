@@ -891,6 +891,7 @@ end
 
 function PlayState:focus(f)
 	self.scripts:call("focus", f)
+	self:reconcileReceptors()
 	if Discord and love.autoPause then self:updateDiscordRPC(not f) end
 	self.scripts:call("postFocus", f)
 end
@@ -1011,6 +1012,29 @@ function PlayState:resetStroke(notefield, dir, doPress)
 	if receptor then
 		receptor:play((doPress and not notefield.bot)
 			and "pressed" or "static")
+	end
+end
+
+function PlayState:reconcileReceptors()
+	if not self.notefields then return end
+	if controls and controls.update then
+		controls:update()
+	end
+	for _, notefield in pairs(self.notefields) do
+		if notefield and notefield.is and not notefield.bot and notefield.receptors then
+			for dir = 0, #notefield.receptors - 1 do
+				local controlName = PlayState.keysControls[dir]
+				local held = controlName and controls and controls:down(controlName)
+				if not held then
+					local receptor = notefield.receptors[dir + 1]
+					local curName = receptor and receptor.animation and receptor.animation.curAnim
+						and receptor.animation.curAnim.name or ""
+					if curName == "pressed" or curName:sub(1, 12) == "pressed-note" then
+						self:resetStroke(notefield, dir, false)
+					end
+				end
+			end
+		end
 	end
 end
 
@@ -1598,6 +1622,7 @@ function PlayState:closeSubstate()
 	end
 
 	if self.buttons then self:add(self.buttons) end
+	self:reconcileReceptors()
 
 	self.scripts:call("postSubstateClosed")
 end

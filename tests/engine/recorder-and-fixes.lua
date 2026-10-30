@@ -419,4 +419,85 @@ check("B2: Keyboard and controller hotplug, focus flickers, and controls:reset n
 	controls:reset({controls = table.clone(ClientPrefs.controls)})
 end)
 
+check("B3: Receptors and baton release cleanly across dual-key spam, holdTime expiry, cross-device input, and VirtualPad:leave", function()
+	local downDuringRelease = {}
+	local function onRelProbe(source)
+		if source == "left" or source == "a" then
+			table.insert(downDuringRelease, {source = source, down = controls:down("note_left")})
+		end
+	end
+	controls:bindRelease(onRelProbe)
+
+	local mockPad = {
+		_connected = true,
+		_buttons = {},
+		isConnected = function(self) return self._connected end,
+		isGamepad = function() return true end,
+		getAxisCount = function() return 4 end,
+		getAxis = function() return 0 end,
+		getGamepadAxis = function() return 0 end,
+		isDown = function(self, b) return self._buttons[b] == true end,
+		isGamepadDown = function(self, b) return self._buttons[b] == true end,
+		getHat = function() return "c" end
+	}
+	local cfg = table.clone(ClientPrefs.controls)
+	if not table.find(cfg.note_right, "button:dpright") then
+		table.insert(cfg.note_right, "button:dpright")
+	end
+	controls:reset({controls = cfg, joystick = mockPad})
+
+	-- 1) Dual-key chord on note_left ("left" + "a") via VirtualPad key state
+	VirtualPad._press("left", 0)
+	controls:onKeyPress("left", "left", false)
+	VirtualPad._press("a", 0)
+	controls:onKeyPress("a", "a", false)
+	VirtualPad._release("left", 0)
+	controls:onKeyRelease("left", "left")
+	assert(#downDuringRelease == 1 and downDuringRelease[1].down == true,
+		"Secondary key 'a' still held: controls:down('note_left') must remain true in onRelease")
+
+	VirtualPad._release("a", 0)
+	controls:onKeyRelease("a", "a")
+	assert(#downDuringRelease == 2 and downDuringRelease[2].down == false,
+		"Last key released: controls:down('note_left') must be false BEFORE _releaseBinds runs")
+
+	-- 2) Cross-device simultaneous hold (gamepad dpright + keyboard left)
+	mockPad._buttons.dpright = true
+	controls:onGamepadPress(mockPad, "dpright")
+	controls:update()
+	VirtualPad._press("left", 0)
+	controls:onKeyPress("left", "left", false)
+	controls:update()
+	mockPad._buttons.dpright = false
+	controls:onGamepadRelease(mockPad, "dpright")
+	assert(not controls:down("note_right"),
+		"Releasing gamepad button while keyboard is active must clear note_right.down")
+	VirtualPad._release("left", 0)
+	controls:onKeyRelease("left", "left")
+
+	-- 3) Receptor confirm holdTime expiry returns to static when key is not held
+	local nf = Notefield(0, 0, 4, "default", nil, nil, 1.0)
+	local receptor = nf.receptors[1]
+	receptor.pressed = false
+	receptor:play("confirm", true)
+	receptor.holdTime = 0.05
+	receptor:update(0.1)
+	assert((receptor.animation.curAnim.name or ""):startsWith("static"),
+		"Receptor holdTime expiry with pressed=false must return to static, got " .. tostring(receptor.animation.curAnim.name))
+	nf:destroy()
+
+	-- 4) VirtualPad:leave() releases active held touch key (e.g. during pause)
+	local vpad = VirtualPad("down", 0, 0, 100, 100)
+	vpad:enter()
+	VirtualPad.press("b3_touch", 50, 50, 1, 0)
+	assert(love.keyboard.isDown("down"), "Expected VirtualPad 'down' held after press")
+	vpad:leave()
+	assert(not love.keyboard.isDown("down"), "VirtualPad:leave() must clear held virtual key")
+	vpad:destroy()
+
+	controls:unbindRelease(onRelProbe)
+	controls:reset({controls = table.clone(ClientPrefs.controls)})
+end)
+
+
 

@@ -273,20 +273,24 @@ end
 	gets the value of a control by running the appropriate source functions
 	for all of its sources. does not apply deadzone.
 ]]
-function Player:_getControlRawValue(control)
+function Player:_getControlRawValue(control, ignoredType, ignoredValue)
 	local rawValue = 0
-	local joyConnected = self._activeDevice == 'joy' and isJoystickConnected(self.config.joystick)
+	local joyConnected = isJoystickConnected(self.config.joystick)
 	for _, source in ipairs(control.sources) do
 		local type, value = parseSource(source)
-		if type and value then
-			if sourceFunction.keyboardMouse[type] and self._activeDevice == 'kbm' then
+		if type and value and not (type == ignoredType and value == ignoredValue) then
+			if sourceFunction.keyboardMouse[type] then
 				if sourceFunction.keyboardMouse[type](value) == 1 then
 					return 1
 				end
 			elseif joyConnected and sourceFunction.joystick[type] then
-				rawValue = rawValue + sourceFunction.joystick[type](self.config.joystick, value)
-				if rawValue >= 1 then
-					return 1
+				-- Digital gamepad buttons/hats never suffer analog drift; only gate
+				-- sub-deadzone analog axes when keyboard/mouse is active.
+				if type ~= 'axis' or self._activeDevice == 'joy' then
+					rawValue = rawValue + sourceFunction.joystick[type](self.config.joystick, value)
+					if rawValue >= 1 then
+						return 1
+					end
 				end
 			end
 		end
@@ -349,19 +353,23 @@ function Player:_updatePairs()
 end
 
 function Player:_pressControls(names, source, type, ...)
-	for _, bind in pairs(self._pressBinds) do
-		bind(source, type, ...)
-	end
-
 	local control
 	for _, name in pairs(names) do
 		control = self._controls[name]
 		control.rawValue = self:_getControlRawValue(control)
-		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
+		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 1
 		control.down = true
 		control.pressed = true
 		control.released = control.debounce and control.released or false
 		control.debounce = true
+	end
+
+	for _, bind in pairs(self._pressBinds) do
+		bind(source, type, ...)
+	end
+
+	for _, name in pairs(names) do
+		control = self._controls[name]
 		for _, bind in pairs(control.pressBinds) do
 			bind(...)
 		end
@@ -369,14 +377,10 @@ function Player:_pressControls(names, source, type, ...)
 end
 
 function Player:_releaseControls(names, source, type, ...)
-	for _, bind in pairs(self._releaseBinds) do
-		bind(source, type, ...)
-	end
-
 	local control
 	for _, name in pairs(names) do
 		control = self._controls[name]
-		control.rawValue = self:_getControlRawValue(control)
+		control.rawValue = self:_getControlRawValue(control, type, source)
 		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
 		local stillDown = control.value > 0
 		control.downPrevious = true
@@ -385,6 +389,16 @@ function Player:_releaseControls(names, source, type, ...)
 			control.pressed = control.debounce and control.pressed or false
 			control.released = true
 			control.debounce = true
+		end
+	end
+
+	for _, bind in pairs(self._releaseBinds) do
+		bind(source, type, ...)
+	end
+
+	for _, name in pairs(names) do
+		control = self._controls[name]
+		if not control.down then
 			for _, bind in pairs(control.releaseBinds) do
 				bind(...)
 			end

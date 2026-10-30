@@ -43,12 +43,6 @@ function VirtualPad:enter()
 	end
 end
 
-function VirtualPad:leave()
-	if table.find(VirtualPad.instances, self) then
-		table.delete(VirtualPad.instances, self)
-	end
-end
-
 local function press(button, id, time)
 	if not button or button.pressed then return end
 	button.pressed = true
@@ -61,8 +55,24 @@ local function release(button, id, time)
 	if not button or not button.pressed then return end
 	button.pressed = false
 	VirtualPad._release(button.key, time or love.timer.getTime())
-	VirtualPad.active[id] = nil
+	if id ~= nil then
+		VirtualPad.active[id] = nil
+	end
 	button.onRelease:dispatch(button)
+end
+
+function VirtualPad:leave()
+	if table.find(VirtualPad.instances, self) then
+		table.delete(VirtualPad.instances, self)
+	end
+	for id, actived in pairs(VirtualPad.active) do
+		if actived == self then
+			release(self, id, love.timer.getTime())
+		end
+	end
+	if self.pressed then
+		release(self, nil, love.timer.getTime())
+	end
 end
 
 local activeTouches = {}
