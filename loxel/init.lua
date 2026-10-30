@@ -29,8 +29,8 @@ local dt, fps = 0, 0
 local sleep = love.timer.sleep
 
 local eventhandlers = {
-	keypressed = function(t, b, s, r) return love.keypressed(b, s, r, t) end,
-	keyreleased = function(t, b, s) return love.keyreleased(b, s, t) end,
+	keypressed = function(t, b, s, r, customT) return love.keypressed(b, s, r, customT or t) end,
+	keyreleased = function(t, b, s, customT) return love.keyreleased(b, s, customT or t) end,
 	joystickpressed = function(t, j, b) if love.joystickpressed then return love.joystickpressed(j, b, t) end end,
 	joystickreleased = function(t, j, b) if love.joystickreleased then return love.joystickreleased(j, b, t) end end,
 	gamepadpressed = function(t, j, b) if love.gamepadpressed then return love.gamepadpressed(j, b, t) end end,
@@ -40,9 +40,11 @@ local eventhandlers = {
 	touchreleased = function(t, id, x, y, dx, dy, p) return love.touchreleased(id, x, y, dx, dy, p, t) end,
 }
 
+local _restoreMobileFocus
+
 function love.run()
 	love.FPScap, love.unfocusedFPScap = Project.FPS, 16
-	love.autoPause = Project.flags.loxelInitialAutoPause
+	love.autoPause = not isMobile and Project.flags.loxelInitialAutoPause
 	love.vsync = Project.vSync
 
 	if love.math then love.math.setRandomSeed(os.time()) end
@@ -60,8 +62,15 @@ function love.run()
 		if name == __quit__ and not love.quit() then
 			return a or 0, ...
 		end
+		if isMobile and _restoreMobileFocus and (
+			name == "touchpressed" or name == "touchmoved" or name == "mousepressed"
+			or name == "keypressed" or name == "resize"
+			or (name == "visible" and a == true)
+		) then
+			_restoreMobileFocus()
+		end
 		if eventhandlers[name] then return eventhandlers[name](clock, a, ...) end
-		return love.handlers[name](a, ...)
+		if love.handlers and love.handlers[name] then return love.handlers[name](a, ...) end
 	end
 
 	return function()
@@ -71,9 +80,10 @@ function love.run()
 			if a then return a, b end
 		end
 
-		cap = 1 / (focused and love.FPScap or love.unfocusedFPScap)
+		focused = love.window.hasFocus()
+		cap = 1 / ((focused or isMobile) and love.FPScap or love.unfocusedFPScap)
 		dt, clock = love.timer.step(), love.timer.getTime()
-		if focused or not love.autoPause then
+		if focused or not love.autoPause or isMobile then
 			love.update(dt);
 			if love.graphics.isActive() and clock > nextdraw - dt then
 				if love.vsync ~= nil and love.window.setVSync then
@@ -87,17 +97,17 @@ function love.run()
 			end
 		end
 
-		if love.window.hasFocus() then
+		if focused then
 			sleep(dt < 0.001 and 0.001 or 0)
 			collectgarbage(__step__)
-			focused = true
 		else
-			if focused then
-				collectgarbage(); collectgarbage()
+			if not isMobile then
+				collectgarbage(__step__)
+				sleep(cap)
 			else
+				sleep(dt < 0.001 and 0.001 or 0)
 				collectgarbage(__step__)
 			end
-			focused = sleep(cap)
 		end
 	end
 end
@@ -117,13 +127,20 @@ function love.timer.getFPS() return fps end
 -- fix a bug where love.window.hasFocus doesnt return the actual focus in Mobiles
 if isMobile then
 	local _f = true
+	_restoreMobileFocus = function()
+		if not _f then
+			_f = true
+			if love.focus then pcall(love.focus, true) end
+		end
+	end
+
 	function love.window.hasFocus()
 		return _f
 	end
 
 	function love.handlers.focus(f)
-		_f = f
-		if love.focus then return love.focus(f) end
+		_f = f ~= false
+		if love.focus then return love.focus(_f) end
 	end
 
 end
@@ -333,9 +350,19 @@ function game.wheelmoved(x, y) game.mouse.wheel = y end
 
 function game.mousemoved(x, y) game.mouse.onMoved(x, y) end
 
-function game.mousepressed(x, y, button) game.mouse.onPressed(button) end
+function game.mousepressed(x, y, button)
+	if type(x) == "number" and type(y) == "number" then
+		game.mouse.onMoved(x, y)
+	end
+	game.mouse.onPressed(button)
+end
 
-function game.mousereleased(x, y, button) game.mouse.onReleased(button) end
+function game.mousereleased(x, y, button)
+	if type(x) == "number" and type(y) == "number" then
+		game.mouse.onMoved(x, y)
+	end
+	game.mouse.onReleased(button)
+end
 
 function game.textinput(t) TextInput:dispatch(t) end
 

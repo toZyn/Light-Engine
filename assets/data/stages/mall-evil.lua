@@ -1,5 +1,7 @@
 function create()
-	self.boyfriendPos = {x = 1090, y = 100}
+	self.camZoom = 0.85
+	self.boyfriendPos:set(1090, 100)
+	self.dadPos:set(100, 80)
 
 	local bg = Sprite(-400, -500)
 	bg:loadTexture(paths.getImage(SCRIPT_PATH .. 'evilBG'))

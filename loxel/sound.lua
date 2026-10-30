@@ -223,6 +223,61 @@ function Sound:getActualPitch()
 	return self._pitch * (game.sound.__pitch or 1)
 end
 
+function Sound:seek(offset, unit)
+	if not self._source or offset == nil then return false end
+	if unit ~= nil then
+		return (sourceCall(self, "seek", offset, unit))
+	end
+	return (sourceCall(self, "seek", offset))
+end
+
+function Sound:tell(unit)
+	local ok, pos
+	if unit ~= nil then
+		ok, pos = sourceCall(self, "tell", unit)
+	else
+		ok, pos = sourceCall(self, "tell")
+	end
+	return ok and pos or 0
+end
+
+function Sound:getDuration(unit)
+	local ok, duration
+	if unit ~= nil then
+		ok, duration = sourceCall(self, "getDuration", unit)
+	else
+		ok, duration = sourceCall(self, "getDuration")
+	end
+	return ok and duration or -1
+end
+
+function Sound:setVolume(volume)
+	self:set_volume(volume)
+	return self
+end
+
+function Sound:getVolume()
+	return self:get_volume()
+end
+
+function Sound:setPitch(pitch)
+	self:set_pitch(pitch)
+	return self
+end
+
+function Sound:getPitch()
+	return self:get_pitch()
+end
+
+function Sound:setLooping(loop)
+	self:set_looped(loop ~= false)
+	return self
+end
+
+function Sound:isLooping()
+	return self:get_looped()
+end
+
 function Sound:get_duration()
 	local ok, duration = sourceCall(self, "getDuration")
 	return ok and duration or -1

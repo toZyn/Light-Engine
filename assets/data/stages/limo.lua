@@ -30,7 +30,7 @@ end
 
 function create()
 	dadCam.y = -100
-	boyfriendPos = {x = 1078, y = -156}
+	boyfriendPos:set(1078, -156)
 	boyfriendCam.x = boyfriendCam.x - 200
 	camZoom = 0.9
 end

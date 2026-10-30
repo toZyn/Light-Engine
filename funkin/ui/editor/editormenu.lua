@@ -72,6 +72,15 @@ function EditorMenu:new(onSave)
 	self.titleText.scrollFactor:set(0, 0)
 	self:add(self.titleText)
 
+	local btnFont = paths.getFont("vcr.ttf", 18) or love.graphics.getFont()
+	self.backBtn = UIButton(game.width - 134, 14, 110, 36, "BACK", function()
+		util.playSfx(paths.getSound("cancelMenu"))
+		self:close()
+	end)
+	self.backBtn.font = btnFont
+	self.backBtn.scrollFactor:set(0, 0)
+	self:add(self.backBtn)
+
 	self.grpOptions = Group()
 	self:add(self.grpOptions)
 
@@ -123,6 +132,22 @@ function EditorMenu:update(dt)
 	for _, item in ipairs(self.grpOptions.members) do
 		item.x = math.lerp(item._targetX, item.x, math.exp(-dt * 14))
 		item.y = math.lerp(item._targetY, item.y, math.exp(-dt * 14))
+	end
+
+	if game.mouse.justReleasedLeft and Mouse.y >= 70 and Mouse.y < game.height - 64 then
+		for _, item in ipairs(self.grpOptions.members) do
+			local rowTop = item._targetY - 12
+			local rowBottom = item._targetY + 86
+			if Mouse.x >= 60 and Mouse.x <= game.width - 60 and Mouse.y >= rowTop and Mouse.y <= rowBottom then
+				if self.curSelected ~= item.ID then
+					self.curSelected = item.ID
+					self:changeSelection(0)
+					util.playSfx(paths.getSound("scrollMenu"))
+				end
+				self:activateCurrent()
+				return
+			end
+		end
 	end
 
 	if controls:pressed("back") then

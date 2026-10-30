@@ -25,7 +25,7 @@
       android:usesCleartextTraffic="true">
     <activity
         android:name="org.love2d.android.StoragePermissionActivity"
-        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|touchscreen|uiMode|density|layoutDirection|fontScale"
         android:exported="true"
         android:resizeableActivity="false"
         android:screenOrientation="${ORIENTATION}"
@@ -39,16 +39,13 @@
 
     <activity
         android:name="org.love2d.android.GameActivity"
-        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
-        android:exported="true"
+        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|touchscreen|uiMode|density|layoutDirection|fontScale"
+        android:exported="false"
         android:label="${NAME}"
         android:launchMode="singleInstance"
         android:resizeableActivity="false"
         android:screenOrientation="${ORIENTATION}"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-      <intent-filter>
-        <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-      </intent-filter>
     </activity>
   </application>
 </manifest>

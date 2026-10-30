@@ -212,15 +212,18 @@ function Keyboard.reset()
 	table.clear(Keyboard.loveInput.justPressed)
 	table.clear(Keyboard.loveInput.justReleased)
 
-	if love.keyboard.isModifierActive then
+	if love.keyboard and love.keyboard.isModifierActive then
 		for key in pairs(Keyboard.modifierActive) do
-			Keyboard.modifierActive[key] = love.keyboard.isModifierActive(Keyboard.keys[key])
+			local ok, active = pcall(love.keyboard.isModifierActive, Keyboard.keys[key])
+			Keyboard.modifierActive[key] = ok and active or false
 		end
 	end
 end
 
 local function normalizeKey(key)
+	if type(key) ~= 'string' or key == '' or key == 'unknown' then return nil end
 	if key == 'kpenter' then return 'return' end
+	if key == 'acback' then return 'escape' end
 	if key == 'lshift' or key == 'rshift' then return 'shift' end
 	if key == 'lgui' or key == 'rgui' then return 'windows' end
 	if key == 'lalt' or key == 'ralt' then return 'alt' end
@@ -228,12 +231,16 @@ local function normalizeKey(key)
 	return key
 end
 
-function Keyboard.onPressed(key)
-	Keyboard.loveInput.justPressed[key] = true
+function Keyboard.onPressed(key, scancode, isrepeat)
+	if type(key) ~= "string" or key == "" or key == "unknown" then return end
+	if not isrepeat then
+		Keyboard.loveInput.justPressed[key] = true
+	end
 	Keyboard.loveInput.pressed[key] = true
 	Keyboard.loveInput.released[key] = nil
 
 	local normKey = normalizeKey(key)
+	if not normKey then return end
 	if not invalidKeys[normKey] then
 		local inputKey = normKey
 		if inputKey == 'space' then
@@ -249,6 +256,8 @@ function Keyboard.onPressed(key)
 		Keyboard.input.pressed[inputKey] = true
 		Keyboard.input.released[inputKey] = nil
 	end
+
+	if isrepeat then return end
 
 	key = normKey
 	if key == "=" then key = "+" end
@@ -267,11 +276,13 @@ function Keyboard.onPressed(key)
 end
 
 function Keyboard.onReleased(key)
+	if type(key) ~= "string" or key == "" or key == "unknown" then return end
 	Keyboard.loveInput.justReleased[key] = true
 	Keyboard.loveInput.released[key] = true
 	Keyboard.loveInput.pressed[key] = nil
 
 	local normKey = normalizeKey(key)
+	if not normKey then return end
 	if not invalidKeys[normKey] then
 		local inputKey = normKey
 		if inputKey == 'space' then

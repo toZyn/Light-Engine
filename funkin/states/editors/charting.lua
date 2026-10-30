@@ -582,9 +582,49 @@ function ChartingState:buildInspectorUI()
 	self.infoBg.scrollFactor:set(0, 0)
 	self:add(self.infoBg)
 
-	self.infoText = Text(20, 20, "", self.smallFont, Color.WHITE, "left", 170)
+	self.infoText = Text(20, 18, "", self.smallFont, Color.WHITE, "left", 170)
 	self.infoText.scrollFactor:set(0, 0)
 	self:add(self.infoText)
+
+	local function addHudBtn(x, y, w, h, label, cb)
+		local btn = UIButton(x, y, w, h, label, cb)
+		btn.font = self.smallFont
+		btn.scrollFactor:set(0, 0)
+		self:add(btn)
+		return btn
+	end
+
+	self.btnPlayPause = addHudBtn(18, 286, 84, 28, "Play/Pause", function()
+		self:setPlaybackPlaying(not self.playing)
+	end)
+	self.btnExitEditor = addHudBtn(108, 286, 84, 28, "Exit", function()
+		self:setPlaybackPlaying(false)
+		PlayState.chartingMode = false
+		util.playMenuMusic()
+		game.switchState(FreeplayState())
+	end)
+	addHudBtn(18, 320, 84, 26, "< Sec", function()
+		if self.playing then self:setPlaybackPlaying(false) end
+		local targetSec = math.max(0, self:getCurrentSectionIndex() - 2)
+		self:seekMs(self:stepToTime(targetSec * 16))
+	end)
+	addHudBtn(108, 320, 84, 26, "Sec >", function()
+		if self.playing then self:setPlaybackPlaying(false) end
+		local targetSec = self:getCurrentSectionIndex()
+		self:seekMs(self:stepToTime(targetSec * 16))
+	end)
+	addHudBtn(18, 352, 84, 26, "- Step", function()
+		if self.playing then self:setPlaybackPlaying(false) end
+		local stepJump = 16 / (self.curQuant or 16)
+		self:seekMs(self.curTimeMs - self:stepToTime(stepJump))
+	end)
+	addHudBtn(108, 352, 84, 26, "+ Step", function()
+		if self.playing then self:setPlaybackPlaying(false) end
+		local stepJump = 16 / (self.curQuant or 16)
+		self:seekMs(self.curTimeMs + self:stepToTime(stepJump))
+	end)
+	addHudBtn(18, 384, 84, 26, "- Tail", function() self:adjustSelectedSustain(-1) end)
+	addHudBtn(108, 384, 84, 26, "+ Tail", function() self:adjustSelectedSustain(1) end)
 
 	local shortcutHelp = table.concat({
 		"SHORTCUTS",
@@ -592,17 +632,15 @@ function ChartingState:buildInspectorUI()
 		"W/S/Wheel : Scrub",
 		"A / D : Prev/Next Sec",
 		"LEFT/RIGHT : Snap",
-		"Click : Add/Del Note",
+		"Click/Tap : Add/Del",
 		"Drag : Sustain Tail",
 		"Q / E : -/+ Sustain",
 		"CTRL+Z / Y : Undo/Redo",
-		"CTRL+C / V : Copy/Paste",
 		"CTRL+S : Save Chart",
-		"ENTER : Playtest 0:00",
-		"SHIFT+ENTER : Test Here",
+		"ENTER : Playtest",
 		"ESC : Exit Editor"
 	}, "\n")
-	self.helpText = Text(20, game.height - 275, shortcutHelp, self.smallFont, Color.fromRGB(185, 195, 220), "left", 170)
+	self.helpText = Text(20, math.max(418, game.height - 236), shortcutHelp, self.smallFont, Color.fromRGB(185, 195, 220), "left", 170)
 	self.helpText.scrollFactor:set(0, 0)
 	self:add(self.helpText)
 
@@ -1381,7 +1419,7 @@ function ChartingState:update(dt)
 		elseif game.keys.justPressed.RETURN then
 			self:playtestSong(shift or ctrl)
 			return
-		elseif game.keys.justPressed.ESCAPE then
+		elseif game.keys.justPressed.ESCAPE or controls:pressed("back") then
 			self:setPlaybackPlaying(false)
 			PlayState.chartingMode = false
 			util.playMenuMusic()

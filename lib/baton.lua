@@ -66,13 +66,17 @@ local sourceFunction = {keyboardMouse = {}, joystick = {}}
 
 -- checks whether a keyboard key is down or not
 function sourceFunction.keyboardMouse.key(key)
-	return (love.keyboard and love.keyboard.isDown(key)) and 1 or 0
+	if not love.keyboard or type(key) ~= "string" or key == "" or key == "unknown" then return 0 end
+	local ok, down = pcall(love.keyboard.isDown, key)
+	return (ok and down) and 1 or 0
 end
 
 -- checks whether a keyboard key is down or not,
 -- but it takes a scancode as an input
 function sourceFunction.keyboardMouse.sc(sc)
-	return (love.keyboard and love.keyboard.isScancodeDown(sc)) and 1 or 0
+	if not love.keyboard or type(sc) ~= "string" or sc == "" or sc == "unknown" then return 0 end
+	local ok, down = pcall(love.keyboard.isScancodeDown, sc)
+	return (ok and down) and 1 or 0
 end
 
 -- checks whether a mouse buttons is down or not.
@@ -336,13 +340,16 @@ function Player:_releaseControls(names, source, type, ...)
 		control = self._controls[name]
 		control.rawValue = self:_getControlRawValue(control)
 		control.value = control.rawValue >= self.config.deadzone and control.rawValue or 0
+		local stillDown = control.value > 0
 		control.downPrevious = true
-		control.down = false
-		control.pressed = control.debounce and control.pressed or false
-		control.released = true
-		control.debounce = true
-		for _, bind in pairs(control.releaseBinds) do
-			bind(...)
+		control.down = stillDown
+		if not stillDown then
+			control.pressed = control.debounce and control.pressed or false
+			control.released = true
+			control.debounce = true
+			for _, bind in pairs(control.releaseBinds) do
+				bind(...)
+			end
 		end
 	end
 end
@@ -364,14 +371,18 @@ function Player:update()
 end
 
 -- keyboard presses handler
-function Player:onKeyPress(source, ...)
+function Player:onKeyPress(source, scancode, isrepeat, ...)
+	if isrepeat then return end
+	if type(source) ~= "string" or source == "" or source == "unknown" then return end
+	self._activeDevice = 'kbm'
 	local names = self._sourceControls.keyboardMouse[source]
 	if not names then return end
-	self:_pressControls(names, source, 'key', ...)
+	self:_pressControls(names, source, 'key', scancode, false, ...)
 end
 
 -- keyboard releases handler
 function Player:onKeyRelease(source, ...)
+	if type(source) ~= "string" or source == "" or source == "unknown" then return end
 	local names = self._sourceControls.keyboardMouse[source]
 	if not names then return end
 	self:_releaseControls(names, source, 'key', ...)

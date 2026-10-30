@@ -189,3 +189,46 @@ check("Notefield seekTo advances spawn cursor and updates notes every frame", fu
 	assert(#nf.activeNotes >= 1 and nf.activeNotes[1].time == 5.0, "Upcoming notes after seek target must spawn cleanly")
 	nf:destroy()
 end)
+
+check("ChartingState playback audio seek/tell, Soft-Keyboard TextInput, and direct PlayState switch work cleanly", function()
+	PlayState.loadSong("bopeebo", "normal")
+	local charter = ChartingState()
+	game.switchState(charter, true)
+	game.update(1 / 60)
+
+	-- Regression for charting.lua:1209: attempt to call method 'seek' (a nil value)
+	charter:seekMs(1250)
+	charter:setPlaybackPlaying(true)
+	game.update(1 / 60)
+	if charter.inst then
+		assert(type(charter.inst.seek) == "function" and type(charter.inst.tell) == "function",
+			"Loxel Sound must expose seek() and tell() methods")
+	end
+	charter:setPlaybackPlaying(false)
+
+	-- Soft keyboard / IME TextInput signal into UIInputTextBox and UINumericStepper
+	local box = ui.UIInputTextBox(0, 0, 140, 24)
+	box.focused = true
+	TextInput:dispatch("mod_song")
+	box:update(1 / 60)
+	assert(box.text == "mod_song", "UIInputTextBox must accept TextInput signal, got: " .. tostring(box.text))
+	box:destroy()
+
+	local step = ui.UINumericStepper(0, 0, 1, 120, 20, 999, 120, 24)
+	step.value = ""
+	step.cursorPos = 0
+	step.focused = true
+	TextInput:dispatch("180")
+	step:update(1 / 60)
+	assert(step.numValue == 180, "UINumericStepper must accept TextInput signal, got: " .. tostring(step.numValue))
+	step:destroy()
+
+	-- Regression for play.lua:471: bad argument #1 to 'ipairs' (table expected, got nil)
+	-- when switching directly into PlayState(false, startMs) from ChartingState / CharacterEditor
+	PlayState.loadSong("bopeebo", "normal")
+	local ps = PlayState(false, 800)
+	assert(ps.startPos == 800, "PlayState(false, startMs) must set numeric startPos")
+	game.switchState(ps, true)
+	game.update(1 / 60)
+	assert(type(ps.ratings) == "table" and #ps.ratings == 4, "PlayState:enter() must auto-preload ratings when not run via LoadScreen")
+end)

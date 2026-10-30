@@ -93,8 +93,7 @@ function VirtualPad.updatePress()
 		end
 
 		if not found and active then
-			-- release(active, id)
-			release(button, id)
+			release(active, id)
 		end
 	end
 
@@ -172,25 +171,45 @@ end
 
 local keys, sc = {}, {}
 function VirtualPad._press(key, time)
-	local code = love.keyboard.getScancodeFromKey(key)
+	local ok, code = pcall(love.keyboard.getScancodeFromKey, key)
+	code = (ok and code) or key
 	keys[key], sc[code] = true, true
 	love.event.push("keypressed", key, code, false, time)
 end
 
 function VirtualPad._release(key, time)
-	local code = love.keyboard.getScancodeFromKey(key)
+	local ok, code = pcall(love.keyboard.getScancodeFromKey, key)
+	code = (ok and code) or key
 	keys[key], sc[code] = false, false
 	love.event.push("keyreleased", key, code, time)
 end
 
 local _ogIsDown = love.keyboard.isDown
-function love.keyboard.isDown(key)
-	return keys[key] or _ogIsDown(key)
+function love.keyboard.isDown(...)
+	local n = select("#", ...)
+	for i = 1, n do
+		local k = select(i, ...)
+		if k ~= nil and keys[k] then return true end
+	end
+	if _ogIsDown then
+		local ok, res = pcall(_ogIsDown, ...)
+		return ok and res or false
+	end
+	return false
 end
 
 local _ogIsScancodeDown = love.keyboard.isScancodeDown
-function love.keyboard.isScancodeDown(key)
-	return sc[key] or _ogIsScancodeDown(key)
+function love.keyboard.isScancodeDown(...)
+	local n = select("#", ...)
+	for i = 1, n do
+		local k = select(i, ...)
+		if k ~= nil and sc[k] then return true end
+	end
+	if _ogIsScancodeDown then
+		local ok, res = pcall(_ogIsScancodeDown, ...)
+		return ok and res or false
+	end
+	return false
 end
 
 return VirtualPad
