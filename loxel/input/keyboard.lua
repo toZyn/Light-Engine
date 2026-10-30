@@ -315,4 +315,41 @@ function Keyboard.onReleased(key)
 	Keyboard.released.ANY = true
 end
 
+local _sdlResetChecked = false
+local _sdlResetFn = nil
+local function trySdlResetKeyboard()
+	if not _sdlResetChecked then
+		_sdlResetChecked = true
+		pcall(function()
+			local ffi = require "ffi"
+			ffi.cdef[[void SDL_ResetKeyboard(void);]]
+			if ffi.C.SDL_ResetKeyboard then
+				_sdlResetFn = ffi.C.SDL_ResetKeyboard
+			end
+		end)
+	end
+	if _sdlResetFn then
+		pcall(_sdlResetFn)
+	end
+end
+
+function Keyboard.releaseAll()
+	trySdlResetKeyboard()
+	local heldKeys = {}
+	for key in pairs(Keyboard.loveInput.pressed) do
+		heldKeys[#heldKeys + 1] = key
+	end
+	for _, key in ipairs(heldKeys) do
+		Keyboard.onReleased(key)
+	end
+	for key in pairs(Keyboard.pressed) do
+		Keyboard.pressed[key] = nil
+		if key ~= "ANY" then
+			Keyboard.released[key] = true
+		end
+	end
+	table.clear(Keyboard.input.pressed)
+	table.clear(Keyboard.loveInput.pressed)
+end
+
 return Keyboard

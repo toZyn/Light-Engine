@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
 import android.provider.Settings;
+import android.system.Os;
 import android.util.DisplayMetrics;
 
 public class StoragePermissionActivity extends Activity {
@@ -72,6 +73,9 @@ public class StoragePermissionActivity extends Activity {
             @Override
             public void onActivityDestroyed(Activity activity) {
                 if (activity instanceof GameActivity) {
+                    if (activity.isChangingConfigurations()) {
+                        return;
+                    }
                     gameCurrentlyAlive = false;
                     // Native C++ singletons in liblove.so / libopenal.so / PhysFS cannot be
                     // safely re-initialized inside a cached Android Linux process after
@@ -91,8 +95,22 @@ public class StoragePermissionActivity extends Activity {
         });
     }
 
+    private static void configureSdlHotplugHints() {
+        if (Build.VERSION.SDK_INT >= 21) {
+            try {
+                // Prevent SDL2's Android HIDDeviceManager from claiming USB_CLASS_HID
+                // interfaces on physical keyboards/hubs (which triggers focus-stealing
+                // USB permission dialogs on connect and 1000ms bulkTransfer join() stalls
+                // on the main UI thread on disconnect). Android InputManager handles
+                // USB/Bluetooth keyboards and controllers natively.
+                Os.setenv("SDL_JOYSTICK_HIDAPI", "0", true);
+            } catch (Throwable ignored) {}
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        configureSdlHotplugHints();
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         super.onCreate(savedInstanceState);
         ensureLifecycleMonitor(getApplication());

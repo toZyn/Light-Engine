@@ -166,7 +166,13 @@ local function pathSignature(path, kind)
 		if not info then return "" end
 		return table.concat({info.modtime or 0, info.size or 0}, ":")
 	elseif kind == "root" then
-		return tostring(lfs.getLastModified(path) or 0)
+		local info = lfs.getInfo(path)
+		if info and info.modtime ~= nil then return tostring(info.modtime) end
+		if lfs.getLastModified then
+			local ok, mod = pcall(lfs.getLastModified, path)
+			if ok and mod ~= nil then return tostring(mod) end
+		end
+		return "0"
 	end
 
 	local success, items = pcall(lfs.getDirectoryItems, path)
@@ -321,6 +327,35 @@ function Storage.refreshNow(clearCache)
 	if Mods then Mods.reload() end
 	if Addons then Addons.reload() end
 	if clearCache ~= false then clearContentCache() end
+
+	Storage.refreshWatchList()
+	inspectWatchedDirectories()
+	return true
+end
+
+function Storage.refreshIfChanged()
+	if not Storage.mounted then
+		if not Storage.available or not tryMount() then return false end
+		return Storage.refreshNow(false)
+	end
+
+	if #watchedDirectories == 0 then
+		Storage.refreshWatchList()
+		inspectWatchedDirectories()
+		return false
+	end
+
+	local changed, contentChanged, saveChanged = inspectWatchedDirectories()
+	if not changed then return false end
+
+	if saveChanged and Storage.reloadSave then Storage.reloadSave("funkin") end
+	local state = game and game.getState and game.getState()
+	local inPlayState = state and PlayState and state.is and state:is(PlayState)
+	if not inPlayState then
+		if Mods then Mods.reload() end
+		if Addons then Addons.reload() end
+		if contentChanged then clearContentCache() end
+	end
 
 	Storage.refreshWatchList()
 	inspectWatchedDirectories()

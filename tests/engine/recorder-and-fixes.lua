@@ -360,4 +360,63 @@ check("B1: Recorder defaults to 1.0x scale, scales pixelPerfect cameras to full 
 	assert(hasFallbackCanvas, "Camera.__forceComplex must allocate canvas even without stencil8 support")
 end)
 
+check("B2: Keyboard and controller hotplug, focus flickers, and controls:reset never freeze or drop gameplay bindings", function()
+	local mockPad = {
+		_connected = true,
+		_btn = true,
+		isConnected = function(self) return self._connected end,
+		isGamepad = function() return true end,
+		getAxisCount = function() return 4 end,
+		getAxis = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return 0
+		end,
+		getGamepadAxis = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return 0
+		end,
+		isDown = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return self._btn
+		end,
+		isGamepadDown = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return self._btn
+		end,
+		getHat = function(self)
+			if not self._connected then error("Joystick is not connected!", 2) end
+			return "c"
+		end
+	}
+
+	local pressCalled = 0
+	local function probePress() pressCalled = pressCalled + 1 end
+	controls:bindPress(probePress)
+
+	local cfg = table.clone(ClientPrefs.controls)
+	table.insert(cfg.ui_down, "button:dpdown")
+	controls:reset({controls = cfg, joystick = mockPad})
+	assert(table.find(controls._pressBinds, probePress) ~= nil,
+		"controls:reset must preserve active runtime _pressBinds")
+
+	controls:update()
+	assert(controls:getActiveDevice() == "joy", "Connected gamepad should become active device")
+
+	mockPad._connected = false
+	controls:update()
+	assert(controls:getActiveDevice() ~= "joy" and controls.config.joystick == nil,
+		"Disconnected joystick must cleanly clear activeDevice without throwing")
+
+	controls:onKeyPress("down", "down", false)
+	assert(pressCalled >= 1, "Preserved _pressBinds must still fire after controls:reset and hotplug")
+
+	game.keys.onPressed("left", "left", false)
+	assert(game.keys.pressed.LEFT == true, "Expected LEFT marked pressed before focus loss")
+	;(require "funkin").releaseStuckInputs(true)
+	assert(not game.keys.pressed.LEFT, "releaseStuckInputs must clear stuck held keys on unplug/focus loss")
+
+	controls:unbindPress(probePress)
+	controls:reset({controls = table.clone(ClientPrefs.controls)})
+end)
+
 

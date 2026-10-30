@@ -25,7 +25,7 @@
       android:usesCleartextTraffic="true">
     <activity
         android:name="org.love2d.android.StoragePermissionActivity"
-        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|touchscreen|uiMode|density|layoutDirection|fontScale"
+        android:configChanges="mcc|mnc|locale|orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|touchscreen|uiMode|colorMode|density|layoutDirection|fontScale"
         android:exported="true"
         android:resizeableActivity="false"
         android:screenOrientation="${ORIENTATION}"
@@ -39,7 +39,7 @@
 
     <activity
         android:name="org.love2d.android.GameActivity"
-        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|touchscreen|uiMode|density|layoutDirection|fontScale"
+        android:configChanges="mcc|mnc|locale|orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|touchscreen|uiMode|colorMode|density|layoutDirection|fontScale"
         android:exported="false"
         android:label="${NAME}"
         android:launchMode="singleInstance"

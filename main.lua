@@ -56,6 +56,30 @@ function love.touchmoved(...) game.touchmoved(...) end
 
 function love.touchreleased(...) game.touchreleased(...) end
 
+function love.joystickadded(joystick)
+	if funkin and funkin.refreshJoystick then
+		funkin.refreshJoystick(joystick)
+	end
+end
+
+function love.joystickremoved(joystick)
+	if funkin and funkin.onDeviceRemoved then
+		funkin.onDeviceRemoved(joystick)
+	end
+end
+
+function love.gamepadpressed(joystick, button, ...)
+	if controls and controls.onGamepadPress then
+		controls:onGamepadPress(joystick, button, ...)
+	end
+end
+
+function love.gamepadreleased(joystick, button, ...)
+	if controls and controls.onGamepadRelease then
+		controls:onGamepadRelease(joystick, button, ...)
+	end
+end
+
 function love.update(dt)
 	Diagnostics.checkpoint("running")
 	RecoverableErrors.update()
@@ -70,7 +94,17 @@ function love.draw()
 end
 
 function love.focus(f)
-	if f and Storage then Storage.refreshNow(false) end
+	if not f then
+		if funkin and funkin.releaseStuckInputs then
+			funkin.releaseStuckInputs(true)
+		end
+	elseif Storage then
+		if Storage.refreshIfChanged then
+			Storage.refreshIfChanged()
+		else
+			Storage.refreshNow(false)
+		end
+	end
 	game.focus(f)
 end
 
