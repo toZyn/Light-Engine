@@ -48,6 +48,7 @@ function Sound:reset(cleanup, x, y)
 	self:setPosition(x or self.x, y or self.y)
 
 	self._wasPlaying = false
+	self._seekSeq = 0
 	self.looped = false
 	self.autoDestroy = false
 	self.radius = 0
@@ -225,6 +226,7 @@ end
 
 function Sound:seek(offset, unit)
 	if not self._source or offset == nil then return false end
+	self._seekSeq = (self._seekSeq or 0) + 1
 	if unit ~= nil then
 		return (sourceCall(self, "seek", offset, unit))
 	end
@@ -298,6 +300,7 @@ end
 
 function Sound:set_time(time)
 	if not self._source or not time then return false end
+	self._seekSeq = (self._seekSeq or 0) + 1
 	sourceCall(self, "seek", time)
 end
 

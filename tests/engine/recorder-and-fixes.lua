@@ -307,3 +307,57 @@ check("Cutscenes execute postCreate once, DialogueBox closes idempotently, and T
 	paths.async.stop()
 end)
 
+check("B1: Recorder defaults to 1.0x scale, scales pixelPerfect cameras to full frame, and tracks explicit Sound seeks", function()
+	assert(ClientPrefs.data.recordingScale == 1.0,
+		"Default recordingScale must be 1.0 for faithful live capture")
+	assert((ClientPrefs.data.recordingProfileVersion or 0) >= 4,
+		"recordingProfileVersion must be >= 4")
+
+	-- Verify Sound._seekSeq increments on both :seek() and .time = ...
+	local snd = Sound():load(love.sound.newSoundData(4410, 44100, 16, 2))
+	local seq0 = snd._seekSeq or 0
+	snd:seek(0.05)
+	assert((snd._seekSeq or 0) == seq0 + 1, "Sound:seek() must increment _seekSeq")
+	snd.time = 0.02
+	assert((snd._seekSeq or 0) == seq0 + 2, "Sound.time assignment must increment _seekSeq")
+	snd:destroy()
+
+	-- Verify Week 6 pixelPerfect Camera (213x120, zoom=1) draws at 6x to fill 1280x720 target
+	local pixelCam = Camera(0, 0, 213, 120)
+	pixelCam.pixelPerfect = true
+	pixelCam.__forceComplex = true
+	pixelCam:draw()
+	assert(pixelCam.canvas ~= nil, "pixelPerfect camera with __forceComplex must allocate canvas")
+
+	local drawnSx, drawnSy
+	local origDraw = love.graphics.draw
+	love.graphics.draw = function(drawable, x, y, r, sx, sy, ...)
+		if drawable == pixelCam.canvas then
+			drawnSx, drawnSy = sx, sy
+		end
+		return origDraw(drawable, x, y, r, sx, sy, ...)
+	end
+	pixelCam:drawCanvasToTarget(1280, 720)
+	love.graphics.draw = origDraw
+	pixelCam:destroy()
+
+	assert(drawnSx and math.abs(drawnSx - 6) < 0.05 and math.abs(drawnSy - 6) < 0.05,
+		"pixelPerfect 213x120 camera must composite at ~6x onto 1280x720 target, got sx=" .. tostring(drawnSx))
+
+	-- Verify Camera.__forceComplex falls back to non-stencil canvas when stencil8 is unsupported
+	local origFormats = love.graphics.getTextureFormats
+	love.graphics.getTextureFormats = function()
+		return {normal = true, rgba8 = true, stencil8 = false}
+	end
+	Camera.__init()
+	local fallbackCam = Camera(0, 0, 1280, 720)
+	fallbackCam.__forceComplex = true
+	fallbackCam:draw()
+	local hasFallbackCanvas = fallbackCam.canvas ~= nil
+	fallbackCam:destroy()
+	love.graphics.getTextureFormats = origFormats
+	Camera.__init()
+	assert(hasFallbackCanvas, "Camera.__forceComplex must allocate canvas even without stencil8 support")
+end)
+
+

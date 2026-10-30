@@ -56,15 +56,15 @@ local Recorder = {
 }
 
 local QUALITY_MAP = {
-	standard = 78,
-	high = 88,
-	ultra = 95
+	standard = 85,
+	high = 93,
+	ultra = 98
 }
 
 local BITRATE_720P_MAP = {
-	standard = 4500000,
-	high = 8500000,
-	ultra = 14000000
+	standard = 8000000,
+	high = 16000000,
+	ultra = 24000000
 }
 
 local function notifyToast(kind, msg)
@@ -156,7 +156,7 @@ local function computeWorkerCount()
 			cores = c
 		end
 	end
-	return math.max(2, math.min(4, cores - 1))
+	return math.max(2, math.min(6, cores - 1))
 end
 
 local function ensureThreads(needSoftwareEncoders)
@@ -219,9 +219,15 @@ local function releaseCanvases()
 end
 
 local function restoreForcedCameras()
-	for cam, prevSimple in pairs(Recorder._forcedCams) do
+	for cam, prevState in pairs(Recorder._forcedCams) do
 		if cam then
-			cam.simple = prevSimple
+			if type(prevState) == "table" then
+				cam.simple = prevState.simple
+				cam.__forceComplex = prevState.forceComplex
+			else
+				cam.simple = prevState
+				cam.__forceComplex = nil
+			end
 		end
 		Recorder._forcedCams[cam] = nil
 	end
@@ -240,7 +246,7 @@ function Recorder.getCaptureMode()
 end
 
 function Recorder.getTargetDimensions()
-	local scale = tonumber(ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingScale) or 0.75
+	local scale = tonumber(ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingScale) or 1.0
 	scale = math.clamp(scale, 0.25, 1.0)
 	local baseW = (game and game.width and game.width > 0) and game.width or Project.width
 	local baseH = (game and game.height and game.height > 0) and game.height or Project.height
@@ -314,6 +320,7 @@ local function snapshotActiveAudio()
 					list[#list + 1] = {
 						uid = rawget(s, "_uid") or i,
 						playSeq = rawget(s, "_playSeq") or 0,
+						seekSeq = rawget(s, "_seekSeq") or 0,
 						path = not isSoundData and path or nil,
 						soundData = isSoundData and asset or nil,
 						time = s.time or 0,
@@ -374,7 +381,7 @@ local function dispatchPendingSlot(forceFlush)
 	local canvas = Recorder._canvases[pending.slot]
 	if not canvas then return end
 
-	local maxInFlight = math.max(6, (Recorder._workerCount or 2) * 3)
+	local maxInFlight = math.max(12, (Recorder._workerCount or 2) * 4)
 	if not forceFlush and Recorder._encodeCh and Recorder._encodeCh:getCount() >= maxInFlight then
 		Recorder.droppedFrames = Recorder.droppedFrames + 1
 		return
@@ -427,10 +434,10 @@ function Recorder.start(tag, autoStarted)
 
 	local useNative = false
 	if nativeLib ~= nil then
-		if ensureCaptureCanvases(outW, outH, true) then
-			local baseBr = BITRATE_720P_MAP[qualKey] or 8500000
+		if ensureCaptureCanvases(outW, outH, false) then
+			local baseBr = BITRATE_720P_MAP[qualKey] or 16000000
 			local scaleRatio = (outW * outH) / (1280 * 720)
-			local bitrate = math.max(2500000, math.floor(baseBr * math.max(0.45, scaleRatio)))
+			local bitrate = math.max(5000000, math.floor(baseBr * math.max(0.65, scaleRatio)))
 			local rc = nativeLib.lightrecorder_start(path, outW, outH, fps, bitrate, recordAudio and 1 or 0)
 			if rc == 0 then
 				useNative = true
@@ -596,7 +603,7 @@ function Recorder.toggle()
 	return ok, pathOrErr
 end
 
-function Recorder.onSongStart(songName)
+function Recorder.onGameplayEnter(songName)
 	if not Recorder.isFeatureEnabled() then return end
 	if not (ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingAutoGameplay) then
 		return
@@ -604,6 +611,10 @@ function Recorder.onSongStart(songName)
 	if not Recorder.active then
 		Recorder.start(songName or "gameplay", true)
 	end
+end
+
+function Recorder.onSongStart(songName)
+	Recorder.onGameplayEnter(songName)
 end
 
 function Recorder.onSongEnd()
@@ -672,11 +683,15 @@ function Recorder.preDraw()
 
 	for i = 1, #cams do
 		local cam = cams[i]
-		if cam and Recorder._forcedCams[cam] == nil then
-			Recorder._forcedCams[cam] = cam.simple
+		if cam then
+			if Recorder._forcedCams[cam] == nil then
+				Recorder._forcedCams[cam] = {
+					simple = cam.simple,
+					forceComplex = cam.__forceComplex
+				}
+			end
 			cam.simple = false
-		elseif cam and cam.simple ~= false then
-			cam.simple = false
+			cam.__forceComplex = true
 		end
 	end
 end
@@ -724,12 +739,14 @@ end
 local function compositeCamerasToSlot(cams, slotIdx, nativePtsUs)
 	local outW, outH = Recorder.getTargetDimensions()
 	local isNative = Recorder._nativeMode and nativeLib ~= nil
-	if not ensureCaptureCanvases(outW, outH, isNative) then return false end
+	if not ensureCaptureCanvases(outW, outH, false) then return false end
 
-	local targetCanvas = Recorder._canvases[isNative and 1 or slotIdx]
+	local targetCanvas = Recorder._canvases[slotIdx or 1] or Recorder._canvases[1]
 	local baseW = (game and game.width and game.width > 0) and game.width or Project.width
 	local baseH = (game and game.height and game.height > 0) and game.height or Project.height
 	local sx, sy = outW / baseW, outH / baseH
+	local mode = Recorder.getCaptureMode()
+	local state = game and game.getState and game.getState() or nil
 
 	love.graphics.push("all")
 	love.graphics.setCanvas(targetCanvas)
@@ -741,59 +758,52 @@ local function compositeCamerasToSlot(cams, slotIdx, nativePtsUs)
 	local drawnAny = false
 	for i = 1, #cams do
 		local cam = cams[i]
-		local srcCanvas = cam and cam.canvas
-		if srcCanvas and (cam.alpha or 1) > 0 then
-			drawnAny = true
-			local color = cam.color or {1, 1, 1}
-			local alpha = cam.alpha or 1
-			local rot = math.rad(cam.angle or 0)
-			local zoomX = cam.__zoom and cam.__zoom.x or (cam.zoom or 1)
-			local zoomY = cam.__zoom and cam.__zoom.y or (cam.zoom or 1)
-			local halfW, halfH = cam.width / 2, cam.height / 2
-			local shakeX = cam.__shakeX or 0
-			local shakeY = cam.__shakeY or 0
-
-			love.graphics.setBlendMode("alpha", "premultiplied")
-			if cam.bgColor and cam.bgColor[4] and cam.bgColor[4] > 0 then
-				love.graphics.setBlendMode("alpha")
-				love.graphics.setColor(
-					cam.bgColor[1] or 0,
-					cam.bgColor[2] or 0,
-					cam.bgColor[3] or 0,
-					(cam.bgColor[4] or 1) * alpha
-				)
-				love.graphics.rectangle(
-					"fill",
-					(cam.x + shakeX) * sx,
-					(cam.y + shakeY) * sy,
-					cam.width * sx,
-					cam.height * sy
-				)
-				love.graphics.setBlendMode("alpha", "premultiplied")
+		if cam and type(cam.drawCanvasToTarget) == "function" then
+			if cam:drawCanvasToTarget(outW, outH) then
+				drawnAny = true
 			end
+		end
+	end
 
-			love.graphics.setColor(
-				(color[1] or 1) * alpha,
-				(color[2] or 1) * alpha,
-				(color[3] or 1) * alpha,
-				alpha
-			)
-			love.graphics.draw(
-				srcCanvas,
-				(cam.x + halfW + shakeX) * sx,
-				(cam.y + halfH + shakeY) * sy,
-				rot,
-				zoomX * sx,
-				zoomY * sy,
-				halfW,
-				halfH
-			)
+	-- In Gameplay Only mode, include active Video cutscene sprites (e.g. Week 7 ugh/guns/stress)
+	-- placed on camOther without including HUD, pauseButton, or mobile VirtualPad buttons.
+	if mode == "gameplay" and state and state.members and Video then
+		for i = 1, #state.members do
+			local m = state.members[i]
+			if m and m.exists ~= false and m.visible and m.is and m:is(Video) and m.cameras then
+				for c = 1, #m.cameras do
+					if m.cameras[c] == state.camOther and type(m.__render) == "function" then
+						love.graphics.push("all")
+						love.graphics.origin()
+						love.graphics.scale(sx, sy)
+						love.graphics.setBlendMode("alpha", "alphamultiply")
+						m:__render(state.camOther)
+						love.graphics.pop()
+						drawnAny = true
+						break
+					end
+				end
+			end
+		end
+	elseif mode == "entire" and game and game.bound and game.bound.members then
+		for i = 1, #game.bound.members do
+			local o = game.bound.members[i]
+			if o and o ~= game.cameras and o.__render and (not o._canDraw or o:_canDraw()) then
+				love.graphics.push("all")
+				love.graphics.origin()
+				love.graphics.scale(sx, sy)
+				love.graphics.setBlendMode("alpha", "alphamultiply")
+				o:__render(game)
+				love.graphics.pop()
+				drawnAny = true
+			end
 		end
 	end
 
 	if drawnAny and isNative then
-		-- Changing blend mode flushes LÖVE's stream draw batch while targetCanvas FBO is bound
-		love.graphics.setBlendMode("alpha")
+		-- Force a guaranteed blend-mode transition so LÖVE flushes all batched draws to targetCanvas FBO before glReadPixels
+		love.graphics.setBlendMode("replace", "premultiplied")
+		love.graphics.setBlendMode("alpha", "alphamultiply")
 		local rc = nativeLib.lightrecorder_capture_gl_frame(nativePtsUs or 0)
 		if rc ~= 0 then
 			drawnAny = false
@@ -821,9 +831,11 @@ function Recorder.postDraw()
 			end
 
 			if Recorder._nativeMode and nativeLib then
+				local slot = Recorder._curSlot
 				local ptsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps))
-				if compositeCamerasToSlot(cams, 1, ptsUs) then
+				if compositeCamerasToSlot(cams, slot, ptsUs) then
 					Recorder._lastScheduledFrame = targetFrame
+					Recorder._curSlot = (slot == 1) and 2 or 1
 					local seq = Recorder._nextSeq
 					Recorder._nextSeq = seq + 1
 					Recorder.frames = Recorder.frames + 1
@@ -833,6 +845,7 @@ function Recorder.postDraw()
 							session = Recorder._sessionId,
 							seq = seq,
 							targetFrame = targetFrame,
+							ptsUs = ptsUs,
 							audio = snapshotActiveAudio()
 						})
 					end
@@ -843,11 +856,13 @@ function Recorder.postDraw()
 				end
 
 				local slot = Recorder._curSlot
+				local ptsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps))
 				if compositeCamerasToSlot(cams, slot, nil) then
 					Recorder._lastScheduledFrame = targetFrame
 					Recorder._pendingSlot = {
 						slot = slot,
 						targetFrame = targetFrame,
+						ptsUs = ptsUs,
 						audio = snapshotActiveAudio()
 					}
 					Recorder._curSlot = (slot == 1) and 2 or 1

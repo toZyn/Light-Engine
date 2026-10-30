@@ -533,13 +533,17 @@ function PlayState:enter()
 
 	if self.buttons then self:add(self.buttons) end
 
+	if Recorder then
+		Recorder.onGameplayEnter(PlayState.SONG and PlayState.SONG.song)
+	end
+
 	if PlayState.storyMode and not PlayState.seenCutscene then
 		local name, type = PlayState.getCutscene()
 		if name then
 			self:executeCutscene(name, type, function(event)
 				local skipCountdown = event and event.params[1] or false
 				if skipCountdown then
-					self:startSong(self.startPos)
+					self:playSong(self.startPos)
 					self:fadeReceptors()
 				else
 					self:startCountdown()

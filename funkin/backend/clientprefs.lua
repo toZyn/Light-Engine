@@ -48,7 +48,7 @@ ClientPrefs.data = {
 	recordingAutoGameplay = true,
 	recordingAudio = true,
 	recordingQuality = "high",
-	recordingScale = 0.75,
+	recordingScale = 1.0,
 	recordingFps = 60,
 	recordingIndicator = true,
 	recordingProfileVersion = 0,
@@ -106,15 +106,15 @@ game.save.init("funkin")
 pcall(table.merge, ClientPrefs.data, game.save.data.prefs)
 pcall(table.merge, ClientPrefs.controls, game.save.data.controls)
 
-if (tonumber(ClientPrefs.data.recordingProfileVersion) or 0) < 3 then
+if (tonumber(ClientPrefs.data.recordingProfileVersion) or 0) < 4 then
 	ClientPrefs.data.recordingAudio = true
 	ClientPrefs.data.recordingQuality = "high"
-	ClientPrefs.data.recordingScale = 0.75
+	ClientPrefs.data.recordingScale = 1.0
 	ClientPrefs.data.recordingFps = 60
 	if not desktop then
 		ClientPrefs.data.autoPause = false
 	end
-	ClientPrefs.data.recordingProfileVersion = 3
+	ClientPrefs.data.recordingProfileVersion = 4
 end
 
 local function ensureControlBind(list, bind)
