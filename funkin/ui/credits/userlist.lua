@@ -1,5 +1,35 @@
 local UserList = SpriteGroup:extend("UserList")
 
+local fallbackLoadingIcon
+
+local function getLoadingIcon()
+	local relPath = paths.getPath("images/menus/credits/icons/loading.png")
+	if paths.exists(relPath, "file") then
+		return paths.getImage("menus/credits/icons/loading")
+	end
+	if fallbackLoadingIcon then
+		local ok = pcall(fallbackLoadingIcon.getDimensions, fallbackLoadingIcon)
+		if ok then return fallbackLoadingIcon end
+	end
+	local size = 54
+	local data = love.image.newImageData(size, size)
+	local cx, cy = (size - 1) * 0.5, (size - 1) * 0.5
+	for py = 0, size - 1 do
+		for px = 0, size - 1 do
+			local dx, dy = px - cx, py - cy
+			local dist = math.sqrt(dx * dx + dy * dy)
+			if dist >= 16 and dist <= 22 then
+				local ang = (math.atan2(dy, dx) + math.pi) / (2 * math.pi)
+				local alpha = ang < 0.75 and (0.25 + 0.65 * (ang / 0.75)) or 0.12
+				data:setPixel(px, py, 1, 1, 1, alpha)
+			end
+		end
+	end
+	fallbackLoadingIcon = love.graphics.newImage(data)
+	data:release()
+	return fallbackLoadingIcon
+end
+
 function UserList:new(data, width)
 	UserList.super.new(self, 10, 10)
 
@@ -51,15 +81,15 @@ function UserList:addUsers(name, people, i)
 
 	local function makeCard(name, icon, i)
 		local img, txt = Sprite(x + 10, box.y + (64 * i + 10))
-		if icon:startsWith("https://") then
-			img:loadTexture(paths.getImage("menus/credits/icons/loading"))
+		if type(icon) == "string" and icon:startsWith("https://") then
+			img:loadTexture(getLoadingIcon())
 			img.loading = true
 
 			icon = icon .. "?size=100"
 			paths.async.getImage(icon, function(image, url)
-				if url == icon then
-					img.loading = nil
-					img.angle = 0
+				img.loading = nil
+				img.angle = 0
+				if image and url == icon then
 					img:loadTexture(image)
 					img:setGraphicSize(54, 54)
 					img:updateHitbox()
@@ -70,7 +100,10 @@ function UserList:addUsers(name, people, i)
 				end
 			end)
 		else
-			img:loadTexture(paths.getImage("menus/credits/icons/" .. icon))
+			local localKey = "menus/credits/icons/" .. tostring(icon or "")
+			local localTex = paths.exists(paths.getPath("images/" .. localKey .. ".png"), "file")
+				and paths.getImage(localKey) or getLoadingIcon()
+			img:loadTexture(localTex)
 		end
 
 		img:setGraphicSize(54, 54)

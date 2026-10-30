@@ -8,10 +8,20 @@ SoundManager.__pitch = 1
 
 function SoundManager.load(asset, autoDestroy, ...)
 	if autoDestroy == nil then autoDestroy = true end
-	return SoundManager.list:recycle(Sound):load(asset, autoDestroy, ...)
+	local sound = SoundManager.list:recycle(Sound)
+	if not asset then
+		sound.active = false
+		return sound
+	end
+	return sound:load(asset, autoDestroy, ...)
 end
 
 function SoundManager.play(asset, volume, looped, autoDestroy, onComplete, ...)
+	if not asset then
+		local inert = Sound()
+		inert.active = false
+		return inert
+	end
 	return SoundManager.load(asset, autoDestroy, onComplete):play(volume, looped, ...)
 end
 
@@ -23,12 +33,18 @@ function SoundManager.loadMusic(asset)
 		SoundManager.music = music
 		SoundManager.list:add(music)
 	end
+	if not asset then
+		music:reset(true)
+		return music
+	end
 	return music:load(asset)
 end
 
 function SoundManager.playMusic(asset, volume, looped, ...)
 	if looped == nil then looped = true end
-	return SoundManager.loadMusic(asset):play(volume, looped, ...)
+	local music = SoundManager.loadMusic(asset)
+	if not asset then return music end
+	return music:play(volume, looped, ...)
 end
 
 function SoundManager.update(dt)

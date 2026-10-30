@@ -4,7 +4,7 @@ local isVideo = ClientPrefs.data.lowQuality
 
 local function startVideo()
 	cutscene = Video(0, 0, "ughCutscene", true, true)
-	cutscene:setScrollFactor()
+	cutscene.scrollFactor:set()
 	cutscene.cameras = {state.camOther}
 	cutscene:play()
 	state:add(cutscene)
@@ -28,9 +28,9 @@ function create()
 	tankman = Sprite(dadX + 100, dadY)
 	tankman:setFrames(paths.getSparrowAtlas('stages/tank/cutscenes/'
 		.. paths.formatToSongPath(PlayState.SONG.song)))
-	tankman:addAnimByPrefix('wellWell', 'TANK TALK 1 P1', 24, false)
-	tankman:addAnimByPrefix('killYou', 'TANK TALK 1 P2', 24, false)
-	tankman:play('wellWell', true)
+	tankman.animation:addByPrefix('wellWell', 'TANK TALK 1 P1', 24, false)
+	tankman.animation:addByPrefix('killYou', 'TANK TALK 1 P2', 24, false)
+	tankman.animation:play('wellWell', true)
 	state:insert(state:indexOf(state.stage) + 1, tankman)
 
 	state.camFollow:set(dadX + 380, dadY + 170)
@@ -69,7 +69,7 @@ function postCreate()
 		state.camFollow.x = state.camFollow.x - 650
 		state.camFollow.y = state.camFollow.y - 100
 
-		tankman:play('killYou', true)
+		tankman.animation:play('killYou', true)
 		tankman.x = tankman.x - 36
 		tankman.y = tankman.y - 10
 		game.sound.play(paths.getSound('gameplay/killYou'), ClientPrefs.data.vocalVolume / 100)

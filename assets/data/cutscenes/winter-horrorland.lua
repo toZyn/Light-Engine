@@ -9,7 +9,7 @@ function create()
 
 	local blackScreen = Graphic(0, 0,
 		math.floor(game.width * 2), math.floor(game.height * 2), Color.BLACK)
-	blackScreen:setScrollFactor()
+	blackScreen.scrollFactor:set()
 	state:add(blackScreen)
 
 	state.tween:tween(blackScreen, {alpha = 0}, 0.7, {

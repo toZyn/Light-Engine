@@ -20,14 +20,15 @@ function CalibrationState:enter()
 	end
 
 	self.gray = Graphic(0, 0, game.width, game.height, grayColor)
-	self.gray:setScrollFactor()
+	self.gray.scrollFactor:set()
 	self:add(self.gray)
 
 	CalibrationState.super.enter(self)
 	game.discardTransition()
 
 	if game.sound.music then game.sound.music:cancelFade() end
-	game.sound.playMusic(paths.getMusic("chart_loop"), ClientPrefs.data.musicVolume)
+	local calibMusic = paths.getMusic("chartEditorLoop") or paths.getMusic("chart_loop")
+	game.sound.playMusic(calibMusic, ClientPrefs.data.musicVolume / 100)
 end
 
 function CalibrationState:leave()

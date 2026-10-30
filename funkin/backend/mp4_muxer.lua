@@ -272,8 +272,9 @@ local function buildVideoTrak(trackId, width, height, timescale, totalDuration, 
 	return box("trak", tkhd .. edts .. mdia)
 end
 
-local function buildAudioTrak(trackId, totalSamples, movieTimescale, sizes, offsets, durations, use64, maxFrameBytes)
-	local movieDuration = math.max(1, math.floor((totalSamples / AUDIO_RATE) * movieTimescale + 0.5))
+local function buildAudioTrak(trackId, totalSamples, movieTimescale, sizes, offsets, durations, use64, maxFrameBytes, audioRate)
+	local rate = math.max(8000, math.floor(tonumber(audioRate) or AUDIO_RATE))
+	local movieDuration = math.max(1, math.floor((totalSamples / rate) * movieTimescale + 0.5))
 
 	local tkhd = fullbox("tkhd", 0, 0x000003, table.concat({
 		u32be(0), u32be(0),
@@ -291,7 +292,7 @@ local function buildAudioTrak(trackId, totalSamples, movieTimescale, sizes, offs
 
 	local mdhd = fullbox("mdhd", 0, 0, table.concat({
 		u32be(0), u32be(0),
-		u32be(AUDIO_RATE),
+		u32be(rate),
 		u32be(totalSamples),
 		u16be(0x55C4),
 		u16be(0)
@@ -316,8 +317,8 @@ local function buildAudioTrak(trackId, totalSamples, movieTimescale, sizes, offs
 		u8(AUDIO_CHANNELS),
 		u16be(255),
 		u32be(math.max(maxFrameBytes or 16400, 16400)),
-		u32be(AUDIO_RATE * AUDIO_CHANNELS * AUDIO_BITS),
-		u32be(AUDIO_RATE)
+		u32be(rate * AUDIO_CHANNELS * AUDIO_BITS),
+		u32be(rate)
 	}))
 
 	local alacEntry = box("alac", table.concat({
@@ -327,7 +328,7 @@ local function buildAudioTrak(trackId, totalSamples, movieTimescale, sizes, offs
 		u16be(AUDIO_CHANNELS),
 		u16be(AUDIO_BITS),
 		u16be(0), u16be(0),
-		u32be(AUDIO_RATE * 65536),
+		u32be(rate * 65536),
 		alacConfig
 	}))
 
@@ -348,7 +349,7 @@ local function buildAudioTrak(trackId, totalSamples, movieTimescale, sizes, offs
 	return box("trak", tkhd .. edts .. mdia)
 end
 
-function Mp4Muxer.open(path, width, height, fps, recordAudio, objectType)
+function Mp4Muxer.open(path, width, height, fps, recordAudio, objectType, audioRate)
 	local f, err = io.open(path, "wb")
 	if not f then
 		return nil, err
@@ -366,6 +367,7 @@ function Mp4Muxer.open(path, width, height, fps, recordAudio, objectType)
 	f:flush()
 
 	local timescale = math.max(1000, math.floor((tonumber(fps) or 60) * 1000 + 0.5))
+	local resolvedAudioRate = math.max(8000, math.floor(tonumber(audioRate) or AUDIO_RATE))
 	local self = setmetatable({
 		file = f,
 		path = path,
@@ -376,6 +378,7 @@ function Mp4Muxer.open(path, width, height, fps, recordAudio, objectType)
 		defaultFrameTicks = 1000,
 		recordAudio = recordAudio == true,
 		objectType = objectType or 0x6C,
+		audioRate = resolvedAudioRate,
 
 		freePos = freePos,
 		mdatPos = mdatPos,
@@ -465,7 +468,7 @@ function Mp4Muxer:close()
 
 	local movieTimescale = 1000
 	local videoSec = math.max(0.001, self.totalVideoTicks / self.timescale)
-	local audioSec = (#self.aSizes > 0) and (self.totalAudioSamples / AUDIO_RATE) or 0
+	local audioSec = (#self.aSizes > 0) and (self.totalAudioSamples / self.audioRate) or 0
 	local maxSec = math.max(videoSec, audioSec)
 	local movieDuration = math.max(1, math.floor(maxSec * movieTimescale + 0.5))
 
@@ -483,7 +486,8 @@ function Mp4Muxer:close()
 	if self.recordAudio and #self.aSizes > 0 and self.totalAudioSamples > 0 then
 		traks[#traks + 1] = buildAudioTrak(
 			2, self.totalAudioSamples, movieTimescale,
-			self.aSizes, self.aOffsets, self.aDurations, use64, self.maxAudioPacketBytes
+			self.aSizes, self.aOffsets, self.aDurations, use64, self.maxAudioPacketBytes,
+			self.audioRate
 		)
 		nextTrackId = 3
 	end

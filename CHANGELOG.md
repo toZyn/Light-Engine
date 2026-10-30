@@ -5,6 +5,87 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-10-30
+
+### Corregido
+- **Sincronización A/V exacta, retención de frames caídos, audio de videos `.ogv` y limitador `< 0 dBFS` en el grabador `.mp4`**
+  (`funkin/backend/recorder.lua`, `funkin/backend/recorder_thread.lua`,
+  `funkin/backend/recorder_encoder_thread.lua`, `funkin/backend/mp4_muxer.lua`,
+  `funkin/backend/video.lua`, `android/jni/lightrecorder.c`, `loxel/sound.lua`):
+  - Unificado el reloj maestro de captura (`sessionClock` con deltas acumulados de
+    `love.update(dt)`) para video y audio tanto en Desktop (`mp4v` + `alac`) como en
+    Android (`AMediaCodec` H.264/AAC + `AMediaMuxer`), eliminando el desfase inicial de
+    `-46 ms` a `-63 ms` y la deriva de voces de hasta `+315 ms` al fallar notas (≤ `1 ms`
+    de offset en inicio, mitad y final incluso en canciones >3 min).
+  - Mantenidos en el snapshot de audio los stems temporalmente silenciados (`volume == 0`
+    tras fallar notas en `PlayState`) para que sus cursores de decodificación avancen en
+    bloqueo de fase sin requerir re-seeks bruscos al recuperar volumen.
+  - Corregido el manejo de caídas de FPS (`frame drops`): al omitirse `N` intervalos de
+    captura, el muxer ahora duplica el **frame anterior** durante los intervalos omitidos
+    (y en Android presenta el `last_frame_rgba` con sus `pts_us` explícitos) en lugar de
+    adelantar el frame siguiente `N` ticks antes que el audio.
+  - Capturado el audio Vorbis embebido en cutscenes `.ogv` (`Video._active` + decodificación
+    streaming), preservada la frecuencia nativa de `44.1 kHz` o `48 kHz` sin remuestreo
+    innecesario, y añadido limitador suave de headroom (`-1.0 dBFS` techo, rodilla suave
+    desde `-3.0 dBFS`) eliminando el recorte digital (`0.00 dBFS` hard clip) al sumar
+    instrumental + voces + SFX.
+  - Corregida la velocidad/pitch de audio grabado (`playback`), eliminados los pantallas
+    negras en `pixelPerfect` (`6x` composite) y forzada escala nativa `1.0x` por defecto
+    con exclusión total de UI en modo `Gameplay only (No UI)`.
+- **Restauración de niveles base, Week 6 (`thorns`), hitboxes táctiles, audio y editores (PR #12 / PR #13)**:
+  - Restaurados los niveles y personajes base (`REG-LEVELS`) exactamente a la referencia
+    estable `v0.2.2`, eliminado el bloqueo en `thorns` (`CRIT-THORNS`), corregida la
+    proyección mundo/pantalla de `DialogueBox` y controles táctiles/mouse (`B4`), aislado el
+    guardado de editores en `saves/ > mods/ > assets/` (`B5`), unificada la pausa en teclado,
+    gamepad y botón táctil (`B6`), y endurecida la salida limpia en Android (`GameActivity`
+    re-entry) y el manejo de errores visibles en `TimerManager`.
+- **Crashes de audio, calibración, Game Over, Pausa, Notefield y Story Mode (Fase 2)**:
+  - `SoundManager.load/play/loadMusic/playMusic` ahora maneja activos `nil` de forma segura
+    sin lanzar `attempt to index a nil value`, y `CalibrationState` carga la pista real
+    `chartEditorLoop` con volumen normalizado (`musicVolume / 100`).
+  - Añadido alias `music/gameOverend-pixel.ogg -> music/gameOverEnd-pixel.ogg` para evitar
+    el crash al reintentar en Week 6 (`senpai`, `roses`, `thorns`) en sistemas sensibles a
+    mayúsculas (Linux y Android), precargado `AnimateAtlas` en `PlayState:tryGameOver()` sin
+    falsos avisos `image not found`, evitado el softlock si falta el JSON de muerte, y añadido
+    fallback automático a `bf-dead` en `Character` cuando el sprite de un personaje `-dead`
+    no existe en disco (como `bf-holding-gf-dead`).
+  - Protegido `PauseSubstate` cuando `pauseMusic` es `"none"` o apunta a una pista ausente
+    (con fallback a `railways`), protegido el acceso a `PlayState.SONG` y cancelados los
+    temporizadores de transición de música al cerrar el menú de pausa.
+  - Protegidos `Notefield:getNotes/seekTo/update/__render` tras `Notefield:destroy()` y
+    `ScriptsHandler` tras `ScriptsHandler:close()`.
+  - Reiniciado `PlayState.storyScore = 0` al iniciar o completar una semana en `Story Mode`
+    para evitar que la puntuación de semanas previas se acumule en semanas posteriores.
+  - Generado icono de carga procedural `54x54` de respaldo en `CreditsState` (`UserList`),
+    eliminando los 13 avisos `image not found: menus/credits/icons/loading` y corrigiendo el
+    colapso de altura de tarjetas cuando no hay conexión HTTPS.
+  - Migradas las llamadas obsoletas de Loxel (`setScrollFactor`, `addAnim*`, `play`, `finish`)
+    en menús, opciones, cutscenes y clases auxiliares (`backgroundgirls`, `tankmengroup`), y
+    corregido el orden de argumentos de `animation:addByIndices` en `Stage`.
+
+### Cambiado
+- **Perfil de grabación por defecto (`recordingProfileVersion = 4`)**: resolución nativa
+  `1.0x`, `60 FPS`, calidad `high` y captura de audio activada por defecto; la pestaña de
+  opciones de grabación permanece íntegramente en inglés y solo aparece cuando
+  `Screen Recording` está habilitado.
+
+### Añadido
+- **Nuevas suites y casos de regresión en `tests/engine/recorder-and-fixes.lua`**:
+  cobertura automatizada para ALAC estéreo nativo a `48 kHz`, retención del frame previo ante
+  caídas de FPS, avance de cursores en stems silenciados, limitador `< 0 dBFS`, seguimiento de
+  `Video._active`, `SoundManager` ante activos `nil`, `CalibrationState`, alias de Game Over
+  pixel, fallback de `bf-holding-gf-dead`, `PauseSubstate`, `Notefield:destroy()`,
+  `ScriptsHandler:close()`, `PlayState.storyScore` y `CreditsState`.
+
+### Conocido
+- Los scripts base de escenarios en `assets/data/stages/*.lua` mantienen llamadas heredadas a
+  helpers deprecados de Loxel (`setScrollFactor`, `addAnimByPrefix`, `play`, `finish`) que
+  emiten avisos `[WARN]` en consola sin afectar la jugabilidad; se conservan intactos por
+  política de inmutabilidad de niveles base respecto a `v0.2.2`.
+- `assets/data/characters/bf-holding-gf-dead.json` referencia el atlas ausente
+  `characters/bfHoldingGF-DEAD`; el motor mitiga esto automáticamente en tiempo de ejecución
+  recurriendo a `bf-dead` con animación y música de Game Over completas.
+
 ## [0.2.3] - 2026-10-30
 
 ### Fixed

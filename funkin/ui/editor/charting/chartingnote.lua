@@ -39,9 +39,9 @@ end
 function ChartingNote:_addAnim(...)
 	local args = {...}
 	if type(args[2]) == 'table' then
-		self:addAnim(...)
+		self.animation:add(...)
 	else
-		self:addAnimByPrefix(...)
+		self.animation:addByPrefix(...)
 	end
 end
 

@@ -81,6 +81,7 @@ function PlayState:new(storyMode, song, diff)
 	if storyMode ~= nil then
 		PlayState.storyMode = storyMode
 		PlayState.storyWeek = ""
+		PlayState.storyScore = 0
 	end
 
 	if type(song) == "number" then
@@ -1568,26 +1569,38 @@ function PlayState:tryGameOver()
 
 		self.scripts:call("gameOverCreate")
 
+		local function openGameOver()
+			if game.getState() ~= self then return end
+			if event.pauseSong then
+				self:pauseSong()
+			end
+			self.paused = event.pauseGame
+			tween:cancel()
+			self:setPlayback(1)
+
+			self.camHUD.visible, self.camNotes.visible = false, false
+			if self.boyfriend then
+				self.boyfriend.visible = false
+			end
+			self:openSubstate(GameOverSubstate(self.stage.boyfriendPos.x,
+				self.stage.boyfriendPos.y))
+			self.scripts:call("postGameOverCreate")
+		end
+
 		if GameOverSubstate.characterName ~= "" then
 			local data = Parser.getCharacter(GameOverSubstate.characterName)
 			if data and data.sprite then
-				paths.async.getImage(data.sprite, function()
-					if event.pauseSong then
-						self:pauseSong()
-					end
-					self.paused = event.pauseGame
-					tween:cancel()
-					self:setPlayback(1)
-
-					self.camHUD.visible, self.camNotes.visible = false, false
-					if self.boyfriend then
-						self.boyfriend.visible = false
-					end
-					self:openSubstate(GameOverSubstate(self.stage.boyfriendPos.x,
-						self.stage.boyfriendPos.y))
-					self.scripts:call("postGameOverCreate")
-				end)
+				if paths.exists(paths.getPath("images/" .. data.sprite .. "/Animation.json"), "file") then
+					paths.getAnimateAtlas(data.sprite)
+					openGameOver()
+				else
+					paths.async.getImage(data.sprite, openGameOver)
+				end
+			else
+				openGameOver()
 			end
+		else
+			openGameOver()
 		end
 
 		self.isDead = true
@@ -1749,6 +1762,7 @@ function PlayState:endSong(skip)
 
 			if not PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty) then
 				GameOverSubstate.deaths = 0
+				PlayState.storyScore = 0
 				PlayState.canFadeInReceptors = true
 				local stickers = Stickers(nil, StoryMenuState())
 				self:add(stickers)
@@ -1760,8 +1774,9 @@ function PlayState:endSong(skip)
 			GameOverSubstate.deaths = 0
 			PlayState.canFadeInReceptors = true
 			if not self.usedBotPlay then
-				Highscore.saveWeekScore(self.storyWeekFile, self.storyScore, self.songDifficulty)
+				Highscore.saveWeekScore(PlayState.storyWeekFile, PlayState.storyScore, self.songDifficulty)
 			end
+			PlayState.storyScore = 0
 
 			local stickers = Stickers(nil, StoryMenuState())
 			self:add(stickers)

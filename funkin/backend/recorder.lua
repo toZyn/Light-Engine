@@ -1,10 +1,12 @@
 local okFFI, ffi = pcall(require, "ffi")
 
 local nativeLib = nil
+local hasNativeStartEx = false
 if okFFI and ffi then
 	pcall(ffi.cdef, [[
 		int lightrecorder_is_available(void);
 		int lightrecorder_start(const char *path, int width, int height, int fps, int bitrate, int record_audio);
+		int lightrecorder_start_ex(const char *path, int width, int height, int fps, int bitrate, int record_audio, int audio_rate);
 		int lightrecorder_capture_gl_frame(int64_t pts_us);
 		void lightrecorder_flush_gl(void);
 		int lightrecorder_push_audio_pcm(const int16_t *pcm, int num_stereo_frames);
@@ -13,6 +15,7 @@ if okFFI and ffi then
 	local okLoad, lib = pcall(ffi.load, "lightrecorder")
 	if okLoad and lib and lib.lightrecorder_is_available() == 1 then
 		nativeLib = lib
+		hasNativeStartEx = pcall(function() return lib.lightrecorder_start_ex ~= nil end)
 	end
 end
 
@@ -51,7 +54,10 @@ local Recorder = {
 	_startWallTime = nil,
 	_pausedAtWallTime = nil,
 	_lastScheduledFrame = -1,
+	_scheduledFrame = 0,
+	_scheduledPtsUs = 0,
 	_shouldCaptureFrame = false,
+	_audioRate = 44100,
 	_forcedCams = {}
 }
 
@@ -267,7 +273,8 @@ function Recorder.getCaptureCameras(mode, state, camerasList)
 		if not isPlay then
 			return selected
 		end
-		if state.paused or state.inCutscene or state.substate ~= nil then
+		if state.paused or state.inCutscene or state.substate ~= nil
+			or (PlayState and state.is and state:is(PlayState) and not state.startedCountdown) then
 			return selected
 		end
 
@@ -291,47 +298,149 @@ function Recorder.getCaptureCameras(mode, state, camerasList)
 	return selected
 end
 
-local function snapshotActiveAudio()
-	if not Recorder._recordAudio then return nil end
-	if not game or not game.sound or not game.sound.list or not game.sound.list.members then
-		return nil
+local function detectPreferredAudioRate()
+	local probePath = nil
+	local state = game and game.getState and game.getState() or nil
+	local inPlayState = (state and PlayState and state.is and state:is(PlayState))
+		or (PlayState and PlayState.SONG and PlayState.SONG.song ~= nil)
+
+	if inPlayState and PlayState and PlayState.SONG and PlayState.SONG.song and paths and paths.formatToSongPath then
+		local songFolder = paths.formatToSongPath(PlayState.SONG.song)
+		local diff = PlayState.songDifficulty and PlayState.songDifficulty:lower() or nil
+		if diff and paths.getPath then
+			local pDiff = paths.getPath("songs/" .. songFolder .. "/Inst-" .. diff .. ".ogg")
+			if paths.exists and paths.exists(pDiff, "file") then probePath = pDiff end
+		end
+		if not probePath and paths.getPath then
+			local pBase = paths.getPath("songs/" .. songFolder .. "/Inst.ogg")
+			if paths.exists and paths.exists(pBase, "file") then probePath = pBase end
+		end
 	end
 
-	local members = game.sound.list.members
+	if not probePath and game and game.sound and game.sound.music then
+		local m = game.sound.music
+		local asset = rawget(m, "_asset")
+		if asset and type(asset.typeOf) == "function" then
+			local okSD, isSD = pcall(asset.typeOf, asset, "SoundData")
+			if okSD and isSD and asset.getSampleRate then
+				local okR, r = pcall(asset.getSampleRate, asset)
+				if okR and (r == 48000 or r == 44100) then return r end
+			end
+		end
+		probePath = rawget(m, "_sourcePath") or (asset and paths and paths.audioPaths and paths.audioPaths[asset])
+	end
+
+	if type(probePath) == "string" and probePath ~= "" and love and love.sound and love.sound.newDecoder then
+		local okDec, dec = pcall(love.sound.newDecoder, probePath, 4096)
+		if okDec and dec then
+			local okR, sr = pcall(dec.getSampleRate, dec)
+			pcall(dec.release, dec)
+			if okR and sr == 48000 then
+				return 48000
+			end
+		end
+	end
+
+	return 44100
+end
+
+local function snapshotActiveAudio()
+	if not Recorder._recordAudio then return nil end
+
 	local list = nil
-	for i = 1, #members do
-		local s = members[i]
-		if s and s.exists and s.active and type(s.isPlaying) == "function" and s:isPlaying() then
-			local vol = type(s.getActualVolume) == "function" and s:getActualVolume() or (s._volume or 1)
-			if vol > 0.0005 then
+
+	-- Identify active PlayState song stems (Inst + all Voices) so they stay sample-locked
+	-- to the exact visual Notefield/Conductor clock (PlayState.conductor.time / 1000),
+	-- including while Voices.volume == 0 during missed notes.
+	local songStems = nil
+	local songMasterSec = nil
+	local state = game and game.getState and game.getState() or nil
+	if state and PlayState and state.is and state:is(PlayState)
+		and state.startedCountdown and not state.startingSong and not state.paused
+		and PlayState.conductor and type(PlayState.conductor.time) == "number"
+		and game.sound and game.sound.music and game.sound.music:isPlaying() then
+		songMasterSec = math.max(0, PlayState.conductor.time / 1000)
+		songStems = {[game.sound.music] = true}
+		if state.vocals then songStems[state.vocals] = true end
+		if state.dadVocals then songStems[state.dadVocals] = true end
+		if state.notefields then
+			for _, nf in pairs(state.notefields) do
+				if type(nf) == "table" and nf.vocals then
+					songStems[nf.vocals] = true
+				end
+			end
+		end
+	end
+
+	if game and game.sound and game.sound.list and game.sound.list.members then
+		local members = game.sound.list.members
+		for i = 1, #members do
+			local s = members[i]
+			if s and s.exists and s.active and type(s.isPlaying) == "function" and s:isPlaying() then
+				local vol = type(s.getActualVolume) == "function" and s:getActualVolume() or (s._volume or 1)
+				vol = math.max(0, tonumber(vol) or 0)
+				local isSongStem = (songStems ~= nil and songStems[s] == true)
+				-- Keep zero-volume streams (e.g. muted Voices-bf on note miss) in the snapshot
+				-- so their sample cursor advances in lockstep instead of freezing behind notes.
 				local asset = rawget(s, "_asset")
 				local isSoundData = false
 				if asset and type(asset.typeOf) == "function" then
 					local okType, res = pcall(asset.typeOf, asset, "SoundData")
 					isSoundData = okType and res == true
 				end
-				local path = rawget(s, "_sourcePath")
-				if not path and asset and paths and paths.audioPaths then
-					path = paths.audioPaths[asset]
+				if vol > 0.0001 or not isSoundData or isSongStem then
+					local path = rawget(s, "_sourcePath")
+					if not path and asset and paths and paths.audioPaths then
+						path = paths.audioPaths[asset]
+					end
+					if isSoundData or (type(path) == "string" and path ~= "") then
+						if not list then list = {} end
+						local pitch = type(s.getActualPitch) == "function" and s:getActualPitch() or (s._pitch or 1)
+						list[#list + 1] = {
+							uid = rawget(s, "_uid") or tostring(s),
+							playSeq = rawget(s, "_playSeq") or 0,
+							seekSeq = rawget(s, "_seekSeq") or 0,
+							path = not isSoundData and path or nil,
+							soundData = isSoundData and asset or nil,
+							time = s.time or 0,
+							songMasterSec = isSongStem and songMasterSec or nil,
+							volume = vol,
+							pitch = pitch,
+							looped = s.looped == true
+						}
+					end
 				end
-				if isSoundData or (type(path) == "string" and path ~= "") then
+			end
+		end
+	end
+
+	-- Capture active .ogv Video cutscenes (whose internal audio Source is not in game.sound.list)
+	if Video and Video._active then
+		for v in pairs(Video._active) do
+			if v and v.exists ~= false and v._started and not v.paused
+				and v.video and type(v.video.isPlaying) == "function" and v.video:isPlaying() then
+				local vPath = v._sourcePath
+				if type(vPath) == "string" and vPath ~= "" then
+					local vVol = type(v.getActualVolume) == "function" and v:getActualVolume() or (v.__volume or 1)
+					vVol = math.max(0, tonumber(vVol) or 0)
 					if not list then list = {} end
-					local pitch = type(s.getActualPitch) == "function" and s:getActualPitch() or (s._pitch or 1)
 					list[#list + 1] = {
-						uid = rawget(s, "_uid") or i,
-						playSeq = rawget(s, "_playSeq") or 0,
-						seekSeq = rawget(s, "_seekSeq") or 0,
-						path = not isSoundData and path or nil,
-						soundData = isSoundData and asset or nil,
-						time = s.time or 0,
-						volume = vol,
-						pitch = pitch,
-						looped = s.looped == true
+						uid = "video:" .. tostring(v),
+						playSeq = v._playSeq or 0,
+						seekSeq = v._seekSeq or 0,
+						path = vPath,
+						soundData = nil,
+						time = (type(v.tell) == "function" and v:tell()) or 0,
+						songMasterSec = nil,
+						volume = vVol,
+						pitch = 1,
+						looped = v.looped == true
 					}
 				end
 			end
 		end
 	end
+
 	return list
 end
 
@@ -384,6 +493,18 @@ local function dispatchPendingSlot(forceFlush)
 	local maxInFlight = math.max(12, (Recorder._workerCount or 2) * 4)
 	if not forceFlush and Recorder._encodeCh and Recorder._encodeCh:getCount() >= maxInFlight then
 		Recorder.droppedFrames = Recorder.droppedFrames + 1
+		if Recorder._muxCh then
+			local seq = Recorder._nextSeq
+			Recorder._nextSeq = seq + 1
+			Recorder._muxCh:push({
+				type = "drop",
+				session = Recorder._sessionId,
+				seq = seq,
+				targetFrame = pending.targetFrame,
+				ptsUs = pending.ptsUs,
+				audio = pending.audio
+			})
+		end
 		return
 	end
 
@@ -401,6 +522,7 @@ local function dispatchPendingSlot(forceFlush)
 		session = Recorder._sessionId,
 		seq = seq,
 		targetFrame = pending.targetFrame,
+		ptsUs = pending.ptsUs,
 		image = imgData,
 		width = Recorder._canvasW,
 		height = Recorder._canvasH,
@@ -431,6 +553,7 @@ function Recorder.start(tag, autoStarted)
 	local dir = ensureOutputDirectory()
 	local prefix = sanitizeSegment(tag or (Recorder.getCaptureMode() == "gameplay" and "gameplay" or "game"))
 	local path = buildUniqueMp4Path(dir, prefix)
+	local audioRate = detectPreferredAudioRate()
 
 	local useNative = false
 	if nativeLib ~= nil then
@@ -438,7 +561,13 @@ function Recorder.start(tag, autoStarted)
 			local baseBr = BITRATE_720P_MAP[qualKey] or 16000000
 			local scaleRatio = (outW * outH) / (1280 * 720)
 			local bitrate = math.max(5000000, math.floor(baseBr * math.max(0.65, scaleRatio)))
-			local rc = nativeLib.lightrecorder_start(path, outW, outH, fps, bitrate, recordAudio and 1 or 0)
+			local rc
+			if hasNativeStartEx then
+				rc = nativeLib.lightrecorder_start_ex(path, outW, outH, fps, bitrate, recordAudio and 1 or 0, audioRate)
+			else
+				audioRate = 44100
+				rc = nativeLib.lightrecorder_start(path, outW, outH, fps, bitrate, recordAudio and 1 or 0)
+			end
 			if rc == 0 then
 				useNative = true
 			end
@@ -461,9 +590,12 @@ function Recorder.start(tag, autoStarted)
 	Recorder._quality = quality
 	Recorder._fourcc = fourcc
 	Recorder._recordAudio = recordAudio
+	Recorder._audioRate = audioRate
 	Recorder._startWallTime = nil
 	Recorder._pausedAtWallTime = nil
 	Recorder._lastScheduledFrame = -1
+	Recorder._scheduledFrame = 0
+	Recorder._scheduledPtsUs = 0
 	Recorder._shouldCaptureFrame = false
 	Recorder._pendingSlot = nil
 	Recorder._curSlot = 1
@@ -485,7 +617,8 @@ function Recorder.start(tag, autoStarted)
 		height = outH,
 		fps = fps,
 		fourcc = fourcc,
-		recordAudio = recordAudio
+		recordAudio = recordAudio,
+		audioRate = audioRate
 	})
 
 	return true, path
@@ -521,6 +654,15 @@ function Recorder.stop(waitFlush)
 		pcall(dispatchPendingSlot, true)
 	end
 
+	local nowStop = (love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
+	local stopFrames = (Recorder._lastScheduledFrame >= 0) and (Recorder._lastScheduledFrame + 1) or 0
+	if Recorder._startWallTime and not Recorder._pausedAtWallTime and Recorder._lastScheduledFrame >= 0 then
+		local wallFrames = math.floor(math.max(0, nowStop - Recorder._startWallTime) * Recorder._targetFps + 0.5)
+		if wallFrames > stopFrames then
+			stopFrames = wallFrames
+		end
+	end
+
 	local savedPath = Recorder.outputPath
 	local lastSeq = Recorder._nextSeq - 1
 
@@ -531,13 +673,20 @@ function Recorder.stop(waitFlush)
 	Recorder._startWallTime = nil
 	Recorder._pausedAtWallTime = nil
 	Recorder._lastScheduledFrame = -1
+	Recorder._scheduledFrame = 0
+	Recorder._scheduledPtsUs = 0
 
 	restoreForcedCameras()
 	releaseCanvases()
 
 	local finalStatus = nil
 	if Recorder._cmdCh then
-		Recorder._cmdCh:push({type = "finish", session = stoppedSession, lastSeq = lastSeq})
+		Recorder._cmdCh:push({
+			type = "finish",
+			session = stoppedSession,
+			lastSeq = lastSeq,
+			stopFrames = stopFrames
+		})
 		if shouldWait or wasNative then
 			finalStatus = waitForSessionFlush(stoppedSession, 15.0)
 		end
@@ -660,6 +809,8 @@ function Recorder.update(dt)
 	if not Recorder._startWallTime then
 		Recorder._startWallTime = now
 		Recorder._lastScheduledFrame = -1
+		Recorder._scheduledFrame = 0
+		Recorder._scheduledPtsUs = 0
 		Recorder._shouldCaptureFrame = true
 		Recorder.elapsed = 0
 		return
@@ -667,8 +818,10 @@ function Recorder.update(dt)
 
 	local elapsedWall = math.max(0, now - Recorder._startWallTime)
 	Recorder.elapsed = elapsedWall
-	local targetFrame = math.floor(elapsedWall * Recorder._targetFps)
+	local targetFrame = math.floor(elapsedWall * Recorder._targetFps + 1e-6)
 	if targetFrame > Recorder._lastScheduledFrame then
+		Recorder._scheduledFrame = targetFrame
+		Recorder._scheduledPtsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps) + 0.5)
 		Recorder._shouldCaptureFrame = true
 	end
 end
@@ -821,18 +974,16 @@ function Recorder.postDraw()
 		Recorder._shouldCaptureFrame = false
 		local cams = Recorder.getCaptureCameras()
 		if #cams > 0 then
-			local now = (love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
 			if not Recorder._startWallTime then
-				Recorder._startWallTime = now
+				Recorder._startWallTime = (love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
+				Recorder._scheduledFrame = 0
+				Recorder._scheduledPtsUs = 0
 			end
-			local targetFrame = math.max(0, math.floor((now - Recorder._startWallTime) * Recorder._targetFps))
-			if targetFrame <= Recorder._lastScheduledFrame then
-				targetFrame = Recorder._lastScheduledFrame + 1
-			end
+			local targetFrame = math.max(Recorder._lastScheduledFrame + 1, Recorder._scheduledFrame or 0)
+			local ptsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps) + 0.5)
 
 			if Recorder._nativeMode and nativeLib then
 				local slot = Recorder._curSlot
-				local ptsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps))
 				if compositeCamerasToSlot(cams, slot, ptsUs) then
 					Recorder._lastScheduledFrame = targetFrame
 					Recorder._curSlot = (slot == 1) and 2 or 1
@@ -856,7 +1007,6 @@ function Recorder.postDraw()
 				end
 
 				local slot = Recorder._curSlot
-				local ptsUs = math.floor((targetFrame * 1000000) / math.max(1, Recorder._targetFps))
 				if compositeCamerasToSlot(cams, slot, nil) then
 					Recorder._lastScheduledFrame = targetFrame
 					Recorder._pendingSlot = {

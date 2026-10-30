@@ -42,7 +42,7 @@ function TankmanSprite:update(dt)
 	end
 
 	if PlayState.conductor.time >= self.time and anim.curAnim.name == "run" then
-		self:play("shot")
+		anim:play("shot")
 	end
 
 	if anim.curAnim.name == "run" then

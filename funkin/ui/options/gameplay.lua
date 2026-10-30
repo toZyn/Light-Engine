@@ -98,20 +98,20 @@ function Gameplay:update(dt, optionsUI)
 		else
 			if not self.bg then
 				self.bg = Graphic(0, 0, game.width, game.height, Color.BLACK)
-				self.bg:setScrollFactor()
+				self.bg.scrollFactor:set()
 				self.bg.alpha = 0.5
 
 				self.waitInputTxt = Text(0, 0, "Are you sure you want to enter Calibration?", paths.getFont("phantommuff.ttf", 40),
 					Color.WHITE, "center", game.width)
 				self.waitInputTxt:screenCenter('y')
-				self.waitInputTxt:setScrollFactor()
+				self.waitInputTxt.scrollFactor:set()
 				self.waitInputTxt.y = self.waitInputTxt.y - 40
 
 				self.waitInputTxt2 = Text(0, 0, "Press Accept key to Continue, Press Escape key to Nevermind i think",
 					paths.getFont("phantommuff.ttf", 24),
 					Color.WHITE, "center", game.width)
 				self.waitInputTxt2:screenCenter('y')
-				self.waitInputTxt2:setScrollFactor()
+				self.waitInputTxt2.scrollFactor:set()
 				self.waitInputTxt2.y = self.waitInputTxt2.y + 40
 			end
 			optionsUI:add(self.bg)

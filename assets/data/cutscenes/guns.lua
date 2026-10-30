@@ -4,7 +4,7 @@ local isVideo = ClientPrefs.data.lowQuality
 
 local function startVideo()
 	cutscene = Video(0, 0, "gunsCutscene", true, true)
-	cutscene:setScrollFactor()
+	cutscene.scrollFactor:set()
 	cutscene.cameras = {state.camOther}
 	cutscene:play()
 	state:add(cutscene)
@@ -28,8 +28,8 @@ function create()
 	tankman = Sprite(dadX + 100, dadY)
 	tankman:setFrames(paths.getSparrowAtlas('stages/tank/cutscenes/'
 		.. paths.formatToSongPath(PlayState.SONG.song)))
-	tankman:addAnimByPrefix('tightBars', 'TANK TALK 2', 24, false)
-	tankman:play('tightBars', true)
+	tankman.animation:addByPrefix('tightBars', 'TANK TALK 2', 24, false)
+	tankman.animation:play('tightBars', true)
 	state:insert(state:indexOf(state.stage) + 1, tankman)
 
 	state.camFollow:set(dadX + 380, dadY + 170)
