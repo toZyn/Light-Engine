@@ -21,7 +21,8 @@ end
 
 local function createDirectory(path)
 	if love.system.getOS() == "Windows" then
-		os.execute('mkdir "' .. path .. '" 2>nul')
+		local winPath = tostring(path):gsub("/", "\\")
+		os.execute('mkdir "' .. winPath .. '" 2>nul')
 	else
 		os.execute('mkdir -p "' .. path .. '" 2>/dev/null')
 	end
@@ -472,6 +473,9 @@ function Storage.getExternalDir()
 end
 
 function Storage.getRecordingsDir()
+	if Storage.recordingsPath and Storage.recordingsPath ~= "" then
+		return Storage.recordingsPath
+	end
 	if not Storage.initialized then Storage.init() end
 
 	local candidates = {}
@@ -495,6 +499,7 @@ function Storage.getRecordingsDir()
 
 	for _, dir in ipairs(candidates) do
 		if canWrite(dir) then
+			Storage.recordingsPath = dir
 			return dir
 		end
 	end
@@ -502,6 +507,7 @@ function Storage.getRecordingsDir()
 	pcall(lfs.createDirectory, "recordings")
 	local fallback = lfs.getSaveDirectory() .. "/recordings"
 	createDirectory(fallback)
+	Storage.recordingsPath = fallback
 	return fallback
 end
 

@@ -189,6 +189,9 @@ function Parser.getCharacter(name)
 	end
 
 	local data = character.get(name)
+	if not data and tostring(name):endsWith("-dead") then
+		data = character.get("bf-dead")
+	end
 	if not data then data = character.get("bf") end
 	local parser = character.getParser(data)
 

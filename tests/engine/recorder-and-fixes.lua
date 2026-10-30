@@ -141,12 +141,13 @@ check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stag
 	bf:playAnim("idle", true, true)
 	assert(bf.anim.curAnim ~= nil, "Character:playAnim must tolerate boolean 3rd arg without crashing")
 	bf.anim:play("idle", true, false, true)
-	assert(bf.anim.curAnim.curFrame >= 1, "Animation:play must clamp non-numeric Frame safely")
+	assert(bf.anim.curAnim.frame >= 1, "Animation:play must clamp non-numeric Frame safely")
 	bf:destroy()
 
 	-- Missing -dead fallback must resolve to bf-dead cleanly
 	local missingDead = Character(0, 0, "nonexistent-custom-dead", true)
-	assert(missingDead ~= nil, "Missing -dead character must fall back to bf-dead without crashing")
+	assert(missingDead ~= nil and missingDead.anim:has("firstDeath"),
+		"Missing -dead character must fall back to bf-dead with firstDeath animation")
 	missingDead:destroy()
 
 	-- 2. External keyboard unknown/acback/isrepeat + vararg love.keyboard.isDown
@@ -173,10 +174,13 @@ check("Animation boolean guard, Keyboard/VirtualPad resilience, and V-Slice stag
 		PlayState.SONG = Parser.getDummyChart("bopeebo", true)
 		PlayState.SONG.stage = stName
 		local st = Stage(stName)
-		assert(type(st.boyfriendPos.set) == "function" and type(st.dadCam.set) == "function",
+		st:load()
+		assert(type(st.boyfriendPos) == "table" and type(st.boyfriendPos.set) == "function"
+			and type(st.dadCam) == "table" and type(st.dadCam.set) == "function",
 			"Stage " .. stName .. " must preserve Point methods on Pos/Cam fields")
 		st:destroy()
 	end
+	paths.async.stop()
 end)
 
 check("FFT handles released LÖVE Sources and Loxel Sound wrappers without crashing", function()

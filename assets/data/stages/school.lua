@@ -151,7 +151,21 @@ end
 
 function postUpdate()
 	game.camera.zoom = math.truncate(game.camera.zoom, 3)
-	cam.zoom = math.truncate(camHUD.zoom, 3)
+	if cam and camHUD then
+		cam.zoom = math.truncate(camHUD.zoom, 3)
+	end
 end
 
 function beat(b) bgGirls:dance() end
+
+function close()
+	if cam then
+		game.cameras.remove(cam)
+		cam = nil
+	end
+	if game.camera then
+		game.camera.pixelPerfect = false
+		game.camera.antialiasing = true
+		game.camera:resize(game.width, game.height)
+	end
+end

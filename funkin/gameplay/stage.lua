@@ -175,4 +175,19 @@ function Stage:add(obj, foreground)
 	if not obj.zIndex then obj.zIndex = #self.members end
 end
 
+function Stage:destroy()
+	if self.script then
+		if not self.script.closed then
+			self.script:call("close")
+			self.script:close()
+		end
+		self.script = nil
+	end
+	if self.foreground then
+		self.foreground:destroy()
+		self.foreground = nil
+	end
+	Stage.super.destroy(self)
+end
+
 return Stage

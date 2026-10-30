@@ -110,3 +110,15 @@ end
 function postGameOverUpdate()
 	game.camera.zoom = 1
 end
+
+function close()
+	if cam then
+		game.cameras.remove(cam)
+		cam = nil
+	end
+	if game.camera then
+		game.camera.pixelPerfect = false
+		game.camera.antialiasing = true
+		game.camera:resize(game.width, game.height)
+	end
+end

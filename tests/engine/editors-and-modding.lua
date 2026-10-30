@@ -220,7 +220,9 @@ check("ChartingState playback audio seek/tell, Soft-Keyboard TextInput, and dire
 	step.focused = true
 	TextInput:dispatch("180")
 	step:update(1 / 60)
-	assert(step.numValue == 180, "UINumericStepper must accept TextInput signal, got: " .. tostring(step.numValue))
+	assert(step.text == "180", "UINumericStepper must accept TextInput text, got: " .. tostring(step.text))
+	step:commitText(true)
+	assert(step.numValue == 180, "UINumericStepper must commit numeric value, got: " .. tostring(step.numValue))
 	step:destroy()
 
 	-- Regression for play.lua:471: bad argument #1 to 'ipairs' (table expected, got nil)
@@ -231,4 +233,6 @@ check("ChartingState playback audio seek/tell, Soft-Keyboard TextInput, and dire
 	game.switchState(ps, true)
 	game.update(1 / 60)
 	assert(type(ps.ratings) == "table" and #ps.ratings == 4, "PlayState:enter() must auto-preload ratings when not run via LoadScreen")
+	ps:pauseSong()
+	paths.async.stop()
 end)
