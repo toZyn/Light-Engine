@@ -217,6 +217,13 @@ function StoryMenuState:selectWeek()
 		local diff = (leWeek.difficulties and leWeek.difficulties[StoryMenuState.curDifficulty] or
 			self.diffs[StoryMenuState.curDifficulty])
 
+		if #songTable == 0 or not PlayState.loadSong(songTable[1], diff) then
+			self.selectedWeek = false
+			self.weekList.lock = false
+			util.playSfx(paths.getSound('cancelMenu'))
+			return false
+		end
+
 		local toState = LoadState(PlayState(true, songTable, diff))
 		PlayState.storyWeek = leWeek.name
 		PlayState.storyWeekFile = leWeek.file

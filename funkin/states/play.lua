@@ -33,13 +33,31 @@ PlayState.prevCamFollow = nil
 PlayState.chartingMode = false
 PlayState.startPos = 0
 
+local function showSongLoadNotice(err)
+	local text = tostring(err or "Failed to load chart")
+	if Toast and Toast.error then
+		local prev = Toast.showErrors
+		Toast.showErrors = true
+		pcall(Toast.error, text)
+		Toast.showErrors = prev
+	end
+end
+
 function PlayState.loadSong(song, diff)
 	diff = diff or PlayState.defaultDifficulty
 	PlayState.songDifficulty = diff
 
-	PlayState.SONG = Parser.getChart(song, diff)
+	local chart, err = Parser.getChart(song, diff, {strict = true})
+	if not chart then
+		PlayState.SONG = nil
+		PlayState.lastLoadError = err
+		showSongLoadNotice(err)
+		return false, err
+	end
 
-	return true
+	PlayState.SONG = chart
+	PlayState.lastLoadError = nil
+	return true, chart
 end
 
 function PlayState.getCutscene(isEnd)
@@ -77,8 +95,9 @@ function PlayState:new(storyMode, song, diff)
 			song = song[1]
 		end
 		if not PlayState.loadSong(song, diff) then
-			setmetatable(self, TitleState)
-			TitleState.new(self)
+			local Fallback = PlayState.storyMode and StoryMenuState or FreeplayState
+			setmetatable(self, Fallback)
+			Fallback.new(self)
 		end
 	end
 end
@@ -1717,8 +1736,15 @@ function PlayState:endSong(skip)
 				})
 			end
 
-			PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty)
-			self:resetState()
+			if not PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty) then
+				GameOverSubstate.deaths = 0
+				PlayState.canFadeInReceptors = true
+				local stickers = Stickers(nil, StoryMenuState())
+				self:add(stickers)
+				util.playMenuMusic()
+			else
+				self:resetState()
+			end
 		else
 			GameOverSubstate.deaths = 0
 			PlayState.canFadeInReceptors = true

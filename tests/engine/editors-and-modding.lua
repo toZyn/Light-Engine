@@ -369,3 +369,47 @@ check("Editor saves target saves/ by default with saves/ > mods/ > assets/ prior
 	Parser.clearCache()
 	paths.async.stop()
 end)
+
+check("FreeplayState survives malformed metadata.json, displays Toast notice, and stays interactive", function()
+	local prevMod = Mods.currentMod
+	Mods.currentMod = nil
+	local savesRoot = Storage.getContentRoot("saves") .. "/"
+
+	-- Write a purposefully malformed metadata.json in saves/songs/bopeebo/meta.json
+	Storage.writeFile(savesRoot .. "songs/bopeebo/meta.json", '{"version":"2.2.4"}')
+	Parser.clearCache()
+	paths.clearCache()
+
+	local fp = FreeplayState()
+	game.switchState(fp, true)
+	game.update(1 / 60)
+
+	local openOk, openErr = fp:openSong({
+		songName = "bopeebo",
+		diffs = {"normal"},
+		meta = Parser.getMeta("bopeebo")
+	})
+	assert(openOk == false, "FreeplayState:openSong must refuse invalid metadata without crashing")
+	assert(type(openErr) == "string"
+		and openErr:find("bopeebo")
+		and openErr:find("meta%.json")
+		and openErr:find("playData"),
+		"Error must report song, path, and failing field; got: " .. tostring(openErr))
+	assert(fp.songs.lock == false, "FreeplayState must unlock song list after error")
+	assert(game.getState() == fp, "Game must remain in FreeplayState")
+	assert(Toast and #Toast.instances > 0, "Visible Toast error notice must be displayed")
+
+	-- Clean up malformed override and verify bopeebo loads cleanly again
+	if Storage.mounted and Storage.savePath then
+		os.remove(Storage.savePath .. "/songs/bopeebo/meta.json")
+	else
+		love.filesystem.remove("saves/songs/bopeebo/meta.json")
+	end
+	Parser.clearCache()
+	paths.clearCache()
+	local okClean = PlayState.loadSong("bopeebo", "normal")
+	assert(okClean == true, "Restoring saves/ override must let bopeebo load cleanly again")
+
+	Mods.currentMod = prevMod
+	paths.async.stop()
+end)

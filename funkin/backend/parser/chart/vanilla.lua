@@ -100,10 +100,25 @@ local function getStuff(data, eventData, bpm, psych)
 	return {enemy = dad, player = bf}, events, timeChanges
 end
 
-function vanilla.parse(data, events, meta)
-	if type(data) ~= "table" then return Parser.getDummyChart() end
+function vanilla.parse(data, events, meta, diff)
+	if type(data) ~= "table" then
+		error("chart root must be a JSON object", 0)
+	end
 	local baseData = data.song
-	data = type(baseData) == "table" and baseData or data
+	if baseData ~= nil and type(baseData) ~= "table" and type(baseData) ~= "string" then
+		error("field 'song' must be a table or string", 0)
+	end
+	data = table.clone(type(baseData) == "table" and baseData or data)
+
+	local diffKey = type(diff) == "string" and diff:lower() or "normal"
+	if type(data.speed) == "table" then
+		data.speed = tonumber(data.speed[diffKey] or data.speed.normal or data.speed.default) or 1
+	elseif data.speed ~= nil then
+		data.speed = tonumber(data.speed) or 1
+	end
+	if data.stage == nil and type(data.stageDefault) == "string" then
+		data.stage = data.stageDefault
+	end
 
 	local chart = Parser.getDummyChart()
 
@@ -154,9 +169,26 @@ function vanilla.parse(data, events, meta)
 		})
 	end
 
-	if data.notes then
+	local rawNotes = data.notes
+	if rawNotes ~= nil and type(rawNotes) ~= "table" then
+		error("field 'notes' must be a table", 0)
+	end
+	if type(rawNotes) == "table" and #rawNotes == 0 and next(rawNotes) ~= nil then
+		local picked = rawNotes[diffKey] or rawNotes.normal or rawNotes.default
+		if type(picked) ~= "table" then
+			for _, v in pairs(rawNotes) do
+				if type(v) == "table" then
+					picked = v
+					break
+				end
+			end
+		end
+		rawNotes = picked
+	end
+
+	if rawNotes then
 		chart.notes, chart.events, chart.timeChanges =
-			getStuff(data.notes, events or data.events, chart.bpm,
+			getStuff(rawNotes, events or data.events, chart.bpm,
 				data.format and data.format:startsWith("psych"))
 	end
 
