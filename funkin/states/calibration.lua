@@ -27,7 +27,8 @@ function CalibrationState:enter()
 	game.discardTransition()
 
 	if game.sound.music then game.sound.music:cancelFade() end
-	game.sound.playMusic(paths.getMusic("chart_loop"), ClientPrefs.data.musicVolume)
+	local calibMusic = paths.getMusic("chartEditorLoop") or paths.getMusic("chart_loop")
+	game.sound.playMusic(calibMusic, ClientPrefs.data.musicVolume / 100)
 end
 
 function CalibrationState:leave()
