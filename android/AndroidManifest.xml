@@ -27,7 +27,7 @@
         android:name="org.love2d.android.StoragePermissionActivity"
         android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
         android:exported="true"
-        android:resizeableActivity="true"
+        android:resizeableActivity="false"
         android:screenOrientation="${ORIENTATION}"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
       <intent-filter>
@@ -43,7 +43,7 @@
         android:exported="true"
         android:label="${NAME}"
         android:launchMode="singleInstance"
-        android:resizeableActivity="true"
+        android:resizeableActivity="false"
         android:screenOrientation="${ORIENTATION}"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
       <intent-filter>

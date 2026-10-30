@@ -67,8 +67,8 @@ local function ensureThreads()
 end
 local processors = {
  image = function(data, path) local key = getCachePath(path); local image = paths.images[key] or love.graphics.newImage(data); paths.images[key] = image; return image, isUrl(path) and path or nil end,
- sound = function(data, path) local key = getCachePath(path); local sound = paths.audio[key] or data; paths.audio[key] = sound; return sound, isUrl(path) and path or nil end,
- audio = function(data, path) local key = getCachePath(path); local source = paths.audio[key] or data; paths.audio[key] = source; return source, isUrl(path) and path or nil end,
+ sound = function(data, path) local key = getCachePath(path); local sound = paths.audio[key] or data; paths.audio[key] = sound; if sound and paths.audioPaths and not isUrl(path) then paths.audioPaths[sound] = path end; return sound, isUrl(path) and path or nil end,
+ audio = function(data, path) local key = getCachePath(path); local source = paths.audio[key] or data; paths.audio[key] = source; if source and paths.audioPaths and not isUrl(path) then paths.audioPaths[source] = path end; return source, isUrl(path) and path or nil end,
  text = function(data, path) return data, path end
 }
 function async.processQueue()

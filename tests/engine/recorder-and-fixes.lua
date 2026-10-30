@@ -30,6 +30,8 @@ check("Options hides Recording tab when disabled and exposes it in English when 
 		if item[2] then labels[item[1]] = item[2] end
 	end
 	assert(labels.recordingMode == "Capture mode", "Expected English 'Capture mode'")
+	assert(labels.recordingAudio == "Record game audio", "Expected English 'Record game audio'")
+	assert(labels.recordingQuality == "Video quality", "Expected English 'Video quality'")
 	assert(labels.recordingScale == "Resolution scale", "Expected English 'Resolution scale'")
 	assert(labels.recordingFps == "Frame rate", "Expected English 'Frame rate'")
 
@@ -80,21 +82,28 @@ check("Gameplay-only capture includes stage and arrows (camNotes) while excludin
 	for _, c in ipairs(allCams) do c:destroy() end
 end)
 
-check("Recorder writes a valid RIFF AVI video off-thread without leaking HUD pixels", function()
+check("Recorder writes a valid 2-stream (MJPG + 44.1kHz Stereo PCM) RIFF AVI off-thread without HUD leakage", function()
 	local prevEnabled = ClientPrefs.data.screenRecording
 	local prevMode = ClientPrefs.data.recordingMode
 	local prevScale = ClientPrefs.data.recordingScale
 	local prevFps = ClientPrefs.data.recordingFps
+	local prevAudio = ClientPrefs.data.recordingAudio
+	local prevQual = ClientPrefs.data.recordingQuality
 
 	ClientPrefs.data.screenRecording = true
 	ClientPrefs.data.recordingMode = "entire"
 	ClientPrefs.data.recordingScale = 0.5
 	ClientPrefs.data.recordingFps = 30
+	ClientPrefs.data.recordingAudio = true
+	ClientPrefs.data.recordingQuality = "high"
 
 	local ok, outPath = Recorder.start("unit_test")
 	assert(ok and type(outPath) == "string", "Recorder failed to start: " .. tostring(outPath))
 
-	for _ = 1, 3 do
+	for i = 1, 4 do
+		if i > 1 and love.timer and love.timer.sleep then
+			love.timer.sleep(0.04)
+		end
 		Recorder.update(1 / 25)
 		Recorder.preDraw()
 		game.draw()
@@ -105,18 +114,43 @@ check("Recorder writes a valid RIFF AVI video off-thread without leaking HUD pix
 	Recorder.shutdown()
 
 	local f = assert(io.open(outPath, "rb"), "Expected AVI file on disk: " .. tostring(outPath))
-	local header = f:read(16)
-	local totalSize = f:seek("end")
+	local fullBytes = f:read("*a")
 	f:close()
 	os.remove(outPath)
 
-	assert(header and header:sub(1, 4) == "RIFF" and header:sub(9, 12) == "AVI ", "Invalid AVI header")
-	assert(totalSize > 256, "Expected non-empty encoded video frames")
+	assert(#fullBytes > 4096, "Expected non-empty encoded video+audio AVI, got " .. tostring(#fullBytes))
+	assert(fullBytes:sub(1, 4) == "RIFF" and fullBytes:sub(9, 12) == "AVI ", "Invalid AVI header")
+	assert(fullBytes:find("00dc", 1, true) ~= nil, "Missing 00dc video chunk in AVI")
+	assert(fullBytes:find("01wb", 1, true) ~= nil, "Missing 01wb PCM audio chunk in AVI")
+	assert(fullBytes:find("auds", 1, true) ~= nil, "Missing auds stream header in AVI")
+	assert(fullBytes:find("idx1", 1, true) ~= nil, "Missing idx1 index chunk in AVI")
 
 	ClientPrefs.data.screenRecording = prevEnabled
 	ClientPrefs.data.recordingMode = prevMode
 	ClientPrefs.data.recordingScale = prevScale
 	ClientPrefs.data.recordingFps = prevFps
+	ClientPrefs.data.recordingAudio = prevAudio
+	ClientPrefs.data.recordingQuality = prevQual
+end)
+
+check("FFT handles released LÖVE Sources and Loxel Sound wrappers without crashing", function()
+	local FFT = require "funkin.backend.fft"
+
+	local releasedMock = {
+		isPlaying = function() error("Cannot use object after it has been released.", 0) end,
+		tell = function() error("Cannot use object after it has been released.", 0) end
+	}
+	local fft1 = FFT(7, "songs/darnell/Inst.ogg", releasedMock)
+	fft1:update(1 / 60)
+	assert(fft1.externalSource == nil, "FFT must clear released externalSource safely")
+	fft1:destroy()
+
+	if game and game.sound and game.sound.music then
+		local fft2 = FFT(7, "songs/darnell/Inst.ogg", game.sound.music)
+		fft2:update(1 / 60)
+		fft2:destroy()
+	end
+	FFT.stop()
 end)
 
 check("Portrait startup surface adapts automatically when rotating to widescreen landscape", function()

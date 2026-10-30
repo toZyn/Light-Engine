@@ -1,247 +1,430 @@
 local Recorder = {
 	active = false,
 	autoStarted = false,
-	pendingCapture = false,
-	outputPath = nil,
-	lastSavedPath = nil,
 	elapsed = 0,
-	framesSent = 0,
-	droppedPending = 0,
-	MAX_QUEUED_FRAMES = 4,
-	_accum = 0,
-	_canvas = nil,
+	frames = 0,
+	droppedFrames = 0,
+	outputPath = nil,
+	outputDir = nil,
+	lastSavedPath = nil,
+	lastError = nil,
+
+	_muxThread = nil,
+	_encoderThreads = {},
+	_workerCount = 2,
+	_cmdCh = nil,
+	_encodeCh = nil,
+	_muxCh = nil,
+	_statusCh = nil,
+	_sessionId = 0,
+	_nextSeq = 1,
+
+	_canvases = {nil, nil},
+	_curSlot = 1,
+	_pendingSlot = nil,
 	_canvasW = 0,
 	_canvasH = 0,
-	_savedSimple = {},
-	_targetCameras = {},
-	_thread = nil,
-	_cmdChannel = nil,
-	_statusChannel = nil,
-	_badgeFont = nil
+	_targetFps = 60,
+	_quality = 88,
+	_fourcc = "MJPG",
+	_recordAudio = true,
+
+	_startWallTime = nil,
+	_pausedAtWallTime = nil,
+	_lastScheduledFrame = -1,
+	_shouldCaptureFrame = false,
+	_forcedCams = {}
 }
 
-local function isMobileDevice()
-	return (love.system.getDevice and love.system.getDevice() == "Mobile")
-		or love.system.getOS() == "Android"
-		or love.system.getOS() == "iOS"
+local QUALITY_MAP = {
+	standard = 78,
+	high = 88,
+	ultra = 95
+}
+
+local function sanitizeSegment(name)
+	name = tostring(name or "session"):gsub("[%c%s/\\:%*%?\"<>|]+", "-")
+	name = name:gsub("%-+", "-"):gsub("^%-+", ""):gsub("%-+$", "")
+	if name == "" then name = "session" end
+	return name:sub(1, 48)
 end
 
-local function ensureDir(path)
-	if not path or path == "" then return false end
-	if love.system.getOS() == "Windows" then
-		local winPath = path:gsub("/", "\\")
-		os.execute('if not exist "' .. winPath .. '" mkdir "' .. winPath .. '" >nul 2>nul')
-	else
-		os.execute('mkdir -p "' .. path .. '" 2>/dev/null')
-	end
-	local probe = path .. "/.rec_write_probe"
-	local f = io.open(probe, "wb")
-	if not f then return false end
-	f:close()
-	os.remove(probe)
-	return true
+local function align16(n)
+	n = math.max(64, math.floor((tonumber(n) or 64) + 8))
+	return math.max(64, math.floor(n / 16) * 16)
 end
 
-function Recorder.getOutputDirectory()
-	local candidates = {}
-	if love.system.getOS() == "Android" then
-		local ext = os.getenv("EXTERNAL_STORAGE")
-		if ext and ext ~= "" then
-			candidates[#candidates + 1] = ext .. "/Movies/LightEngine"
+local function ensureOutputDirectory()
+	local baseDir
+	if Storage and type(Storage.getExternalDir) == "function" then
+		local ext = Storage.getExternalDir()
+		if type(ext) == "string" and ext ~= "" then
+			baseDir = ext .. "/recordings"
+			if type(Storage.ensureNativeDir) == "function" then
+				pcall(Storage.ensureNativeDir, baseDir)
+			end
 		end
-		candidates[#candidates + 1] = "/storage/emulated/0/Movies/LightEngine"
-		candidates[#candidates + 1] = "/sdcard/Movies/LightEngine"
 	end
-	if Storage and Storage.available and Storage.root then
-		candidates[#candidates + 1] = Storage.root .. "/recordings"
-	end
-	if love.filesystem and love.filesystem.getSaveDirectory then
+
+	if not baseDir then
+		pcall(love.filesystem.createDirectory, "recordings")
 		local saveDir = love.filesystem.getSaveDirectory()
-		if saveDir and saveDir ~= "" then
-			pcall(love.filesystem.createDirectory, "recordings")
-			candidates[#candidates + 1] = saveDir .. "/recordings"
+		baseDir = saveDir .. "/recordings"
+		if Storage and type(Storage.ensureNativeDir) == "function" then
+			pcall(Storage.ensureNativeDir, baseDir)
 		end
 	end
-	for _, dir in ipairs(candidates) do
-		if ensureDir(dir) then return dir end
-	end
-	return candidates[#candidates] or "."
+
+	Recorder.outputDir = baseDir
+	return baseDir
 end
 
-function Recorder.isFeatureEnabled()
-	return ClientPrefs and ClientPrefs.data and ClientPrefs.data.screenRecording == true or false
-end
-
-function Recorder.getTargetDimensions()
-	local scale = (ClientPrefs and ClientPrefs.data and tonumber(ClientPrefs.data.recordingScale))
-		or (isMobileDevice() and 0.5 or 0.75)
-	scale = math.clamp(scale, 0.25, 1.0)
-	local baseW = (game and game.width and game.width > 0) and game.width or 1280
-	local baseH = (game and game.height and game.height > 0) and game.height or 720
-	-- Round to multiples of 8 (min 160x96) for clean MCU alignment & low GPU readback cost
-	local outW = math.max(160, math.floor((baseW * scale + 4) / 8) * 8)
-	local outH = math.max(96, math.floor((baseH * scale + 4) / 8) * 8)
-	return outW, outH
-end
-
-function Recorder.isGameplayStateActive(state)
-	state = state or (game and game.getState and game.getState())
-	if not state then return false end
-	local isPlay = (PlayState and state.is and state:is(PlayState))
-		or (state.camNotes ~= nil and state.camHUD ~= nil)
-	if not isPlay then return false end
-	if state.paused or state.inCutscene or state.substate ~= nil then return false end
-	return true
-end
-
-function Recorder.getCaptureCameras(mode, state, cameraList)
-	mode = mode or (ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingMode) or "gameplay"
-	state = state or (game and game.getState and game.getState())
-	cameraList = cameraList or (game and game.cameras and game.cameras.list) or {}
-
-	local selected = {}
-	if mode == "gameplay" then
-		if not Recorder.isGameplayStateActive(state) then
-			return selected
-		end
-		-- Capture ONLY stage/match cameras + note/arrow camera (camNotes).
-		-- Strictly exclude camHUD (healthbar, icons, score, judgements, timebar)
-		-- and camOther (virtual pad buttons, pause overlay, loading screen).
-		for _, cam in ipairs(cameraList) do
-			if cam and cam.visible and cam.exists
-				and cam ~= state.camHUD and cam ~= state.camOther then
-				selected[#selected + 1] = cam
-			end
-		end
-	else
-		for _, cam in ipairs(cameraList) do
-			if cam and cam.visible and cam.exists then
-				selected[#selected + 1] = cam
-			end
+local function computeWorkerCount()
+	local cores = 4
+	if love.system and type(love.system.getProcessorCount) == "function" then
+		local ok, c = pcall(love.system.getProcessorCount)
+		if ok and type(c) == "number" and c > 0 then
+			cores = c
 		end
 	end
-	return selected
+	return math.max(2, math.min(4, cores - 1))
 end
 
-local function ensureWorker()
-	if Recorder._thread and Recorder._thread:isRunning() then
-		return true
+local function ensureThreads()
+	if not Recorder._cmdCh then
+		Recorder._cmdCh = love.thread.getChannel("recorder_cmd")
+		Recorder._encodeCh = love.thread.getChannel("recorder_encode")
+		Recorder._muxCh = love.thread.getChannel("recorder_mux")
+		Recorder._statusCh = love.thread.getChannel("recorder_status")
 	end
-	local code = love.filesystem.read("funkin/backend/recorder_thread.lua")
-	if not code then return false, "recorder_thread.lua not found" end
 
-	Recorder._cmdChannel = Recorder._cmdChannel or love.thread.getChannel("light_recorder_cmd")
-	Recorder._statusChannel = Recorder._statusChannel or love.thread.getChannel("light_recorder_status")
-	Recorder._cmdChannel:clear()
+	if not Recorder._muxThread or not Recorder._muxThread:isRunning() then
+		Recorder._muxThread = love.thread.newThread("funkin/backend/recorder_thread.lua")
+		Recorder._muxThread:start("recorder_cmd", "recorder_mux", "recorder_status")
+	end
 
-	local thread = love.thread.newThread(code)
-	thread:start("light_recorder_cmd", "light_recorder_status")
-	Recorder._thread = thread
-	return true
+	local targetWorkers = computeWorkerCount()
+	Recorder._workerCount = targetWorkers
+	for i = 1, targetWorkers do
+		local th = Recorder._encoderThreads[i]
+		if not th or not th:isRunning() then
+			th = love.thread.newThread("funkin/backend/recorder_encoder_thread.lua")
+			th:start("recorder_encode", "recorder_mux")
+			Recorder._encoderThreads[i] = th
+		end
+	end
 end
 
-local function releaseCanvas()
-	if Recorder._canvas then
-		pcall(function() Recorder._canvas:release() end)
-		Recorder._canvas = nil
+local function drainStatusChannel()
+	if not Recorder._statusCh then return end
+	while true do
+		local msg = Recorder._statusCh:pop()
+		if not msg then break end
+		if msg.status == "saved" then
+			Recorder.lastSavedPath = msg.path
+		elseif msg.status == "error" then
+			Recorder.lastError = msg.error
+		end
 	end
+end
+
+local function releaseCanvases()
+	for i = 1, 2 do
+		local c = Recorder._canvases[i]
+		if c then
+			pcall(function() c:release() end)
+			Recorder._canvases[i] = nil
+		end
+	end
+	Recorder._pendingSlot = nil
+	Recorder._curSlot = 1
 	Recorder._canvasW, Recorder._canvasH = 0, 0
 end
 
-local function ensureCanvas(w, h)
-	if Recorder._canvas and Recorder._canvasW == w and Recorder._canvasH == h then
-		return Recorder._canvas
+local function restoreForcedCameras()
+	for cam, prevSimple in pairs(Recorder._forcedCams) do
+		if cam then
+			cam.simple = prevSimple
+		end
+		Recorder._forcedCams[cam] = nil
 	end
-	releaseCanvas()
-	Recorder._canvas = love.graphics.newCanvas(w, h)
-	Recorder._canvas:setFilter("linear", "linear")
+end
+
+function Recorder.isFeatureEnabled()
+	return ClientPrefs and ClientPrefs.data and ClientPrefs.data.screenRecording == true
+end
+
+function Recorder.getCaptureMode()
+	local mode = ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingMode or "gameplay"
+	if mode ~= "entire" and mode ~= "gameplay" then
+		mode = "gameplay"
+	end
+	return mode
+end
+
+function Recorder.getTargetDimensions()
+	local scale = tonumber(ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingScale) or 0.75
+	scale = math.clamp(scale, 0.25, 1.0)
+	local baseW = (game and game.width and game.width > 0) and game.width or Project.width
+	local baseH = (game and game.height and game.height > 0) and game.height or Project.height
+	return align16(baseW * scale), align16(baseH * scale)
+end
+
+function Recorder.getCaptureCameras(mode, state, camerasList)
+	mode = mode or Recorder.getCaptureMode()
+	state = state or (game and game.getState and game.getState() or nil)
+	camerasList = camerasList or (game and game.cameras and game.cameras.list or {})
+
+	local selected = {}
+	if mode == "gameplay" then
+		local isPlay = state ~= nil and (
+			(PlayState and state.is and state:is(PlayState))
+			or (state.camNotes ~= nil and state.camHUD ~= nil)
+		)
+		if not isPlay then
+			return selected
+		end
+		if state.paused or state.inCutscene or state.substate ~= nil then
+			return selected
+		end
+
+		for i = 1, #camerasList do
+			local cam = camerasList[i]
+			if cam and cam.exists and cam.visible then
+				if cam ~= state.camHUD and cam ~= state.camOther then
+					selected[#selected + 1] = cam
+				end
+			end
+		end
+	else
+		for i = 1, #camerasList do
+			local cam = camerasList[i]
+			if cam and cam.exists and cam.visible then
+				selected[#selected + 1] = cam
+			end
+		end
+	end
+
+	return selected
+end
+
+local function snapshotActiveAudio()
+	if not Recorder._recordAudio then return nil end
+	if not game or not game.sound or not game.sound.list or not game.sound.list.members then
+		return nil
+	end
+
+	local members = game.sound.list.members
+	local list = nil
+	for i = 1, #members do
+		local s = members[i]
+		if s and s.exists and s.active and type(s.isPlaying) == "function" and s:isPlaying() then
+			local vol = type(s.getActualVolume) == "function" and s:getActualVolume() or (s._volume or 1)
+			if vol > 0.0005 then
+				local asset = rawget(s, "_asset")
+				local isSoundData = false
+				if asset and type(asset.typeOf) == "function" then
+					local okType, res = pcall(asset.typeOf, asset, "SoundData")
+					isSoundData = okType and res == true
+				end
+				local path = rawget(s, "_sourcePath")
+				if not path and asset and paths and paths.audioPaths then
+					path = paths.audioPaths[asset]
+				end
+				if isSoundData or (type(path) == "string" and path ~= "") then
+					if not list then list = {} end
+					local pitch = type(s.getActualPitch) == "function" and s:getActualPitch() or (s._pitch or 1)
+					list[#list + 1] = {
+						uid = rawget(s, "_uid") or i,
+						playSeq = rawget(s, "_playSeq") or 0,
+						path = not isSoundData and path or nil,
+						soundData = isSoundData and asset or nil,
+						time = s.time or 0,
+						volume = vol,
+						pitch = pitch,
+						looped = s.looped == true
+					}
+				end
+			end
+		end
+	end
+	return list
+end
+
+local function ensureCaptureCanvases(w, h)
+	if Recorder._canvases[1] and Recorder._canvases[2]
+		and Recorder._canvasW == w and Recorder._canvasH == h then
+		return true
+	end
+	releaseCanvases()
+	local ok1, c1 = pcall(love.graphics.newCanvas, w, h)
+	local ok2, c2 = pcall(love.graphics.newCanvas, w, h)
+	if not ok1 or not ok2 or not c1 or not c2 then
+		if ok1 and c1 then pcall(function() c1:release() end) end
+		if ok2 and c2 then pcall(function() c2:release() end) end
+		return false
+	end
+	c1:setFilter("linear", "linear")
+	c2:setFilter("linear", "linear")
+	Recorder._canvases[1] = c1
+	Recorder._canvases[2] = c2
 	Recorder._canvasW, Recorder._canvasH = w, h
-	return Recorder._canvas
-end
-
-function Recorder.start(autoTag)
-	if not Recorder.isFeatureEnabled() then
-		return false, "Enable Screen recording in Display options first"
-	end
-	if Recorder.active then
-		return true, Recorder.outputPath
-	end
-
-	local ok, err = ensureWorker()
-	if not ok then
-		if Toast then Toast.error("Recorder error: " .. tostring(err)) end
-		return false, err
-	end
-
-	local outW, outH = Recorder.getTargetDimensions()
-	local fps = math.clamp(tonumber(ClientPrefs.data.recordingFps) or 30, 15, 60)
-	local dir = Recorder.getOutputDirectory()
-	local stamp = os.date("%Y%m%d_%H%M%S")
-	local prefix = autoTag and (paths and paths.formatToSongPath(autoTag) .. "_") or "session_"
-	local filePath = dir .. "/rec_" .. prefix .. stamp .. ".avi"
-
-	ensureCanvas(outW, outH)
-
-	Recorder.active = true
-	Recorder.autoStarted = autoTag ~= nil
-	Recorder.pendingCapture = false
-	Recorder.outputPath = filePath
-	Recorder.elapsed = 0
-	Recorder.framesSent = 0
-	Recorder.droppedPending = 0
-	Recorder._accum = 0
-
-	Recorder._cmdChannel:push({
-		cmd = "start",
-		path = filePath,
-		width = outW,
-		height = outH,
-		fps = fps,
-		quality = isMobileDevice() and 72 or 80
-	})
-
-	if Toast and not Recorder.autoStarted then
-		Toast.info(string.format("Recording started (%dx%d @ %dfps)", outW, outH, fps))
-	end
-	return true, filePath
-end
-
-function Recorder.stop(silent)
-	if not Recorder.active then return false end
-	Recorder.active = false
-	Recorder.autoStarted = false
-	Recorder.pendingCapture = false
-	Recorder.droppedPending = 0
-	Recorder._accum = 0
-
-	for cam, prevSimple in pairs(Recorder._savedSimple) do
-		if cam then cam.simple = prevSimple end
-		Recorder._savedSimple[cam] = nil
-	end
-	table.clear(Recorder._targetCameras)
-
-	if Recorder._cmdChannel then
-		Recorder._cmdChannel:push({cmd = "stop"})
-	end
-	releaseCanvas()
-
-	if Toast and not silent then
-		Toast.info("Finalizing recording...")
-	end
+	Recorder._curSlot = 1
+	Recorder._pendingSlot = nil
 	return true
 end
 
-function Recorder.toggle()
-	if Recorder.active then
-		return Recorder.stop(false)
+local function dispatchPendingSlot(forceFlush)
+	local pending = Recorder._pendingSlot
+	if not pending then return end
+	Recorder._pendingSlot = nil
+
+	local canvas = Recorder._canvases[pending.slot]
+	if not canvas then return end
+
+	local maxInFlight = math.max(6, (Recorder._workerCount or 2) * 3)
+	if not forceFlush and Recorder._encodeCh and Recorder._encodeCh:getCount() >= maxInFlight then
+		Recorder.droppedFrames = Recorder.droppedFrames + 1
+		return
 	end
-	return Recorder.start(nil)
+
+	local okImg, imgData = pcall(canvas.newImageData, canvas)
+	if not okImg or not imgData then
+		return
+	end
+
+	local seq = Recorder._nextSeq
+	Recorder._nextSeq = seq + 1
+	Recorder.frames = Recorder.frames + 1
+
+	Recorder._encodeCh:push({
+		type = "encode",
+		session = Recorder._sessionId,
+		seq = seq,
+		targetFrame = pending.targetFrame,
+		image = imgData,
+		width = Recorder._canvasW,
+		height = Recorder._canvasH,
+		quality = Recorder._quality,
+		fourcc = Recorder._fourcc,
+		audio = pending.audio
+	})
+end
+
+function Recorder.start(tag, autoStarted)
+	if not Recorder.isFeatureEnabled() then return false end
+	if Recorder.active then return true, Recorder.outputPath end
+
+	ensureThreads()
+	drainStatusChannel()
+
+	local outW, outH = Recorder.getTargetDimensions()
+	if not ensureCaptureCanvases(outW, outH) then
+		Recorder.lastError = "Unable to allocate capture canvases"
+		return false, Recorder.lastError
+	end
+
+	local fps = math.clamp(tonumber(ClientPrefs.data.recordingFps) or 60, 15, 60)
+	local qualKey = tostring(ClientPrefs.data.recordingQuality or "high")
+	local quality = QUALITY_MAP[qualKey] or 88
+	local recordAudio = ClientPrefs.data.recordingAudio ~= false
+	local hasFFI = pcall(require, "ffi") and pcall(require, "bit")
+	local fourcc = hasFFI and "MJPG" or "MPNG"
+
+	local dir = ensureOutputDirectory()
+	local stamp = os.date("%Y%m%d_%H%M%S")
+	local prefix = sanitizeSegment(tag or (Recorder.getCaptureMode() == "gameplay" and "gameplay" or "game"))
+	local path = string.format("%s/%s_%s.avi", dir, stamp, prefix)
+
+	Recorder._sessionId = Recorder._sessionId + 1
+	Recorder._nextSeq = 1
+	Recorder._targetFps = fps
+	Recorder._quality = quality
+	Recorder._fourcc = fourcc
+	Recorder._recordAudio = recordAudio
+	Recorder._startWallTime = nil
+	Recorder._pausedAtWallTime = nil
+	Recorder._lastScheduledFrame = -1
+	Recorder._shouldCaptureFrame = false
+	Recorder._pendingSlot = nil
+	Recorder._curSlot = 1
+
+	Recorder.active = true
+	Recorder.autoStarted = autoStarted == true
+	Recorder.elapsed = 0
+	Recorder.frames = 0
+	Recorder.droppedFrames = 0
+	Recorder.outputPath = path
+	Recorder.lastError = nil
+
+	Recorder._cmdCh:push({
+		type = "start",
+		session = Recorder._sessionId,
+		path = path,
+		width = outW,
+		height = outH,
+		fps = fps,
+		fourcc = fourcc,
+		recordAudio = recordAudio
+	})
+
+	return true, path
+end
+
+function Recorder.stop(waitFlush)
+	if not Recorder.active then return nil end
+
+	-- Flush final buffered ping-pong canvas frame so zero trailing frames are lost
+	if Recorder._pendingSlot then
+		pcall(dispatchPendingSlot, true)
+	end
+
+	local savedPath = Recorder.outputPath
+	local lastSeq = Recorder._nextSeq - 1
+
+	Recorder.active = false
+	Recorder.autoStarted = false
+	Recorder._shouldCaptureFrame = false
+	Recorder._startWallTime = nil
+	Recorder._pausedAtWallTime = nil
+	Recorder._lastScheduledFrame = -1
+
+	restoreForcedCameras()
+	releaseCanvases()
+
+	if Recorder._cmdCh then
+		Recorder._cmdCh:push({type = "finish", lastSeq = lastSeq})
+		if waitFlush and Recorder._statusCh then
+			local msg = Recorder._statusCh:demand(5.0)
+			if msg and msg.status == "saved" then
+				Recorder.lastSavedPath = msg.path
+			elseif msg and msg.status == "error" then
+				Recorder.lastError = msg.error
+			end
+		end
+	end
+
+	Recorder.outputPath = nil
+	drainStatusChannel()
+	return savedPath
+end
+
+function Recorder.toggle()
+	if not Recorder.isFeatureEnabled() then return false end
+	if Recorder.active then
+		Recorder.stop(false)
+		return false
+	end
+	return Recorder.start(nil, false)
 end
 
 function Recorder.onSongStart(songName)
 	if not Recorder.isFeatureEnabled() then return end
-	if ClientPrefs.data.recordingAutoGameplay and not Recorder.active then
-		Recorder.start(songName or "gameplay")
+	if not (ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingAutoGameplay) then
+		return
+	end
+	if not Recorder.active then
+		Recorder.start(songName or "gameplay", true)
 	end
 end
 
@@ -251,231 +434,252 @@ function Recorder.onSongEnd()
 	end
 end
 
-function Recorder.pollStatus()
-	if not Recorder._statusChannel then return end
-	while true do
-		local msg = Recorder._statusChannel:pop()
-		if not msg then break end
-		if msg.type == "saved" then
-			Recorder.lastSavedPath = msg.path
-			if Toast and (msg.frames or 0) > 0 then
-				Toast.info("Saved recording: " .. tostring(msg.path))
-			end
-		elseif msg.type == "error" then
-			Recorder.active = false
-			Recorder.pendingCapture = false
-			if Toast then Toast.error(tostring(msg.message)) end
-		end
-	end
-end
-
 function Recorder.update(dt)
-	Recorder.pollStatus()
+	drainStatusChannel()
 
 	if not Recorder.isFeatureEnabled() then
-		if Recorder.active then Recorder.stop(true) end
+		if Recorder.active then
+			Recorder.stop(false)
+		end
 		return
 	end
+
 	if not Recorder.active then return end
 
-	local mode = ClientPrefs.data.recordingMode or "gameplay"
-	if mode == "gameplay" and not Recorder.isGameplayStateActive() then
-		-- Idle with zero CPU/GPU cost while paused, in cutscenes, or in menus
-		Recorder.pendingCapture = false
+	local cams = Recorder.getCaptureCameras()
+	local now = (love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
+
+	if #cams == 0 then
+		if not Recorder._pausedAtWallTime then
+			Recorder._pausedAtWallTime = now
+		end
+		Recorder._shouldCaptureFrame = false
 		return
 	end
 
-	local clampedDt = math.min(dt or 0, 0.25)
-	Recorder.elapsed = Recorder.elapsed + clampedDt
-	Recorder._accum = Recorder._accum + clampedDt
-
-	local fps = math.clamp(tonumber(ClientPrefs.data.recordingFps) or 30, 15, 60)
-	local interval = 1 / fps
-	if Recorder._accum >= interval then
-		local steps = math.floor(Recorder._accum / interval)
-		Recorder._accum = Recorder._accum - steps * interval
-
-		local queued = Recorder._cmdChannel and Recorder._cmdChannel:getCount() or 0
-		if queued >= Recorder.MAX_QUEUED_FRAMES then
-			-- Worker queue full: drop readback so memory & FPS stay completely flat
-			Recorder.droppedPending = Recorder.droppedPending + steps
-			Recorder.pendingCapture = false
-		else
-			if steps > 1 then
-				Recorder.droppedPending = Recorder.droppedPending + (steps - 1)
-			end
-			Recorder.pendingCapture = true
+	if Recorder._pausedAtWallTime then
+		local pausedDur = math.max(0, now - Recorder._pausedAtWallTime)
+		if Recorder._startWallTime then
+			Recorder._startWallTime = Recorder._startWallTime + pausedDur
 		end
+		Recorder._pausedAtWallTime = nil
+	end
+
+	if not Recorder._startWallTime then
+		Recorder._startWallTime = now
+		Recorder._lastScheduledFrame = -1
+		Recorder._shouldCaptureFrame = true
+		Recorder.elapsed = 0
+		return
+	end
+
+	local elapsedWall = math.max(0, now - Recorder._startWallTime)
+	Recorder.elapsed = elapsedWall
+	local targetFrame = math.floor(elapsedWall * Recorder._targetFps)
+	if targetFrame > Recorder._lastScheduledFrame then
+		Recorder._shouldCaptureFrame = true
 	end
 end
 
 function Recorder.preDraw()
-	if not Recorder.active or not Recorder.pendingCapture then return end
-
-	local mode = ClientPrefs.data.recordingMode or "gameplay"
-	local cams = Recorder.getCaptureCameras(mode)
-	table.clear(Recorder._targetCameras)
-
+	if not Recorder.active then return end
+	local cams = Recorder.getCaptureCameras()
 	if #cams == 0 then
-		Recorder.pendingCapture = false
+		Recorder._shouldCaptureFrame = false
 		return
 	end
 
-	-- Temporarily switch only the captured cameras to canvas-backed complex mode
-	-- for THIS single capture tick so game.draw() populates cam.canvas with zero
-	-- duplicate sprite/atlas/shader rendering.
-	for i, cam in ipairs(cams) do
-		Recorder._targetCameras[i] = cam
-		if Recorder._savedSimple[cam] == nil then
-			Recorder._savedSimple[cam] = cam.simple
+	-- Keep target cameras in steady FBO mode for the entire recording session
+	-- rather than toggling cam.simple back and forth on alternating frames.
+	for i = 1, #cams do
+		local cam = cams[i]
+		if cam and Recorder._forcedCams[cam] == nil then
+			Recorder._forcedCams[cam] = cam.simple
+			cam.simple = false
+		elseif cam and cam.simple ~= false then
+			cam.simple = false
 		end
-		cam.simple = false
 	end
 end
 
-local function restoreCameraModes()
-	for cam, prevSimple in pairs(Recorder._savedSimple) do
-		if cam then cam.simple = prevSimple end
-		Recorder._savedSimple[cam] = nil
+local function drawRecordingBadge()
+	if not Recorder.active then return end
+	if not (ClientPrefs and ClientPrefs.data and ClientPrefs.data.recordingIndicator) then
+		return
 	end
-end
 
-local function drawIndicator()
-	if not Recorder.active or not ClientPrefs.data.recordingIndicator then return end
-	local grap = love.graphics
-	local prevFont = grap.getFont()
-	local r, g, b, a = grap.getColor()
-	local blend, alphaMode = grap.getBlendMode()
+	local sw, sh = love.graphics.getDimensions()
+	if sw <= 0 or sh <= 0 then return end
 
-	if not Recorder._badgeFont then
-		local ok, f = pcall(grap.newFont, "assets/fonts/consolas.ttf", 14)
-		Recorder._badgeFont = ok and f or grap.newFont(14)
-	end
+	love.graphics.push("all")
+	love.graphics.origin()
+	love.graphics.setScissor()
+	love.graphics.setShader()
+	love.graphics.setBlendMode("alpha")
 
 	local mins = math.floor(Recorder.elapsed / 60)
 	local secs = math.floor(Recorder.elapsed % 60)
-	local modeTag = (ClientPrefs.data.recordingMode == "gameplay") and "GAME" or "ALL"
-	local label = string.format("REC %02d:%02d [%s]", mins, secs, modeTag)
+	local label = string.format("REC %02d:%02d", mins, secs)
+	local font = love.graphics.getFont()
+	local textW = font and font:getWidth(label) or 76
+	local textH = font and font:getHeight() or 16
+	local padX, padY = 10, 5
+	local dotSpace = 14
+	local boxW = textW + padX * 2 + dotSpace
+	local boxH = textH + padY * 2
+	local boxX = sw - boxW - 14
+	local boxY = 12
 
-	local winW = grap.getWidth()
-	local boxW = Recorder._badgeFont:getWidth(label) + 28
-	local boxH = 24
-	local bx = math.max(8, winW - boxW - 14)
-	local by = 12
-
-	grap.push("all")
-	grap.origin()
-	grap.setScissor()
-	grap.setShader()
-	grap.setBlendMode("alpha")
-	grap.setColor(0, 0, 0, 0.65)
-	grap.rectangle("fill", bx, by, boxW, boxH, 6, 6)
+	love.graphics.setColor(0, 0, 0, 0.58)
+	love.graphics.rectangle("fill", boxX, boxY, boxW, boxH, 6, 6)
 
 	local pulse = 0.55 + 0.45 * math.abs(math.sin(Recorder.elapsed * 3.5))
-	grap.setColor(1, 0.18, 0.18, pulse)
-	grap.circle("fill", bx + 11, by + boxH / 2, 5)
+	love.graphics.setColor(0.95, 0.18, 0.18, pulse)
+	love.graphics.circle("fill", boxX + padX + 4, boxY + boxH * 0.5, 4.5)
 
-	grap.setFont(Recorder._badgeFont)
-	grap.setColor(1, 1, 1, 0.95)
-	grap.print(label, bx + 20, by + 4)
-	grap.pop()
+	love.graphics.setColor(1, 1, 1, 0.92)
+	love.graphics.print(label, boxX + padX + dotSpace, boxY + padY)
+	love.graphics.pop()
+end
 
-	grap.setFont(prevFont)
-	grap.setColor(r, g, b, a)
-	grap.setBlendMode(blend, alphaMode)
+local function compositeCamerasToSlot(cams, slotIdx)
+	local outW, outH = Recorder.getTargetDimensions()
+	if not ensureCaptureCanvases(outW, outH) then return false end
+
+	local targetCanvas = Recorder._canvases[slotIdx]
+	local baseW = (game and game.width and game.width > 0) and game.width or Project.width
+	local baseH = (game and game.height and game.height > 0) and game.height or Project.height
+	local sx, sy = outW / baseW, outH / baseH
+
+	love.graphics.push("all")
+	love.graphics.setCanvas(targetCanvas)
+	love.graphics.origin()
+	love.graphics.setScissor()
+	love.graphics.setShader()
+	love.graphics.clear(0, 0, 0, 1)
+
+	local drawnAny = false
+	for i = 1, #cams do
+		local cam = cams[i]
+		local srcCanvas = cam and cam.canvas
+		if srcCanvas and (cam.alpha or 1) > 0 then
+			drawnAny = true
+			local color = cam.color or {1, 1, 1}
+			local alpha = cam.alpha or 1
+			local rot = math.rad(cam.angle or 0)
+			local zoomX = cam.__zoom and cam.__zoom.x or (cam.zoom or 1)
+			local zoomY = cam.__zoom and cam.__zoom.y or (cam.zoom or 1)
+			local halfW, halfH = cam.width / 2, cam.height / 2
+			local shakeX = cam.__shakeX or 0
+			local shakeY = cam.__shakeY or 0
+
+			love.graphics.setBlendMode("alpha", "premultiplied")
+			if cam.bgColor and cam.bgColor[4] and cam.bgColor[4] > 0 then
+				love.graphics.setBlendMode("alpha")
+				love.graphics.setColor(
+					cam.bgColor[1] or 0,
+					cam.bgColor[2] or 0,
+					cam.bgColor[3] or 0,
+					(cam.bgColor[4] or 1) * alpha
+				)
+				love.graphics.rectangle(
+					"fill",
+					(cam.x + shakeX) * sx,
+					(cam.y + shakeY) * sy,
+					cam.width * sx,
+					cam.height * sy
+				)
+				love.graphics.setBlendMode("alpha", "premultiplied")
+			end
+
+			love.graphics.setColor(
+				(color[1] or 1) * alpha,
+				(color[2] or 1) * alpha,
+				(color[3] or 1) * alpha,
+				alpha
+			)
+			love.graphics.draw(
+				srcCanvas,
+				(cam.x + halfW + shakeX) * sx,
+				(cam.y + halfH + shakeY) * sy,
+				rot,
+				zoomX * sx,
+				zoomY * sy,
+				halfW,
+				halfH
+			)
+		end
+	end
+
+	love.graphics.pop()
+	return drawnAny
 end
 
 function Recorder.postDraw()
-	if Recorder.active and Recorder.pendingCapture then
-		Recorder.pendingCapture = false
-		local cams = Recorder._targetCameras
+	if not Recorder.active then return end
 
-		if #cams > 0 and Recorder._cmdChannel then
-			local outW, outH = Recorder._canvasW, Recorder._canvasH
-			if outW <= 0 or outH <= 0 then
-				outW, outH = Recorder.getTargetDimensions()
+	if Recorder._shouldCaptureFrame then
+		Recorder._shouldCaptureFrame = false
+		local cams = Recorder.getCaptureCameras()
+		if #cams > 0 then
+			local now = (love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
+			if not Recorder._startWallTime then
+				Recorder._startWallTime = now
 			end
-			local captureCanvas = ensureCanvas(outW, outH)
-			local grap = love.graphics
-			local prevCanvas = grap.getCanvas()
-			local prevShader = grap.getShader()
-			local r, g, b, a = grap.getColor()
-			local blend, alphaMode = grap.getBlendMode()
-			local scx, scy, scw, sch = grap.getScissor()
-
-			local gameW = math.max(1, game.width or 1280)
-			local gameH = math.max(1, game.height or 720)
-			local scaleX = outW / gameW
-			local scaleY = outH / gameH
-
-			grap.push()
-			grap.origin()
-			grap.setScissor()
-			grap.setCanvas(captureCanvas)
-			local bg = Project.bgColor or {0, 0, 0, 1}
-			grap.clear(bg[1] or 0, bg[2] or 0, bg[3] or 0, 1)
-
-			grap.scale(scaleX, scaleY)
-			for i = 1, #cams do
-				local cam = cams[i]
-				if cam.canvas and cam.visible and cam.exists and cam.alpha > 0 then
-					local cw, ch = cam.width, cam.height
-					local resX = cam.pixelPerfect and 1 or (cam.__resolutionX or 1)
-					local resY = cam.pixelPerfect and 1 or (cam.__resolutionY or 1)
-					local sx = cam.scale.x / resX
-					local sy = cam.scale.y / resY
-					local w2, h2 = cw / 2, ch / 2
-					local alpha = cam.alpha
-					local col = cam.color or {1, 1, 1}
-
-					grap.setShader(cam.shader)
-					grap.setBlendMode("alpha", "premultiplied")
-					grap.setColor(col[1] * alpha, col[2] * alpha, col[3] * alpha, alpha)
-					local drawX = cam.clipCam and (w2 + cam.x) or w2
-					local drawY = cam.clipCam and (h2 + cam.y) or h2
-					grap.draw(cam.canvas, drawX, drawY, math.rad(cam.rotation or 0),
-						sx, sy, w2 * resX, h2 * resY)
-				end
+			local targetFrame = math.max(0, math.floor((now - Recorder._startWallTime) * Recorder._targetFps))
+			if targetFrame <= Recorder._lastScheduledFrame then
+				targetFrame = Recorder._lastScheduledFrame + 1
 			end
-			grap.pop()
 
-			grap.setCanvas(prevCanvas)
-			grap.setShader(prevShader)
-			grap.setColor(r, g, b, a)
-			grap.setBlendMode(blend, alphaMode)
-			grap.setScissor(scx, scy, scw, sch)
+			-- Delayed ping-pong readback: read the PREVIOUS capture canvas (rendered 16-33ms
+			-- ago, GPU already idle on it) BEFORE drawing the current frame into the other slot.
+			if Recorder._pendingSlot then
+				dispatchPendingSlot(false)
+			end
 
-			local okImg, imgData = pcall(function() return captureCanvas:newImageData() end)
-			if okImg and imgData then
-				Recorder._cmdChannel:push({
-					cmd = "frame",
-					image = imgData,
-					dropped = Recorder.droppedPending
-				})
-				Recorder.droppedPending = 0
-				Recorder.framesSent = Recorder.framesSent + 1
+			local slot = Recorder._curSlot
+			if compositeCamerasToSlot(cams, slot) then
+				Recorder._lastScheduledFrame = targetFrame
+				Recorder._pendingSlot = {
+					slot = slot,
+					targetFrame = targetFrame,
+					audio = snapshotActiveAudio()
+				}
+				Recorder._curSlot = (slot == 1) and 2 or 1
 			end
 		end
-
-		table.clear(Recorder._targetCameras)
-		restoreCameraModes()
-	else
-		restoreCameraModes()
 	end
 
-	drawIndicator()
+	-- Drawn directly to screen backbuffer AFTER canvas capture, so it never leaks into video
+	drawRecordingBadge()
 end
 
 function Recorder.shutdown()
 	if Recorder.active then
 		Recorder.stop(true)
+	else
+		restoreForcedCameras()
+		releaseCanvases()
 	end
-	if Recorder._thread and Recorder._thread:isRunning() and Recorder._cmdChannel then
-		Recorder._cmdChannel:push({cmd = "quit"})
-		pcall(function() Recorder._thread:wait() end)
+
+	if Recorder._encodeCh and #Recorder._encoderThreads > 0 then
+		for _ = 1, #Recorder._encoderThreads do
+			Recorder._encodeCh:push({type = "quit"})
+		end
+		for i = 1, #Recorder._encoderThreads do
+			local th = Recorder._encoderThreads[i]
+			if th and th:isRunning() then
+				pcall(function() th:wait() end)
+			end
+			Recorder._encoderThreads[i] = nil
+		end
 	end
-	Recorder.pollStatus()
-	releaseCanvas()
+
+	if Recorder._muxThread and Recorder._muxThread:isRunning() and Recorder._cmdCh then
+		Recorder._cmdCh:push({type = "quit", lastSeq = Recorder._nextSeq - 1})
+		pcall(function() Recorder._muxThread:wait() end)
+	end
+	Recorder._muxThread = nil
 end
 
 return Recorder

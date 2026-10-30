@@ -9,6 +9,7 @@ local paths = {
 
 	images = {},
 	audio = {},
+	audioPaths = setmetatable({}, {__mode = "k"}),
 	atlases = {},
 	fonts = {},
 	skins = {},
@@ -313,11 +314,16 @@ function paths.getAudio(key, stream, logError)
 	end
 	local cacheKey = path .. (stream and ":stream" or ":static")
 	local cached = paths.audio[path] or paths.audio[cacheKey]
-	if cached then return cached end
-	return generate(paths.audio, path, function(y)
+	if cached then
+		paths.audioPaths[cached] = path
+		return cached
+	end
+	local created = generate(paths.audio, path, function(y)
 		if y then return stream and love.audio.newSource(path, "stream") or
 			love.sound.newSoundData(path) end
 	end, not logError and "audio" or nil)
+	if created then paths.audioPaths[created] = path end
+	return created
 end
 
 function paths.getMusic(key) return paths.getAudio("music/" .. key, true) end
