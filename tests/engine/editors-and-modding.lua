@@ -781,6 +781,59 @@ check("VSlice characters ground properly on legacy stages and resolve variant he
 	assert(ok, err)
 end)
 
+check("Psych characters with non-unit scale update hitbox to match HaxeFlixel top-left origin", function()
+	local savedRoot = Mods.root
+	local savedMod = Mods.currentMod
+	local modDir = "saves/__test_psych_scale_mod"
+	love.filesystem.createDirectory(modDir .. "/data/characters")
+	love.filesystem.createDirectory(modDir .. "/images/characters")
+
+	local ok, err = pcall(function()
+		local imgData = love.image.newImageData(100, 200)
+		local pngBytes = imgData:encode("png"):getString()
+		imgData:release()
+		assert(love.filesystem.write(modDir .. "/images/characters/scaled_test.png", pngBytes))
+		assert(love.filesystem.write(modDir .. "/images/characters/scaled_test.xml", [[<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="scaled_test.png">
+	<SubTexture name="idle0000" x="0" y="0" width="100" height="200"/>
+</TextureAtlas>]]))
+		assert(love.filesystem.write(modDir .. "/data/characters/scaled-psych.json", [[{
+	"image": "characters/scaled_test",
+	"healthicon": "bf",
+	"scale": 1.2,
+	"position": [10, 20],
+	"camera_position": [0, 0],
+	"sing_duration": 6.1,
+	"flip_x": false,
+	"no_antialiasing": false,
+	"animations": [
+		{"anim": "idle", "name": "idle", "fps": 24, "loop": false, "indices": [], "offsets": [0, 0]}
+	]
+}]]))
+
+		Mods.root = "saves"
+		Mods.currentMod = "__test_psych_scale_mod"
+		local ch = Character(100, 50, "scaled-psych", false)
+		assert(ch.type == "Psych", "Expected Psych parser, got " .. tostring(ch.type))
+		assert(math.abs(ch.width - 120) < 0.01 and math.abs(ch.height - 240) < 0.01,
+			"Expected scaled hitbox 120x240, got " .. tostring(ch.width) .. "x" .. tostring(ch.height))
+		assert(math.abs(ch.offset.x - (-10)) < 0.01 and math.abs(ch.offset.y - (-20)) < 0.01,
+			"Expected top-left fixOffsets (-10, -20), got " .. tostring(ch.offset.x) .. ", " .. tostring(ch.offset.y))
+		ch:destroy()
+	end)
+
+	Mods.root = savedRoot
+	Mods.currentMod = savedMod
+	love.filesystem.remove(modDir .. "/data/characters/scaled-psych.json")
+	love.filesystem.remove(modDir .. "/images/characters/scaled_test.xml")
+	love.filesystem.remove(modDir .. "/images/characters/scaled_test.png")
+	love.filesystem.remove(modDir .. "/data/characters")
+	love.filesystem.remove(modDir .. "/images/characters")
+	love.filesystem.remove(modDir)
+	assert(ok, err)
+end)
+
+
 
 
 

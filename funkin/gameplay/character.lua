@@ -84,6 +84,9 @@ function Character:new(x, y, char, isPlayer)
 	if data.scale and data.scale ~= 1 then
 		self:setGraphicSize(math.floor(self.width * data.scale))
 		self.scale:set(data.scale, data.scale)
+		if type == "Psych" then
+			self:updateHitbox()
+		end
 	end
 
 	self.icon = data.icon or char
