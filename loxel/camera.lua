@@ -71,6 +71,13 @@ function Camera:new(x, y, width, height)
 	self.followType = nil
 	self.followLerp = 0
 
+	self.minScrollX = nil
+	self.maxScrollX = nil
+	self.minScrollY = nil
+	self.maxScrollY = nil
+	self.minZoom = nil
+	self.__pixelScaleDivisor = nil
+
 	self.bgColor = {0, 0, 0, 0}
 
 	self.__zoom = {x = 1, y = 1}
@@ -152,8 +159,10 @@ end
 function Camera:snapToTarget()
 	if self.target == nil then return end
 
+	self:syncPixelPerfectWidth()
 	self.scroll.x = self.target.x - self.width / 2
 	self.scroll.y = self.target.y - self.height / 2
+	self:clampScroll()
 end
 
 function Camera:freeze()
@@ -189,7 +198,73 @@ end
 
 local trunc = function(i) return math.truncate(i, 1) end
 
+function Camera:syncPixelPerfectWidth()
+	if not self.pixelPerfect or not Project then return end
+	if game.width <= Project.width or self.height <= 0 or self.height >= game.height then return end
+	local k = math.floor(Project.height / self.height + 0.5)
+	if k >= 2 and math.abs(self.height * k - Project.height) <= k then
+		local basePixelW = math.floor(Project.width / k)
+		local targetPixelW = math.ceil(game.width / k)
+		if (self.width == basePixelW or self.__pixelScaleDivisor == k) and self.width ~= targetPixelW then
+			self.__pixelScaleDivisor = k
+			self:resize(targetPixelW, self.height, 1, 1, true)
+		elseif self.width == targetPixelW and not self.__pixelScaleDivisor then
+			self.__pixelScaleDivisor = k
+		end
+	end
+end
+
+function Camera:clampScroll()
+	local isnum = type(self.zoom) == "number"
+	if self.minZoom and isnum and self.zoom < self.minZoom then
+		self.zoom = self.minZoom
+	end
+	self.__zoom.x = isnum and self.zoom or self.zoom.x
+	self.__zoom.y = isnum and self.zoom or self.zoom.y
+
+	if self.minScrollX == nil and self.maxScrollX == nil
+		and self.minScrollY == nil and self.maxScrollY == nil then
+		return
+	end
+
+	local zx = math.abs(self.scale.x * self.__zoom.x)
+	local zy = math.abs(self.scale.y * self.__zoom.y)
+	local halfW = zx > 0 and (self.width * 0.5) / zx or (self.width * 0.5)
+	local halfH = zy > 0 and (self.height * 0.5) / zy or (self.height * 0.5)
+
+	local cx = self.scroll.x + self.width * 0.5
+	local cy = self.scroll.y + self.height * 0.5
+
+	if self.minScrollX ~= nil and self.maxScrollX ~= nil then
+		if (self.maxScrollX - self.minScrollX) <= halfW * 2 then
+			cx = (self.minScrollX + self.maxScrollX) * 0.5
+		else
+			cx = math.clamp(cx, self.minScrollX + halfW, self.maxScrollX - halfW)
+		end
+	elseif self.minScrollX ~= nil then
+		cx = math.max(cx, self.minScrollX + halfW)
+	elseif self.maxScrollX ~= nil then
+		cx = math.min(cx, self.maxScrollX - halfW)
+	end
+
+	if self.minScrollY ~= nil and self.maxScrollY ~= nil then
+		if (self.maxScrollY - self.minScrollY) <= halfH * 2 then
+			cy = (self.minScrollY + self.maxScrollY) * 0.5
+		else
+			cy = math.clamp(cy, self.minScrollY + halfH, self.maxScrollY - halfH)
+		end
+	elseif self.minScrollY ~= nil then
+		cy = math.max(cy, self.minScrollY + halfH)
+	elseif self.maxScrollY ~= nil then
+		cy = math.min(cy, self.maxScrollY - halfH)
+	end
+
+	self.scroll.x = cx - self.width * 0.5
+	self.scroll.y = cy - self.height * 0.5
+end
+
 function Camera:update(dt)
+	self:syncPixelPerfectWidth()
 	local isnum = type(self.zoom) == "number"
 	self.__zoom.x = isnum and self.zoom or self.zoom.x
 	self.__zoom.y = isnum and self.zoom or self.zoom.y
@@ -208,6 +283,7 @@ function Camera:update(dt)
 		-- TODO: follow type
 		self.scroll.x, self.scroll.y = targetX, targetY
 	end
+	self:clampScroll()
 
 	if self.__flashAlpha > 0 then
 		self.__flashAlpha = self.__flashAlpha - dt / self.__flashDuration
@@ -409,6 +485,7 @@ end
 
 function Camera:drawSimple(_skipCheck)
 	if not _skipCheck and not self:canDraw() then return end
+	self:clampScroll()
 	self.isSimple = true
 
 	local grap = love.graphics
@@ -473,9 +550,11 @@ end
 
 function Camera:drawComplex(_skipCheck)
 	if not _skipCheck and not self:canDraw() then return end
+	self:syncPixelPerfectWidth()
 	if self.__requestCanvas and not self.freezed then
 		self:resize(self.width, self.height, self.resolutionX, self.resolutionY, true)
 	end
+	self:clampScroll()
 	self.isSimple = false
 
 	local canvas = self.canvas
@@ -578,7 +657,7 @@ function Camera:drawComplex(_skipCheck)
 	local scx, scy = 1, 1
 	if self.pixelPerfect then
 		scx, scy = game.width / self.width, game.height / self.height
-		local scale = math.min(scx, scy)
+		local scale = self.__pixelScaleDivisor and scy or math.min(scx, scy)
 		sx, sy = sx * scale, sy * scale
 	end
 
@@ -627,7 +706,7 @@ function Camera:drawCanvasToTarget(targetW, targetH)
 	local scx, scy = 1, 1
 	if self.pixelPerfect then
 		scx, scy = game.width / w, game.height / h
-		local pscale = math.min(scx, scy)
+		local pscale = self.__pixelScaleDivisor and scy or math.min(scx, scy)
 		sx, sy = sx * pscale, sy * pscale
 	end
 

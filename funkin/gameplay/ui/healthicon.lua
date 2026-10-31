@@ -21,9 +21,9 @@ function HealthIcon:updateAnimation()
 	else
 		local isWinning = percent > 80
 		local function backToIdleIfFinished()
-			if self.animFinished then self.animation:play("idle") end
+			if self.animation.finished then self.animation:play("idle") end
 		end
-		switch(self.curAnim and self.curAnim.name or "idle", {
+		switch(self.animation.curAnim and self.animation.curAnim.name or "idle", {
 			["idle"] = function()
 				if isLosing then
 					self:fallbackPlay("toLosing", "losing")
@@ -48,10 +48,10 @@ function HealthIcon:updateAnimation()
 				end
 			end,
 			["toLosing"] = function()
-				if self.animFinished then self:fallbackPlay("losing", "idle") end
+				if self.animation.finished then self:fallbackPlay("losing", "idle") end
 			end,
 			["toWinning"] = function()
-				if self.animFinished then self:fallbackPlay("winning", "idle") end
+				if self.animation.finished then self:fallbackPlay("winning", "idle") end
 			end,
 			["fromLosing"] = backToIdleIfFinished,
 			["fromWinning"] = backToIdleIfFinished,
@@ -62,17 +62,31 @@ end
 
 function HealthIcon.resolveIconPath(icon)
 	if icon and icon ~= "" then
-		local candidates = {"icons/" .. icon}
-		if icon:sub(1, 5) == "icon-" then
-			candidates[#candidates + 1] = "icons/" .. icon:sub(6)
-		else
-			candidates[#candidates + 1] = "icons/icon-" .. icon
-		end
-		for _, candidate in ipairs(candidates) do
-			if paths.images[paths.getPath("images/" .. candidate .. ".png")]
-				or paths.exists(paths.getPath("images/" .. candidate .. ".png"), "file") then
-				return candidate, icon
+		local function tryIcon(name)
+			local candidates = {"icons/" .. name}
+			if name:sub(1, 5) == "icon-" then
+				candidates[#candidates + 1] = "icons/" .. name:sub(6)
+			else
+				candidates[#candidates + 1] = "icons/icon-" .. name
 			end
+			for _, candidate in ipairs(candidates) do
+				if paths.images[paths.getPath("images/" .. candidate .. ".png")]
+					or paths.exists(paths.getPath("images/" .. candidate .. ".png"), "file") then
+					return candidate
+				end
+			end
+			return nil
+		end
+
+		local exact = tryIcon(icon)
+		if exact then return exact, icon end
+
+		local base = icon
+		while base:find("-", 1, true) do
+			base = base:gsub("%-[^%-]+$", "")
+			if base == "" then break end
+			local fallback = tryIcon(base)
+			if fallback then return fallback, base end
 		end
 	end
 	return "icons/" .. HealthIcon.defaultIcon, HealthIcon.defaultIcon
@@ -100,8 +114,7 @@ function HealthIcon:changeIcon(icon)
 	self.isOldIcon = hasOldSuffix or
 		(self.isPixelIcon and icon:sub(1, -7):endsWith("-old"))
 
-	local isSparrow = paths.exists(paths.getPath("images/" .. path .. ".xml"), "file")
-	self.isLegacyStyle = not isSparrow and not paths.exists(paths.getPath("images/" .. path .. ".txt"), "file")
+	self.isLegacyStyle = not paths.hasSheetAtlas(path)
 	if self.isLegacyStyle then
 		self:loadTexture(paths.getImage(path))
 		if math.round(self.width / self.height) > 1 then
@@ -119,11 +132,16 @@ function HealthIcon:changeIcon(icon)
 		self.antialiasing = zoom < 2.5 and self.antialiasing
 		self:updateHitbox()
 	else
-		self:setFrames(isSparrow and paths.getSparrowAtlas(path) or paths.getPackerAtlas(path))
+		self:setFrames(paths.getAtlas(path))
 
 		self.animation:addByPrefix("idle", "idle", 24, true)
 		self.animation:addByPrefix("winning", "winning", 24, true)
-		self.animation:addByPrefix("losing", "losing", 24, true)
+		if self.animation:has("losing") or not self.animation:has("angryish") then
+			self.animation:addByPrefix("losing", "losing", 24, true)
+		end
+		if not self.animation:has("losing") then
+			self.animation:addByPrefix("losing", "angryish", 24, true)
+		end
 		self.animation:addByPrefix("toWinning", "toWinning", 24, false)
 		self.animation:addByPrefix("toLosing", "toLosing", 24, false)
 		self.animation:addByPrefix("fromWinning", "fromWinning", 24, false)
@@ -132,9 +150,9 @@ function HealthIcon:changeIcon(icon)
 
 	self:updateAnimation()
 	if not self.isLegacyStyle
-		and self.curAnim
-		and not self.curAnim.looped then
-		self:finish()
+		and self.animation.curAnim
+		and not self.animation.curAnim.looped then
+		self.animation:finish()
 	end
 
 	return true

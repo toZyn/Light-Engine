@@ -210,14 +210,17 @@ function Script:linkObject(link)
 	local s = self.variables
 	if not s or not link then return end
 	local boundMethods = {}
+	local prevUnlink = self._unlink
 	local new = {
 		__index = function(_, k)
+			if not link then return closedEnv.__index() end
 			local val = link[k]
 			if val ~= nil then
 				if type(val) == "function" then
 					local bm = boundMethods[k]
 					if not bm or bm._fn ~= val then
 						local fn = function(...)
+							if not link then return closedEnv.__index() end
 							return val(link, ...)
 						end
 						bm = {_fn = val, _call = fn}
@@ -227,19 +230,29 @@ function Script:linkObject(link)
 				end
 				return val
 			end
+			if not cur then return nil end
 			return type(cur.__index) == "table" and
 				cur.__index[k] or cur.__index(s, k)
 		end,
 		__newindex = function(_, k, v)
+			if not link then return closedEnv.__newindex() end
 			-- avoid overriding functions
 			-- was other method but it kinda fucked up callbacks
 			if k ~= nil and link[k] ~= nil and type(link[k]) ~= "function" then
 				link[k] = v; return
 			end
+			if not cur then return rawset(s, k, v) end
 			return cur.__newindex and
 				cur.__newindex(s, k, v) or rawset(s, k, v)
 		end
 	}
+	self._unlink = function()
+		if prevUnlink then prevUnlink(); prevUnlink = nil end
+		link = nil
+		cur = nil
+		s = nil
+		if boundMethods then table.clear(boundMethods); boundMethods = nil end
+	end
 	setmetatable(self.variables, new)
 end
 
@@ -267,7 +280,12 @@ function Script:call(func, ...)
 end
 
 function Script:close()
-	if self.variables then table.clear(self.variables) end
+	local vars = self.variables
+	if self._unlink then self._unlink(); self._unlink = nil end
+	if vars then
+		table.clear(vars)
+		setmetatable(vars, closedEnv)
+	end
 	if self.chunk then setfenv(self.chunk, closedEnv) end
 	self.variables = nil
 	self.chunk = nil
@@ -278,6 +296,7 @@ function Script:close()
 		self.closeCallback:dispatch()
 		Script.messages:remove(self.receiveFunc)
 	end
+	self.receiveFunc = nil
 	if self._addonModules then self._addonModules:close(); self._addonModules = nil end
 end
 

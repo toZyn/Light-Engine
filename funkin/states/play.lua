@@ -589,12 +589,32 @@ function PlayState:enter()
 	self.scripts:call("postCreate")
 	self._postCreated = true
 
+	if self.stage and self.stage.fitViewport then
+		self.stage:fitViewport(game.camera)
+		if self.stage.camZoom and self.camZoom < self.stage.camZoom then
+			self.camZoom = self.stage.camZoom
+			game.camera.zoom = self.camZoom
+		end
+	end
+
 	game.camera:follow(self.camFollow, nil, 2.4 * self.camSpeed)
 	game.camera:snapToTarget()
 
 	self.lastSongTime = 0
 
 	self:update(0)
+end
+
+function PlayState:resize(w, h)
+	if PlayState.super.resize then PlayState.super.resize(self, w, h) end
+	if self.scripts then self.scripts:call("resize", w, h) end
+	if self.stage and self.stage.fitViewport then
+		self.stage:fitViewport(game.camera)
+		if self.stage.camZoom and self.camZoom < self.stage.camZoom then
+			self.camZoom = self.stage.camZoom
+		end
+	end
+	if self.scripts then self.scripts:call("postResize", w, h) end
 end
 
 function PlayState:executeCutscene(name, type, onComplete)
@@ -1386,7 +1406,7 @@ function PlayState:goodNoteHit(note, time)
 		end
 
 		local char = event.character
-		if char and not event.cancelledAnim then
+		if char and not event.cancelledAnim and not note.noAnimation and note.type ~= "No Animation" then
 			char.waitReleaseAfterSing = not notefield.bot
 			local type, lastsus = note.type ~= "alt" and nil or note.type, notefield.lastSustain
 			local sustime = lastsus and lastsus.sustainTime or 0
@@ -1491,7 +1511,7 @@ function PlayState:miss(note, dir)
 		end
 
 		local char = event.character
-		if char and not event.cancelledAnim then
+		if char and not event.cancelledAnim and (ghostMiss or (not note.noAnimation and note.type ~= "No Animation")) then
 			char:sing(dir, "miss")
 		end
 

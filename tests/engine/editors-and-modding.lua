@@ -574,3 +574,266 @@ check("B6: Pause & resume work across keyboard, gamepad, and mobile touch in nor
 	love.system.getDevice = origGetDevice
 	paths.async.stop()
 end)
+
+check("TexturePacker JSON atlases, UTF-8 BOM JSON/XML, and mod excludeAssets", function()
+	local FrameCollection = require "loxel.animation.frame.collection"
+	local imgData = love.image.newImageData(64, 64)
+	local tex = love.graphics.newImage(imgData)
+
+	-- 1. JSON Hash with UTF-8 BOM, unsorted keys, trim offsets, and rotation
+	local bom = "\239\187\191"
+	local hashJson = bom .. JSON.encode({
+		frames = {
+			["idle0001"] = {
+				frame = {x = 16, y = 0, w = 12, h = 20},
+				rotated = false,
+				trimmed = true,
+				spriteSourceSize = {x = 4, y = 6, w = 12, h = 20},
+				sourceSize = {w = 24, h = 32}
+			},
+			["idle0000"] = {
+				frame = {x = 0, y = 0, w = 16, h = 24},
+				rotated = true,
+				trimmed = false,
+				spriteSourceSize = {x = 0, y = 0, w = 16, h = 24},
+				sourceSize = {w = 16, h = 24}
+			}
+		}
+	})
+	local colHash = FrameCollection.fromTexturePackerJson(tex, hashJson)
+	assert(colHash:getFrameCount() == 2, "JSON Hash must load 2 frames")
+	local f0 = colHash:getFrame(1)
+	local f1 = colHash:getFrame(2)
+	assert(f0.name == "idle0000" and f1.name == "idle0001", "JSON Hash frames must sort deterministically by key")
+	assert(f0.rotated == true, "Rotated flag must be preserved")
+	local _, _, qw0, qh0 = f0.quad:getViewport()
+	assert(qw0 == 24 and qh0 == 16, "Rotated TexturePacker quad must swap packed w/h")
+	assert(f1.offset.x == -4 and f1.offset.y == -6, "spriteSourceSize trim offset must negate to Sparrow convention")
+	assert(f1.width == 24 and f1.height == 32, "sourceSize dimensions must populate frame width/height")
+
+	-- 2. JSON Array format
+	local arrJson = JSON.encode({
+		frames = {
+			{filename = "singLEFT0000", frame = {x = 0, y = 0, w = 10, h = 10}, spriteSourceSize = {x = 2, y = 3, w = 10, h = 10}, sourceSize = {w = 14, h = 16}},
+			{filename = "singLEFT0001", frame = {x = 10, y = 0, w = 10, h = 10}, spriteSourceSize = {x = 0, y = 0, w = 10, h = 10}, sourceSize = {w = 10, h = 10}}
+		}
+	})
+	local colArr = FrameCollection.fromTexturePackerJson(tex, arrJson)
+	assert(colArr:getFrameCount() == 2 and colArr:getFrame(1).name == "singLEFT0000", "JSON Array must preserve array order")
+
+	-- 3. paths.excludeAssets strips active mod and addon subpaths
+	local prevMod = Mods.currentMod
+	Mods.currentMod = "test-mod-atlas"
+	local stripped = paths.excludeAssets(Mods.root .. "/test-mod-atlas/images/SATAN")
+	Mods.currentMod = prevMod
+	assert(stripped == "images/SATAN", "excludeAssets must strip active mod folder prefix, got: " .. tostring(stripped))
+
+	colHash:destroy()
+	colArr:destroy()
+	tex:release()
+	imgData:release()
+end)
+
+check("Psych events.json envelope, stage defaultZoom, and character sing_duration parse cleanly", function()
+	local vanillaChart = require "funkin.backend.parser.chart.vanilla"
+	local stageParser = require "funkin.backend.parser.stage"
+	local psychChar = require "funkin.backend.parser.character.psych"
+
+	-- 1. Psych events.json {"song": {"events": [...]}} + inline chart events deduplicated & merged
+	local rawChart = {
+		song = {
+			song = "Dejection",
+			bpm = 140,
+			speed = 2.6,
+			stage = "vecindario",
+			player1 = "bf-retro",
+			player2 = "mouse",
+			gfVersion = "gf-retro",
+			events = {
+				{1000, {{"Add Camera Zoom", "0.02", "0.04"}}},
+				{2000, {{"Play Animation", "risa", "dad"}}}
+			},
+			notes = {
+				{
+					mustHitSection = true,
+					sectionNotes = {
+						{500, 0, 0, "Alt Animation"},
+						{750, 1, 0, "No Animation"}
+					}
+				}
+			}
+		}
+	}
+	local externalEvents = {
+		song = {
+			events = {
+				{1000, {{"Add Camera Zoom", "0.02", "0.04"}}}, -- duplicate of inline -> must fire once
+				{1500, {{"Screen Shake", "0.5, 0.02", ""}}}
+			}
+		}
+	}
+	local parsed = vanillaChart.parse(rawChart, externalEvents, nil, "hard")
+	local psychEvCount = 0
+	for _, ev in ipairs(parsed.events) do
+		if ev.psych then psychEvCount = psychEvCount + 1 end
+	end
+	assert(psychEvCount == 3, "Expected 3 merged/deduplicated Psych events, got " .. tostring(psychEvCount))
+	assert(parsed.notes.player[1].k == "alt", "Alt Animation noteType must normalize to 'alt'")
+	assert(parsed.notes.player[2].k == "No Animation", "No Animation noteType must remain inspectable")
+
+	-- 2. Stage defaultZoom
+	local st = stageParser.getParser({defaultZoom = 0.67, boyfriend = {770, 100}, opponent = {100, 99}}).parse({
+		defaultZoom = 0.67, boyfriend = {770, 100}, opponent = {100, 99}
+	})
+	assert(math.abs(st.cameraZoom - 0.67) < 1e-6, "Psych stage defaultZoom must populate cameraZoom")
+
+	-- 3. Psych character sing_duration
+	local ch = psychChar.parse({
+		image = "characters/BOYFRIEND",
+		healthicon = "bf",
+		sing_duration = 6.1,
+		animations = {}
+	})
+	assert(math.abs(ch.sing_duration - 6.1) < 1e-6, "Psych character sing_duration must be preserved")
+end)
+
+check("Ultrawide 1612x720 viewports frame standard and pixel-perfect stages without black overflow", function()
+	local oldW, oldH = game.width, game.height
+	local ok, err = pcall(function()
+		game.width, game.height = 1612, 720
+
+		-- 1. Pixel-perfect camera authored at 1280/6 x 720/6 (213x120) expands cleanly to ceil(1612/6)=269x120
+		local pixCam = Camera()
+		pixCam:resize(math.floor(1280 / 6), math.floor(720 / 6), 1, 1, true)
+		pixCam.pixelPerfect = true
+		pixCam:syncPixelPerfectWidth()
+		assert(pixCam.width == 269 and pixCam.height == 120,
+			"Expected ultrawide pixel camera 269x120, got " .. tostring(pixCam.width) .. "x" .. tostring(pixCam.height))
+		assert(pixCam.__pixelScaleDivisor == 6, "Expected pixel scale divisor 6")
+
+		-- Clamp pixel camera inside evilSchoolFG (311x161 with wiggle pad)
+		pixCam.minScrollX, pixCam.maxScrollX = 5, 306
+		pixCam.minScrollY, pixCam.maxScrollY = 3, 157
+		pixCam.target = Point(240, 130)
+		pixCam:snapToTarget()
+		assert(pixCam.scroll.x + pixCam.width <= 306.001, "Pixel camera right edge must stay within stage bounds")
+		assert(pixCam.scroll.y + pixCam.height <= 157.001, "Pixel camera bottom edge must stay within stage bounds")
+		if pixCam.canvas then pixCam.canvas:release(); pixCam.canvas = nil end
+
+		-- 2. Standard ultrawide stage (tank-like sky + ground) expands sky & clamps horizontal scroll
+		local stdCam = Camera(0, 0, 1612, 720)
+		stdCam.zoom = 0.9
+		local stg = Stage("")
+		stg.camZoom = 0.9
+		local sky = Graphic(-380, -204, 1830, 762)
+		sky.scrollFactor:set(0, 0)
+		stg:add(sky)
+		local ground = Graphic(-420, 534, 2208, 485)
+		ground.scrollFactor:set(1, 1)
+		stg:add(ground)
+
+		stg:fitViewport(stdCam)
+		stdCam.target = Point(980, 450)
+		stdCam:snapToTarget()
+
+		local halfViewW = (stdCam.width * 0.5) / stdCam.zoom
+		local viewRight = (stdCam.scroll.x + stdCam.width * 0.5) + halfViewW
+		assert(viewRight <= 1788.01, "Ultrawide camera right edge spilled past tankGround: " .. tostring(viewRight))
+
+		local skyX, _, skyW = sky:getWorldBounds()
+		local w2 = stdCam.width * 0.5
+		local skyLeftScreen = w2 + (skyX - w2) * stdCam.zoom
+		local skyRightScreen = w2 + (skyX + skyW - w2) * stdCam.zoom
+		assert(skyLeftScreen <= 0.5 and skyRightScreen >= 1611.5,
+			string.format("Ultrawide sky must cover [0, 1612], got [%.1f, %.1f]", skyLeftScreen, skyRightScreen))
+
+		PlayState.resize({stage = stg, camZoom = 0.8}, 1280, 720)
+
+		stg:destroy()
+		if stdCam.canvas then stdCam.canvas:release(); stdCam.canvas = nil end
+	end)
+	game.width, game.height = oldW, oldH
+	assert(ok, err)
+end)
+
+check("VSlice characters ground properly on legacy stages and resolve variant health icons", function()
+	local iconPath, resolved = HealthIcon.resolveIconPath("pico-playable")
+	assert(iconPath == "icons/pico" and resolved == "pico",
+		"pico-playable must resolve to icons/pico instead of face, got " .. tostring(iconPath))
+
+	local prevSong = PlayState.SONG
+	PlayState.SONG = {
+		song = "Ugh",
+		player1 = "pico-playable",
+		player2 = "tankman",
+		gfVersion = "nene"
+	}
+	local ok, err = pcall(function()
+		local stg = Stage("tank")
+		stg:load()
+		assert(stg.boyfriend and stg.boyfriend.y > 250,
+			"pico-playable on legacy tank stage must be grounded (y > 250), got " .. tostring(stg.boyfriend and stg.boyfriend.y))
+		assert(stg.gf and stg.gf.y > -50,
+			"nene on legacy tank stage must be grounded (y > -50), got " .. tostring(stg.gf and stg.gf.y))
+		stg:destroy()
+	end)
+	PlayState.SONG = prevSong
+	assert(ok, err)
+end)
+
+check("Psych characters with non-unit scale update hitbox to match HaxeFlixel top-left origin", function()
+	local savedRoot = Mods.root
+	local savedMod = Mods.currentMod
+	local modDir = "saves/__test_psych_scale_mod"
+	love.filesystem.createDirectory(modDir .. "/data/characters")
+	love.filesystem.createDirectory(modDir .. "/images/characters")
+
+	local ok, err = pcall(function()
+		local imgData = love.image.newImageData(100, 200)
+		local pngBytes = imgData:encode("png"):getString()
+		imgData:release()
+		assert(love.filesystem.write(modDir .. "/images/characters/scaled_test.png", pngBytes))
+		assert(love.filesystem.write(modDir .. "/images/characters/scaled_test.xml", [[<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="scaled_test.png">
+	<SubTexture name="idle0000" x="0" y="0" width="100" height="200"/>
+</TextureAtlas>]]))
+		assert(love.filesystem.write(modDir .. "/data/characters/scaled-psych.json", [[{
+	"image": "characters/scaled_test",
+	"healthicon": "bf",
+	"scale": 1.2,
+	"position": [10, 20],
+	"camera_position": [0, 0],
+	"sing_duration": 6.1,
+	"flip_x": false,
+	"no_antialiasing": false,
+	"animations": [
+		{"anim": "idle", "name": "idle", "fps": 24, "loop": false, "indices": [], "offsets": [0, 0]}
+	]
+}]]))
+
+		Mods.root = "saves"
+		Mods.currentMod = "__test_psych_scale_mod"
+		local ch = Character(100, 50, "scaled-psych", false)
+		assert(ch.type == "Psych", "Expected Psych parser, got " .. tostring(ch.type))
+		assert(math.abs(ch.width - 120) < 0.01 and math.abs(ch.height - 240) < 0.01,
+			"Expected scaled hitbox 120x240, got " .. tostring(ch.width) .. "x" .. tostring(ch.height))
+		assert(math.abs(ch.offset.x - (-10)) < 0.01 and math.abs(ch.offset.y - (-20)) < 0.01,
+			"Expected top-left fixOffsets (-10, -20), got " .. tostring(ch.offset.x) .. ", " .. tostring(ch.offset.y))
+		ch:destroy()
+	end)
+
+	Mods.root = savedRoot
+	Mods.currentMod = savedMod
+	love.filesystem.remove(modDir .. "/data/characters/scaled-psych.json")
+	love.filesystem.remove(modDir .. "/images/characters/scaled_test.xml")
+	love.filesystem.remove(modDir .. "/images/characters/scaled_test.png")
+	love.filesystem.remove(modDir .. "/data/characters")
+	love.filesystem.remove(modDir .. "/images/characters")
+	love.filesystem.remove(modDir)
+	assert(ok, err)
+end)
+
+
+
+
+

@@ -6,7 +6,7 @@ local nativeStage = {name = "Native"}
 function nativeStage.parse(data)
 	local stage = Parser.getDummyStage()
 	Parser.pset(stage, "name", data.name or "Stage")
-	Parser.pset(stage, "cameraZoom", data.cameraZoom or data.defaultCamZoom or data.zoom or 0.9)
+	Parser.pset(stage, "cameraZoom", data.cameraZoom or data.defaultCamZoom or data.defaultZoom or data.zoom or 0.9)
 	Parser.pset(stage, "props", data.props or data.sprites or {})
 	local chars = data.characters or {}
 	if data.boyfriend and not chars.bf then chars.bf = {position = data.boyfriend, cameraOffsets = data.camera_boyfriend} end

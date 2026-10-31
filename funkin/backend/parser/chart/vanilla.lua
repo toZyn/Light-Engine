@@ -14,7 +14,57 @@ local function getFromMeta(data, tbl)
 	Parser.pset(tbl, "gfVersion", char.girlfriend)
 end
 
-local function getStuff(data, eventData, bpm, psych)
+local function appendPsychEvents(rawEvents, events, seen)
+	if type(rawEvents) ~= "table" then return end
+	local list = rawEvents
+	if #list == 0 then
+		if type(list.song) == "table" and type(list.song.events) == "table" then
+			list = list.song.events
+		elseif type(list.events) == "table" then
+			list = list.events
+		end
+	end
+	if type(list) ~= "table" then return end
+
+	for _, e in ipairs(list) do
+		if type(e) == "table" then
+			local etime = tonumber(e[1]) or 0
+			if type(e[2]) == "table" then
+				for _, i in ipairs(e[2]) do
+					if type(i) == "table" and i[1] ~= nil then
+						local eevent = tostring(i[1])
+						local v1, v2 = i[2], i[3]
+						local sig = string.format("%.4f|%s|%s|%s", etime, eevent, tostring(v1 or ""), tostring(v2 or ""))
+						if not seen[sig] then
+							seen[sig] = true
+							table.insert(events, {
+								t = etime,
+								e = eevent,
+								v = {v1, v2},
+								psych = true
+							})
+						end
+					end
+				end
+			elseif type(e[2]) == "string" then
+				local eevent = e[2]
+				local v1, v2 = e[3], e[4]
+				local sig = string.format("%.4f|%s|%s|%s", etime, eevent, tostring(v1 or ""), tostring(v2 or ""))
+				if not seen[sig] then
+					seen[sig] = true
+					table.insert(events, {
+						t = etime,
+						e = eevent,
+						v = {v1, v2},
+						psych = true
+					})
+				end
+			end
+		end
+	end
+end
+
+local function getStuff(data, eventData, inlineEvents, bpm, psych)
 	local dad, bf, events, timeChanges, sectionChanges =
 		{}, {}, {}, {}, {}
 
@@ -24,21 +74,10 @@ local function getStuff(data, eventData, bpm, psych)
 		((60 / bpm) * 1000) / 4, 0
 	local lastSectionBeats = 0
 
-	if eventData then
-		for _, e in ipairs(eventData) do
-			local etime = e[1]
-			for _, i in ipairs(e[2]) do
-				local eevent = i[1]
-				local evalue = {i[2], i[3]}
-
-				table.insert(events, {
-					t = etime,
-					e = eevent,
-					v = evalue,
-					psych = true
-				})
-			end
-		end
+	local seenEvents = {}
+	appendPsychEvents(eventData, events, seenEvents)
+	if inlineEvents and inlineEvents ~= eventData then
+		appendPsychEvents(inlineEvents, events, seenEvents)
 	end
 
 	for i, s in ipairs(data) do
@@ -48,7 +87,7 @@ local function getStuff(data, eventData, bpm, psych)
 				local column, gf = n[2], kind == "gf" or kind == "GF Sing"
 				local hit = psych or s.mustHitSection
 				if column > 3 then hit = not hit end
-				if kind == true or kind == 1 or (not hit and s.altAnim) then
+				if kind == true or kind == 1 or kind == "Alt Animation" or (not hit and s.altAnim) then
 					kind = "alt"
 				elseif gf or type(kind) ~= "string" then
 					kind = nil
@@ -190,7 +229,7 @@ function vanilla.parse(data, events, meta, diff)
 
 	if rawNotes then
 		chart.notes, chart.events, chart.timeChanges =
-			getStuff(rawNotes, events or data.events, chart.bpm,
+			getStuff(rawNotes, events, data.events, chart.bpm,
 				data.format and data.format:startsWith("psych"))
 	end
 
