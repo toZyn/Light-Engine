@@ -574,3 +574,63 @@ check("B6: Pause & resume work across keyboard, gamepad, and mobile touch in nor
 	love.system.getDevice = origGetDevice
 	paths.async.stop()
 end)
+
+check("TexturePacker JSON atlases, UTF-8 BOM JSON/XML, and mod excludeAssets", function()
+	local FrameCollection = require "loxel.animation.frame.collection"
+	local imgData = love.image.newImageData(64, 64)
+	local tex = love.graphics.newImage(imgData)
+
+	-- 1. JSON Hash with UTF-8 BOM, unsorted keys, trim offsets, and rotation
+	local bom = "\239\187\191"
+	local hashJson = bom .. JSON.encode({
+		frames = {
+			["idle0001"] = {
+				frame = {x = 16, y = 0, w = 12, h = 20},
+				rotated = false,
+				trimmed = true,
+				spriteSourceSize = {x = 4, y = 6, w = 12, h = 20},
+				sourceSize = {w = 24, h = 32}
+			},
+			["idle0000"] = {
+				frame = {x = 0, y = 0, w = 16, h = 24},
+				rotated = true,
+				trimmed = false,
+				spriteSourceSize = {x = 0, y = 0, w = 16, h = 24},
+				sourceSize = {w = 16, h = 24}
+			}
+		}
+	})
+	local colHash = FrameCollection.fromTexturePackerJson(tex, hashJson)
+	assert(colHash:getFrameCount() == 2, "JSON Hash must load 2 frames")
+	local f0 = colHash:getFrame(1)
+	local f1 = colHash:getFrame(2)
+	assert(f0.name == "idle0000" and f1.name == "idle0001", "JSON Hash frames must sort deterministically by key")
+	assert(f0.rotated == true, "Rotated flag must be preserved")
+	local _, _, qw0, qh0 = f0.quad:getViewport()
+	assert(qw0 == 24 and qh0 == 16, "Rotated TexturePacker quad must swap packed w/h")
+	assert(f1.offset.x == -4 and f1.offset.y == -6, "spriteSourceSize trim offset must negate to Sparrow convention")
+	assert(f1.width == 24 and f1.height == 32, "sourceSize dimensions must populate frame width/height")
+
+	-- 2. JSON Array format
+	local arrJson = JSON.encode({
+		frames = {
+			{filename = "singLEFT0000", frame = {x = 0, y = 0, w = 10, h = 10}, spriteSourceSize = {x = 2, y = 3, w = 10, h = 10}, sourceSize = {w = 14, h = 16}},
+			{filename = "singLEFT0001", frame = {x = 10, y = 0, w = 10, h = 10}, spriteSourceSize = {x = 0, y = 0, w = 10, h = 10}, sourceSize = {w = 10, h = 10}}
+		}
+	})
+	local colArr = FrameCollection.fromTexturePackerJson(tex, arrJson)
+	assert(colArr:getFrameCount() == 2 and colArr:getFrame(1).name == "singLEFT0000", "JSON Array must preserve array order")
+
+	-- 3. paths.excludeAssets strips active mod and addon subpaths
+	local prevMod = Mods.currentMod
+	Mods.currentMod = "test-mod-atlas"
+	local stripped = paths.excludeAssets(Mods.root .. "/test-mod-atlas/images/SATAN")
+	Mods.currentMod = prevMod
+	assert(stripped == "images/SATAN", "excludeAssets must strip active mod folder prefix, got: " .. tostring(stripped))
+
+	colHash:destroy()
+	colArr:destroy()
+	tex:release()
+	imgData:release()
+end)
+

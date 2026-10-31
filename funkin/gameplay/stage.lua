@@ -111,7 +111,7 @@ function Stage:generateStage()
 
 		if isAnimated then
 			instance = Sprite(prop.position[1], prop.position[2])
-			instance:setFrames(paths.getSparrowAtlas(path .. prop.assetPath))
+			instance:setFrames(paths.getAtlas(path .. prop.assetPath))
 			for _, anim in pairs(prop.animations) do
 				local name = anim.name
 				if anim.frameIndices then

@@ -62,10 +62,35 @@ local function getSavesRoot()
 	return "saves"
 end
 
+local function stripBom(data)
+	if type(data) == "string" and data:sub(1, 3) == "\239\187\191" then
+		return data:sub(4)
+	end
+	return data
+end
+
 local function excludeAssets(path)
 	local i, n = path:find("assets/")
 	if i == 1 then
 		return path:sub(n + 1)
+	end
+
+	if Mods and Mods.root and Mods.currentMod and Mods.currentMod ~= "" then
+		local modPrefix = Mods.root .. "/" .. Mods.currentMod .. "/"
+		if path:sub(1, #modPrefix) == modPrefix then
+			return path:sub(#modPrefix + 1)
+		end
+	end
+
+	if Addons and Addons.root and Addons.all then
+		for _, addon in ipairs(Addons.all) do
+			if addon.path and addon.path ~= "" then
+				local addonPrefix = Addons.root .. "/" .. addon.path .. "/"
+				if path:sub(1, #addonPrefix) == addonPrefix then
+					return path:sub(#addonPrefix + 1)
+				end
+			end
+		end
 	end
 
 	for _, root in ipairs({getSavesRoot(), "saves", Mods.root, Addons.root}) do
@@ -240,7 +265,7 @@ end
 
 function paths.getJSON(key)
 	local path = paths.getPath(key .. ".json")
-	local data = readFile(path)
+	local data = stripBom(readFile(path))
 	if data then
 		local s, r = pcall(decodeJson, data)
 		if not s then
@@ -255,7 +280,7 @@ end
 
 function paths.getXML(key)
 	local path = paths.getPath(key .. ".xml")
-	local data = readFile(path)
+	local data = stripBom(readFile(path))
 	if data then
 		return parseXml(data)
 	end
@@ -388,7 +413,7 @@ function paths.getSparrowAtlas(key)
 	return generate(paths.atlases, atlasPath, function()
 		local img = paths.getImage(imgPath)
 		if img and paths.exists(xmlPath, "file") then
-			return FrameCollection.fromSparrow(img, readFile(xmlPath))
+			return FrameCollection.fromSparrow(img, stripBom(readFile(xmlPath)))
 		end
 		return nil
 	end)
@@ -401,15 +426,37 @@ function paths.getPackerAtlas(key)
 	return generate(paths.atlases, atlasPath, function()
 		local img = paths.getImage(imgPath)
 		if img and paths.exists(txtPath, "file") then
-			return FrameCollection.fromPacker(img, readFile(txtPath))
+			return FrameCollection.fromPacker(img, stripBom(readFile(txtPath)))
 		end
 		return nil
 	end)
 end
 
+function paths.getJsonAtlas(key)
+	local imgPath, jsonPath = key, paths.getPath("images/" .. key .. ".json")
+	local atlasPath = jsonPath:gsub("%.json$", "")
+
+	return generate(paths.atlases, atlasPath, function()
+		local img = paths.getImage(imgPath)
+		if img and paths.exists(jsonPath, "file") then
+			return FrameCollection.fromTexturePackerJson(img, stripBom(readFile(jsonPath)))
+		end
+		return nil
+	end)
+end
+
+function paths.hasSheetAtlas(key)
+	if type(key) ~= "string" or key == "" then return false end
+	return paths.exists(paths.getPath("images/" .. key .. ".xml"), "file")
+		or paths.exists(paths.getPath("images/" .. key .. ".txt"), "file")
+		or paths.exists(paths.getPath("images/" .. key .. ".json"), "file")
+end
+
 function paths.getAtlas(key)
 	if paths.exists(paths.getPath("images/" .. key .. ".xml"), "file") then
 		return paths.getSparrowAtlas(key)
+	elseif paths.exists(paths.getPath("images/" .. key .. ".json"), "file") then
+		return paths.getJsonAtlas(key)
 	end
 	return paths.getPackerAtlas(key)
 end

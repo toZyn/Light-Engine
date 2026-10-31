@@ -47,8 +47,7 @@ function Character:new(x, y, char, isPlayer)
 	local fullpath = paths.getPath('images/' .. spriteName)
 	local hasAnimAtlas = spriteName ~= "" and paths.exists(fullpath, "directory")
 		and paths.exists(fullpath .. "/Animation.json", "file")
-	local hasSheetAtlas = spriteName ~= "" and (paths.exists(paths.getPath('images/' .. spriteName .. ".xml"), "file")
-		or paths.exists(paths.getPath('images/' .. spriteName .. ".txt"), "file"))
+	local hasSheetAtlas = paths.hasSheetAtlas(spriteName)
 
 	if not hasAnimAtlas and not hasSheetAtlas and not Character.editorMode
 		and self.char ~= "bf-dead" and self.char:sub(-5) == "-dead" then
@@ -57,8 +56,7 @@ function Character:new(x, y, char, isPlayer)
 		local fbPath = paths.getPath('images/' .. fbSprite)
 		local fbAnimAtlas = fbSprite ~= "" and paths.exists(fbPath, "directory")
 			and paths.exists(fbPath .. "/Animation.json", "file")
-		local fbSheetAtlas = fbSprite ~= "" and (paths.exists(paths.getPath('images/' .. fbSprite .. ".xml"), "file")
-			or paths.exists(paths.getPath('images/' .. fbSprite .. ".txt"), "file"))
+		local fbSheetAtlas = paths.hasSheetAtlas(fbSprite)
 		if fbAnimAtlas or fbSheetAtlas then
 			Logger.log("warn", "Character \"" .. tostring(char) .. "\" missing sprite \"" .. fullpath
 				.. "\", falling back to \"bf-dead\"")
@@ -101,8 +99,7 @@ function Character:new(x, y, char, isPlayer)
 			local anim, name, indices, fps, loop, offset, atlas = unpack(an)
 
 			if not self._animAtlas and atlas and atlas ~= "" and not atlasAdded[atlas] and
-				(paths.exists(paths.getPath("images/" .. atlas .. ".xml"), "file") or
-				 paths.exists(paths.getPath("images/" .. atlas .. ".txt"), "file")) then
+				paths.hasSheetAtlas(atlas) then
 				self.frames:addCollection(paths.getAtlas(atlas))
 				atlasAdded[atlas] = true
 			end

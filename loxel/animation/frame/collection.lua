@@ -1,5 +1,6 @@
 local Frame = loxreq "animation.frame"
 local parseXml = loxreq "lib.xml"
+local decodeJson = (loxreq "lib.json").decode
 
 ---@class FrameCollection:Basic
 local FrameCollection = Basic:extend("FrameCollection")
@@ -58,6 +59,9 @@ function FrameCollection.fromSparrow(texture, description)
 	if type(texture) == "string" then
 		texture = love.graphics.newImage(texture)
 	end
+	if type(description) == "string" and description:sub(1, 3) == "\239\187\191" then
+		description = description:sub(4)
+	end
 
 	local collection = FrameCollection(texture)
 	local sw, sh = texture:getDimensions()
@@ -74,6 +78,70 @@ function FrameCollection.fromSparrow(texture, description)
 				tonumber(c.attrs.frameHeight),
 				c.attrs.rotated == "true",
 				texture)
+			collection:add(frame)
+		end
+	end
+
+	return collection
+end
+
+function FrameCollection.fromTexturePackerJson(texture, description)
+	if type(texture) == "string" then
+		texture = love.graphics.newImage(texture)
+	end
+
+	local data = description
+	if type(data) == "string" then
+		if data:sub(1, 3) == "\239\187\191" then
+			data = data:sub(4)
+		end
+		data = decodeJson(data)
+	end
+
+	local collection = FrameCollection(texture)
+	if type(data) ~= "table" or type(data.frames) ~= "table" then
+		return collection
+	end
+
+	local sw, sh = texture:getDimensions()
+	local entries = {}
+	if #data.frames > 0 then
+		for i = 1, #data.frames do
+			local item = data.frames[i]
+			if type(item) == "table" then
+				table.insert(entries, {name = item.filename or item.name or tostring(i), entry = item})
+			end
+		end
+	else
+		local keys = {}
+		for k, v in pairs(data.frames) do
+			if type(v) == "table" then
+				table.insert(keys, tostring(k))
+			end
+		end
+		table.sort(keys)
+		for i = 1, #keys do
+			local k = keys[i]
+			table.insert(entries, {name = k, entry = data.frames[k]})
+		end
+	end
+
+	for i = 1, #entries do
+		local name, item = entries[i].name, entries[i].entry
+		local rect = item.frame
+		if type(rect) == "table" then
+			local fx, fy = tonumber(rect.x) or 0, tonumber(rect.y) or 0
+			local fw, fh = tonumber(rect.w) or 0, tonumber(rect.h) or 0
+			local rotated = item.rotated == true
+			local qw = rotated and fh or fw
+			local qh = rotated and fw or fh
+			local ss = item.spriteSourceSize
+			local src = item.sourceSize
+			local ox = type(ss) == "table" and -(tonumber(ss.x) or 0) or 0
+			local oy = type(ss) == "table" and -(tonumber(ss.y) or 0) or 0
+			local ow = type(src) == "table" and tonumber(src.w) or fw
+			local oh = type(src) == "table" and tonumber(src.h) or fh
+			local frame = Frame(name, fx, fy, qw, qh, sw, sh, ox, oy, ow, oh, rotated, texture)
 			collection:add(frame)
 		end
 	end
