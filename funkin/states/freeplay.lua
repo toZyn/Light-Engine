@@ -194,13 +194,44 @@ function FreeplayState:loadSongs()
 		return paths.getPath(..., false)
 	end
 	local data, seenSongs, dont = {}, {}
-	local function addSongMeta(songName)
+	local function addSongMeta(songEntry, weekDiffs)
+		local songName = type(songEntry) == "table" and songEntry[1] or songEntry
 		local clean = trimEntry(songName)
 		if clean == "" then return end
 		local key = paths.formatToSongPath(clean)
 		if seenSongs[key] then return end
 		seenSongs[key] = true
-		table.insert(data, Parser.getMeta(clean))
+		local meta = Parser.getMeta(clean)
+		local hasMetaFile = paths.exists(paths.getPath('songs/' .. key .. '/meta.json'), 'file')
+		if not hasMetaFile and type(songEntry) == "table" then
+			if type(songEntry[2]) == "string" and songEntry[2] ~= "" then
+				meta.icon = songEntry[2]
+			end
+			if type(songEntry[3]) == "table" and #songEntry[3] >= 3 then
+				meta.color = {
+					(tonumber(songEntry[3][1]) or 255) / 255,
+					(tonumber(songEntry[3][2]) or 255) / 255,
+					(tonumber(songEntry[3][3]) or 255) / 255
+				}
+			end
+			if type(weekDiffs) == "table" and #weekDiffs > 0 then
+				meta.difficulties = weekDiffs
+			end
+		end
+		table.insert(data, meta)
+	end
+
+	local function parseWeekDiffs(rawDiffs)
+		if type(rawDiffs) == "table" and #rawDiffs > 0 then return rawDiffs end
+		if type(rawDiffs) == "string" then
+			local parsed = {}
+			for part in rawDiffs:gmatch("([^,]+)") do
+				local t = trimEntry(part)
+				if t ~= "" then table.insert(parsed, t) end
+			end
+			if #parsed > 0 then return parsed end
+		end
+		return nil
 	end
 
 	if paths.exists(func('data/freeplayList.txt'), 'file') then
@@ -214,9 +245,10 @@ function FreeplayState:loadSongs()
 				local week = trimEntry(rawWeek)
 				if week ~= "" then
 					local weekData = paths.getJSON('data/weeks/weeks/' .. week)
-					if weekData and not weekData.hide_fm and type(weekData.songs) == "table" then
+					if weekData and not weekData.hide_fm and not weekData.hideFreeplay and type(weekData.songs) == "table" then
+						local wdiffs = parseWeekDiffs(weekData.difficulties)
 						for _, song in ipairs(weekData.songs) do
-							addSongMeta(type(song) == "table" and song[1] or song)
+							addSongMeta(song, wdiffs)
 						end
 					end
 				end
@@ -225,9 +257,10 @@ function FreeplayState:loadSongs()
 			for _, name in pairs(paths.getItems('data/weeks/weeks', 'file', 'json',
 				not Mods.currentMod, true, Mods.currentMod)) do
 				local weekData = paths.getJSON('data/weeks/weeks/' .. name:withoutExt())
-				if weekData and not weekData.hide_fm and type(weekData.songs) == "table" then
+				if weekData and not weekData.hide_fm and not weekData.hideFreeplay and type(weekData.songs) == "table" then
+					local wdiffs = parseWeekDiffs(weekData.difficulties)
 					for _, song in ipairs(weekData.songs) do
-						addSongMeta(type(song) == "table" and song[1] or song)
+						addSongMeta(song, wdiffs)
 					end
 				end
 			end

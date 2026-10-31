@@ -1386,7 +1386,7 @@ function PlayState:goodNoteHit(note, time)
 		end
 
 		local char = event.character
-		if char and not event.cancelledAnim then
+		if char and not event.cancelledAnim and not note.noAnimation and note.type ~= "No Animation" then
 			char.waitReleaseAfterSing = not notefield.bot
 			local type, lastsus = note.type ~= "alt" and nil or note.type, notefield.lastSustain
 			local sustime = lastsus and lastsus.sustainTime or 0
@@ -1491,7 +1491,7 @@ function PlayState:miss(note, dir)
 		end
 
 		local char = event.character
-		if char and not event.cancelledAnim then
+		if char and not event.cancelledAnim and (ghostMiss or (not note.noAnimation and note.type ~= "No Animation")) then
 			char:sing(dir, "miss")
 		end
 

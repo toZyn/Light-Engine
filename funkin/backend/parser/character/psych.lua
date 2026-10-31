@@ -11,6 +11,7 @@ function psych.parse(data)
 	Parser.pset(char, "camera_points", data.camera_position)
 	Parser.pset(char, "flip_x", data.flip_x)
 	Parser.pset(char, "scale", data.scale)
+	Parser.pset(char, "sing_duration", data.sing_duration)
 
 	char.animations = {}
 	for _, anim in pairs(data.animations) do

@@ -211,11 +211,14 @@ function StoryMenuState:selectWeek()
 		local songTable = {}
 		local leWeek = self.weeksData[self.weekList.curSelected]
 		for i = 1, #leWeek.songs do
-			table.insert(songTable, leWeek.songs[i])
+			local entry = leWeek.songs[i]
+			table.insert(songTable, type(entry) == "table" and entry[1] or entry)
 		end
 
-		local diff = (leWeek.difficulties and leWeek.difficulties[StoryMenuState.curDifficulty] or
-			self.diffs[StoryMenuState.curDifficulty])
+		local songDiffs = (type(leWeek.difficulties) == "table" and #leWeek.difficulties > 0)
+			and leWeek.difficulties or self.diffs
+		StoryMenuState.curDifficulty = (StoryMenuState.curDifficulty - 1) % #songDiffs + 1
+		local diff = songDiffs[StoryMenuState.curDifficulty]
 
 		if #songTable == 0 or not PlayState.loadSong(songTable[1], diff) then
 			self.selectedWeek = false
@@ -248,8 +251,9 @@ end
 
 function StoryMenuState:changeDifficulty(change)
 	if change == nil then change = 0 end
-	local songDiffs = self.weeksData[self.weekList.curSelected].difficulties or
-		self.diffs
+	local leWeek = self.weeksData[self.weekList.curSelected]
+	local songDiffs = (leWeek and type(leWeek.difficulties) == "table" and #leWeek.difficulties > 0)
+		and leWeek.difficulties or self.diffs
 
 	StoryMenuState.curDifficulty = StoryMenuState.curDifficulty + change
 	StoryMenuState.curDifficulty = (StoryMenuState.curDifficulty - 1) % #songDiffs + 1
@@ -276,37 +280,65 @@ end
 
 function StoryMenuState:changeWeek(change)
 	local leWeek = self.weeksData[self.weekList.curSelected]
-	self.txtWeekTitle.content = leWeek.name:upper()
+	self.txtWeekTitle.content = (leWeek.name or leWeek.storyName or leWeek.file or ""):upper()
 	self.txtWeekTitle.x = game.width - (self.txtWeekTitle:getWidth() + 10)
 
 	for _, spr in pairs(self.difficultySelector.members) do
 		spr.visible = not leWeek.locked
 	end
 
+	self:changeDifficulty(0)
 	self:updateText()
 end
 
 function StoryMenuState:updateText()
-	local weekTable = self.weeksData[self.weekList.curSelected].characters
-	for i = 1, #weekTable do
-		self.grpWeekCharacters.members[i]:changeCharacter(weekTable[i])
+	local weekTable = self.weeksData[self.weekList.curSelected].characters or {"", "bf", "gf"}
+	for i = 1, math.min(3, #self.grpWeekCharacters.members) do
+		self.grpWeekCharacters.members[i]:changeCharacter(weekTable[i] or "")
 	end
 
 	local leWeek = self.weeksData[self.weekList.curSelected]
-	local songs = table.concat(leWeek.songs, "\n")
+	local songNames = {}
+	for i = 1, #(leWeek.songs or {}) do
+		local entry = leWeek.songs[i]
+		songNames[i] = tostring(type(entry) == "table" and entry[1] or entry)
+	end
+	local songs = table.concat(songNames, "\n")
 	self.txtTrackList.content = 'TRACKS\n\n' .. songs
 	self.txtTrackList:screenCenter("x")
 	self.txtTrackList.x = self.txtTrackList.x - game.width * 0.35
 
+	local songDiffs = (type(leWeek.difficulties) == "table" and #leWeek.difficulties > 0)
+		and leWeek.difficulties or self.diffs
+	StoryMenuState.curDifficulty = (StoryMenuState.curDifficulty - 1) % #songDiffs + 1
 	self.intendedScore = Highscore.getWeekScore(self.weeksData[self.weekList.curSelected].file,
-		leWeek.difficulties
-		and leWeek.difficulties[StoryMenuState.curDifficulty]
-		or self.diffs[StoryMenuState.curDifficulty])
+		songDiffs[StoryMenuState.curDifficulty])
 end
 
 function StoryMenuState:closeSubstate()
 	self.inSubstate = false
 	StoryMenuState.super.closeSubstate(self)
+end
+
+local function normalizeWeekData(data, week)
+	if type(data) ~= "table" then return nil end
+	if data.hide_sm or data.hideStoryMode then return nil end
+	data.file = week
+	data.name = data.name or data.storyName or data.weekName or week
+	data.sprite = data.sprite or data.itemFile or week
+	data.characters = data.characters or data.weekCharacters or data.chars or {"", "bf", "gf"}
+	if data.locked == nil and data.startUnlocked ~= nil then
+		data.locked = not data.startUnlocked
+	end
+	if type(data.difficulties) == "string" then
+		local parsed = {}
+		for part in data.difficulties:gmatch("([^,]+)") do
+			local trimmed = part:gsub("^%s+", ""):gsub("%s+$", "")
+			if trimmed ~= "" then table.insert(parsed, trimmed) end
+		end
+		data.difficulties = #parsed > 0 and parsed or nil
+	end
+	return data
 end
 
 function StoryMenuState:loadWeeks()
@@ -317,9 +349,8 @@ function StoryMenuState:loadWeeks()
 		for _, rawWeek in pairs((paths.getText('weekList') or ""):gsub('\r', ''):split('\n')) do
 			local week = rawWeek:gsub("^%s+", ""):gsub("%s+$", "")
 			if week ~= "" and week:sub(1, 1) ~= "#" then
-				local data = paths.getJSON('data/weeks/weeks/' .. week)
+				local data = normalizeWeekData(paths.getJSON('data/weeks/weeks/' .. week), week)
 				if data then
-					data.file = week
 					table.insert(self.weeksData, data)
 				end
 			end
@@ -328,9 +359,8 @@ function StoryMenuState:loadWeeks()
 		for _, str in pairs(love.filesystem.getDirectoryItems(func('data/weeks/weeks'))) do
 			if str:endsWith('.json') then
 				local week = str:withoutExt()
-				local data = paths.getJSON('data/weeks/weeks/' .. week)
+				local data = normalizeWeekData(paths.getJSON('data/weeks/weeks/' .. week), week)
 				if data then
-					data.file = week
 					table.insert(self.weeksData, data)
 				end
 			end

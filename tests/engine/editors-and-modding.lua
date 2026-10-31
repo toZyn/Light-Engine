@@ -634,3 +634,67 @@ check("TexturePacker JSON atlases, UTF-8 BOM JSON/XML, and mod excludeAssets", f
 	imgData:release()
 end)
 
+check("Psych events.json envelope, stage defaultZoom, and character sing_duration parse cleanly", function()
+	local vanillaChart = require "funkin.backend.parser.chart.vanilla"
+	local stageParser = require "funkin.backend.parser.stage"
+	local psychChar = require "funkin.backend.parser.character.psych"
+
+	-- 1. Psych events.json {"song": {"events": [...]}} + inline chart events deduplicated & merged
+	local rawChart = {
+		song = {
+			song = "Dejection",
+			bpm = 140,
+			speed = 2.6,
+			stage = "vecindario",
+			player1 = "bf-retro",
+			player2 = "mouse",
+			gfVersion = "gf-retro",
+			events = {
+				{1000, {{"Add Camera Zoom", "0.02", "0.04"}}},
+				{2000, {{"Play Animation", "risa", "dad"}}}
+			},
+			notes = {
+				{
+					mustHitSection = true,
+					sectionNotes = {
+						{500, 0, 0, "Alt Animation"},
+						{750, 1, 0, "No Animation"}
+					}
+				}
+			}
+		}
+	}
+	local externalEvents = {
+		song = {
+			events = {
+				{1000, {{"Add Camera Zoom", "0.02", "0.04"}}}, -- duplicate of inline -> must fire once
+				{1500, {{"Screen Shake", "0.5, 0.02", ""}}}
+			}
+		}
+	}
+	local parsed = vanillaChart.parse(rawChart, externalEvents, nil, "hard")
+	local psychEvCount = 0
+	for _, ev in ipairs(parsed.events) do
+		if ev.psych then psychEvCount = psychEvCount + 1 end
+	end
+	assert(psychEvCount == 3, "Expected 3 merged/deduplicated Psych events, got " .. tostring(psychEvCount))
+	assert(parsed.notes.player[1].k == "alt", "Alt Animation noteType must normalize to 'alt'")
+	assert(parsed.notes.player[2].k == "No Animation", "No Animation noteType must remain inspectable")
+
+	-- 2. Stage defaultZoom
+	local st = stageParser.getParser({defaultZoom = 0.67, boyfriend = {770, 100}, opponent = {100, 99}}).parse({
+		defaultZoom = 0.67, boyfriend = {770, 100}, opponent = {100, 99}
+	})
+	assert(math.abs(st.cameraZoom - 0.67) < 1e-6, "Psych stage defaultZoom must populate cameraZoom")
+
+	-- 3. Psych character sing_duration
+	local ch = psychChar.parse({
+		image = "characters/BOYFRIEND",
+		healthicon = "bf",
+		sing_duration = 6.1,
+		animations = {}
+	})
+	assert(math.abs(ch.sing_duration - 6.1) < 1e-6, "Psych character sing_duration must be preserved")
+end)
+
+
