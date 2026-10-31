@@ -756,5 +756,31 @@ check("Ultrawide 1612x720 viewports frame standard and pixel-perfect stages with
 	assert(ok, err)
 end)
 
+check("VSlice characters ground properly on legacy stages and resolve variant health icons", function()
+	local iconPath, resolved = HealthIcon.resolveIconPath("pico-playable")
+	assert(iconPath == "icons/pico" and resolved == "pico",
+		"pico-playable must resolve to icons/pico instead of face, got " .. tostring(iconPath))
+
+	local prevSong = PlayState.SONG
+	PlayState.SONG = {
+		song = "Ugh",
+		player1 = "pico-playable",
+		player2 = "tankman",
+		gfVersion = "nene"
+	}
+	local ok, err = pcall(function()
+		local stg = Stage("tank")
+		stg:load()
+		assert(stg.boyfriend and stg.boyfriend.y > 250,
+			"pico-playable on legacy tank stage must be grounded (y > 250), got " .. tostring(stg.boyfriend and stg.boyfriend.y))
+		assert(stg.gf and stg.gf.y > -50,
+			"nene on legacy tank stage must be grounded (y > -50), got " .. tostring(stg.gf and stg.gf.y))
+		stg:destroy()
+	end)
+	PlayState.SONG = prevSong
+	assert(ok, err)
+end)
+
+
 
 

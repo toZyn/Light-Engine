@@ -85,6 +85,19 @@ function Stage:load()
 			character:dance()
 			if character.type == "VSlice" then
 				character:updateHitbox()
+				local isVSliceStage = self.data ~= false and self.data ~= nil and self.data.version ~= nil
+				if not isVSliceStage and (tonumber(pos.y) or 0) < 900 then
+					if n == "bf" then
+						character.x = character.x + 210
+						character.y = character.y + 762
+					elseif n == "gf" then
+						character.x = character.x + 350
+						character.y = character.y + 750
+					else
+						character.x = character.x + 215
+						character.y = character.y + 767
+					end
+				end
 				character.x = character.x - character.width / 2
 				character.y = character.y - character.height
 			end

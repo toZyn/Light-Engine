@@ -62,17 +62,31 @@ end
 
 function HealthIcon.resolveIconPath(icon)
 	if icon and icon ~= "" then
-		local candidates = {"icons/" .. icon}
-		if icon:sub(1, 5) == "icon-" then
-			candidates[#candidates + 1] = "icons/" .. icon:sub(6)
-		else
-			candidates[#candidates + 1] = "icons/icon-" .. icon
-		end
-		for _, candidate in ipairs(candidates) do
-			if paths.images[paths.getPath("images/" .. candidate .. ".png")]
-				or paths.exists(paths.getPath("images/" .. candidate .. ".png"), "file") then
-				return candidate, icon
+		local function tryIcon(name)
+			local candidates = {"icons/" .. name}
+			if name:sub(1, 5) == "icon-" then
+				candidates[#candidates + 1] = "icons/" .. name:sub(6)
+			else
+				candidates[#candidates + 1] = "icons/icon-" .. name
 			end
+			for _, candidate in ipairs(candidates) do
+				if paths.images[paths.getPath("images/" .. candidate .. ".png")]
+					or paths.exists(paths.getPath("images/" .. candidate .. ".png"), "file") then
+					return candidate
+				end
+			end
+			return nil
+		end
+
+		local exact = tryIcon(icon)
+		if exact then return exact, icon end
+
+		local base = icon
+		while base:find("-", 1, true) do
+			base = base:gsub("%-[^%-]+$", "")
+			if base == "" then break end
+			local fallback = tryIcon(base)
+			if fallback then return fallback, base end
 		end
 	end
 	return "icons/" .. HealthIcon.defaultIcon, HealthIcon.defaultIcon
