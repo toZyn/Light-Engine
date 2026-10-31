@@ -697,4 +697,64 @@ check("Psych events.json envelope, stage defaultZoom, and character sing_duratio
 	assert(math.abs(ch.sing_duration - 6.1) < 1e-6, "Psych character sing_duration must be preserved")
 end)
 
+check("Ultrawide 1612x720 viewports frame standard and pixel-perfect stages without black overflow", function()
+	local oldW, oldH = game.width, game.height
+	local ok, err = pcall(function()
+		game.width, game.height = 1612, 720
+
+		-- 1. Pixel-perfect camera authored at 1280/6 x 720/6 (213x120) expands cleanly to ceil(1612/6)=269x120
+		local pixCam = Camera()
+		pixCam:resize(math.floor(1280 / 6), math.floor(720 / 6), 1, 1, true)
+		pixCam.pixelPerfect = true
+		pixCam:syncPixelPerfectWidth()
+		assert(pixCam.width == 269 and pixCam.height == 120,
+			"Expected ultrawide pixel camera 269x120, got " .. tostring(pixCam.width) .. "x" .. tostring(pixCam.height))
+		assert(pixCam.__pixelScaleDivisor == 6, "Expected pixel scale divisor 6")
+
+		-- Clamp pixel camera inside evilSchoolFG (311x161 with wiggle pad)
+		pixCam.minScrollX, pixCam.maxScrollX = 5, 306
+		pixCam.minScrollY, pixCam.maxScrollY = 3, 157
+		pixCam.target = Point(240, 130)
+		pixCam:snapToTarget()
+		assert(pixCam.scroll.x + pixCam.width <= 306.001, "Pixel camera right edge must stay within stage bounds")
+		assert(pixCam.scroll.y + pixCam.height <= 157.001, "Pixel camera bottom edge must stay within stage bounds")
+		if pixCam.canvas then pixCam.canvas:release(); pixCam.canvas = nil end
+
+		-- 2. Standard ultrawide stage (tank-like sky + ground) expands sky & clamps horizontal scroll
+		local stdCam = Camera(0, 0, 1612, 720)
+		stdCam.zoom = 0.9
+		local stg = Stage("")
+		stg.camZoom = 0.9
+		local sky = Graphic(-380, -204, 1830, 762)
+		sky.scrollFactor:set(0, 0)
+		stg:add(sky)
+		local ground = Graphic(-420, 534, 2208, 485)
+		ground.scrollFactor:set(1, 1)
+		stg:add(ground)
+
+		stg:fitViewport(stdCam)
+		stdCam.target = Point(980, 450)
+		stdCam:snapToTarget()
+
+		local halfViewW = (stdCam.width * 0.5) / stdCam.zoom
+		local viewRight = (stdCam.scroll.x + stdCam.width * 0.5) + halfViewW
+		assert(viewRight <= 1788.01, "Ultrawide camera right edge spilled past tankGround: " .. tostring(viewRight))
+
+		local skyX, _, skyW = sky:getWorldBounds()
+		local w2 = stdCam.width * 0.5
+		local skyLeftScreen = w2 + (skyX - w2) * stdCam.zoom
+		local skyRightScreen = w2 + (skyX + skyW - w2) * stdCam.zoom
+		assert(skyLeftScreen <= 0.5 and skyRightScreen >= 1611.5,
+			string.format("Ultrawide sky must cover [0, 1612], got [%.1f, %.1f]", skyLeftScreen, skyRightScreen))
+
+		PlayState.resize({stage = stg, camZoom = 0.8}, 1280, 720)
+
+		stg:destroy()
+		if stdCam.canvas then stdCam.canvas:release(); stdCam.canvas = nil end
+	end)
+	game.width, game.height = oldW, oldH
+	assert(ok, err)
+end)
+
+
 

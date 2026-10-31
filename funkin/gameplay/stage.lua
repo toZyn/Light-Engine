@@ -158,4 +158,143 @@ function Stage:add(obj, foreground)
 	if not obj.zIndex then obj.zIndex = #self.members end
 end
 
+function Stage:fitViewport(camera)
+	camera = camera or game.camera
+	if not camera or self.cameraBounds == false then return end
+
+	if camera.syncPixelPerfectWidth then
+		camera:syncPixelPerfectWidth()
+	end
+	if game.cameras and game.cameras.list then
+		for _, cam in ipairs(game.cameras.list) do
+			if cam ~= camera and cam.syncPixelPerfectWidth then
+				cam:syncPixelPerfectWidth()
+			end
+		end
+	end
+
+	local isPixelCam = camera.pixelPerfect and camera.height > 0 and camera.height < game.height
+	local k = isPixelCam and (camera.__pixelScaleDivisor or math.max(1, math.floor(Project.height / camera.height + 0.5))) or 1
+	local baseW = isPixelCam and math.floor(Project.width / k) or Project.width
+	local baseH = isPixelCam and camera.height or Project.height
+	local extraW = math.max(0, camera.width - baseW)
+	local baseZoom = math.max(0.25, tonumber(self.camZoom) or 0.9)
+
+	local refX, refCount = 0, 0
+	for _, ch in ipairs({self.dad, self.gf, self.boyfriend}) do
+		if ch and ch.exists ~= false and ch.getMidpoint then
+			local mx = ch:getMidpoint()
+			if type(mx) == "number" and mx == mx then
+				refX = refX + mx
+				refCount = refCount + 1
+			end
+		end
+	end
+	refX = refCount > 0 and (refX / refCount) or (baseW * 0.5)
+
+	local minGroundW = baseW * 1.05
+	local minSkyW = baseW * 0.75
+	local envMinX, envMaxX = nil, nil
+	local envMinY, envMaxY = nil, nil
+
+	for _, m in ipairs(self.members or {}) do
+		if m and m ~= self.boyfriend and m ~= self.dad and m ~= self.gf
+			and m.members == nil
+			and m.exists ~= false and m.visible ~= false
+			and (tonumber(m.alpha) or 1) > 0.05
+			and m.scrollFactor ~= nil and m.getWorldBounds ~= nil
+			and not (Trail and m.is and m:is(Trail)) then
+
+			if m.__stageOrigX == nil then
+				m.__stageOrigX = m.x
+				m.__stageOrigY = m.y
+				if m.scale then
+					m.__stageOrigScaleX = m.scale.x
+					m.__stageOrigScaleY = m.scale.y
+				end
+			else
+				m.x = m.__stageOrigX
+				m.y = m.__stageOrigY
+				if m.scale and m.__stageOrigScaleX then
+					m.scale:set(m.__stageOrigScaleX, m.__stageOrigScaleY)
+					if m.getWidth and m.updateHitbox then pcall(m.updateHitbox, m) end
+				end
+			end
+
+			local sfx = tonumber(m.scrollFactor.x) or 1
+			local sfy = tonumber(m.scrollFactor.y) or 1
+			local okB, bx, by, bw, bh = pcall(m.getWorldBounds, m)
+			if not okB then bx, by, bw, bh = nil, nil, nil, nil end
+
+			if bw and bh and bw >= minSkyW and bh > 0 then
+				if extraW > 0 and sfx < 0.99 then
+					local shiftX = extraW * 0.5 * (1 - sfx)
+					m.x = m.x + shiftX
+					bx = bx + shiftX
+				end
+
+				if extraW > 0 and sfx <= 0.45 and m.scale then
+					local cx, cy = bx + bw * 0.5, by + bh * 0.5
+					local halfSpan = (camera.width * 0.5) / (baseZoom * 0.90) + math.abs(sfx) * (isPixelCam and 30 or 240)
+					local needW = (halfSpan + math.abs(cx - camera.width * 0.5)) * 2
+					if bw < needW then
+						local ratio = needW / bw
+						m.scale:set(m.scale.x * ratio, m.scale.y * ratio)
+						if m.getWidth and m.updateHitbox then m:updateHitbox() end
+						local nbx, nby, nbw, nbh = m:getWorldBounds()
+						if nbw and nbw > 0 then
+							m.x = m.x + (cx - (nbx + nbw * 0.5))
+							m.y = m.y + (cy - (nby + nbh * 0.5))
+							bx, by, bw, bh = m:getWorldBounds()
+						end
+					end
+				end
+
+				if sfx >= 0.85 and bw >= minGroundW and bx <= refX and (bx + bw) >= refX then
+					local padX = (m.shader ~= nil) and math.ceil(bw * 0.018) or 0
+					local padY = (m.shader ~= nil) and math.ceil(bh * 0.025) or 0
+					local gx1, gx2 = bx + padX, bx + bw - padX
+					if gx2 > gx1 then
+						envMinX = envMinX and math.min(envMinX, gx1) or gx1
+						envMaxX = envMaxX and math.max(envMaxX, gx2) or gx2
+					end
+					if sfy >= 0.85 then
+						local gy2 = by + bh - padY
+						envMaxY = envMaxY and math.max(envMaxY, gy2) or gy2
+						if bh >= baseH * 0.95 then
+							local gy1 = by + padY
+							envMinY = envMinY and math.min(envMinY, gy1) or gy1
+						end
+					end
+				end
+			end
+		end
+	end
+
+	if type(self.cameraBounds) == "table" and self.cameraBounds.custom then
+		envMinX = self.cameraBounds.minX
+		envMaxX = self.cameraBounds.maxX
+		envMinY = self.cameraBounds.minY
+		envMaxY = self.cameraBounds.maxY
+	end
+
+	camera.minScrollX = envMinX
+	camera.maxScrollX = envMaxX
+	camera.minScrollY = envMinY
+	camera.maxScrollY = envMaxY
+
+	local minZoom = nil
+	if envMinX and envMaxX and (envMaxX - envMinX) > 0 then
+		minZoom = camera.width / (envMaxX - envMinX)
+	end
+	if envMinY and envMaxY and (envMaxY - envMinY) > 0 then
+		local minZoomY = camera.height / (envMaxY - envMinY)
+		minZoom = minZoom and math.max(minZoom, minZoomY) or minZoomY
+	end
+	camera.minZoom = minZoom
+	if minZoom and type(self.camZoom) == "number" and self.camZoom < minZoom then
+		self.camZoom = minZoom
+	end
+end
+
 return Stage
