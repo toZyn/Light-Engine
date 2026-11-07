@@ -1,6 +1,7 @@
 local UserList = SpriteGroup:extend("UserList")
 
 local fallbackLoadingIcon
+local ICON_TIMEOUT = 10
 
 local function getLoadingIcon()
 	local relPath = paths.getPath("images/menus/credits/icons/loading.png")
@@ -84,6 +85,7 @@ function UserList:addUsers(name, people, i)
 		if type(icon) == "string" and icon:startsWith("https://") then
 			img:loadTexture(getLoadingIcon())
 			img.loading = true
+			img.loadingTime = love.timer.getTime()
 
 			icon = icon .. (icon:find("?", 1, true) and "&" or "?") .. "size=100"
 			paths.async.getImage(icon, function(image, url)
@@ -159,6 +161,11 @@ function UserList:update(dt)
 	for _, member in pairs(self.members) do
 		if member.loading then
 			member.angle = member.angle + 380 * dt
+			if love.timer.getTime() - (member.loadingTime or 0) > ICON_TIMEOUT then
+				-- Cancelled async request: stop spinning on the placeholder.
+				member.loading = nil
+				member.angle = 0
+			end
 		end
 	end
 end

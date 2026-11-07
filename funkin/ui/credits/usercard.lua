@@ -1,6 +1,8 @@
 local UserCard = SpriteGroup:extend("UserCard")
 local MediaCard = require "funkin.ui.credits.mediacard"
 
+local ICON_TIMEOUT = 10
+
 function UserCard:new(x, y, width, height)
 	UserCard.super.new(self, x, y)
 
@@ -41,6 +43,12 @@ function UserCard:update(dt)
 	UserCard.super.update(self, dt)
 	if self.icon.loading then
 		self.icon.angle = self.icon.angle + 380 * dt
+		if love.timer.getTime() - (self.icon.loadingTime or 0) > ICON_TIMEOUT then
+			-- The async request was cancelled (mods reload, offline, ...): stop
+			-- spinning and keep the placeholder instead of freezing forever.
+			self.icon.loading = nil
+			self.icon.angle = 0
+		end
 	end
 end
 
@@ -75,6 +83,7 @@ function UserCard:reload(d)
 		local separator = d.icon:find("?", 1, true) and "&" or "?"
 		local icon = d.icon .. separator .. "size=100"
 		self.icon.loading = icon
+		self.icon.loadingTime = love.timer.getTime()
 		paths.async.getImage(icon, bind(self, self.__reloadIcon))
 	else
 		self.icon:loadTexture(paths.getImage("menus/credits/icons/" .. d.icon))

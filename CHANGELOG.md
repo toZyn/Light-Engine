@@ -18,12 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flechas arriba/abajo en móvil y ninguna entrada táctil para volver. Ahora usa
   `util.createButtons("udb")`, que añade el botón "escape"/back junto a las flechas.
 - **Bug de las fotos (iconos de créditos)** (`funkin/ui/credits/usercard.lua`,
-  `funkin/ui/credits/userlist.lua`, `funkin/backend/paths/async.lua`):
+  `funkin/ui/credits/userlist.lua`):
   - El sufijo `?size=100` rompía URLs que ya traían query string (`?v=4`); ahora se
     usa `&` cuando corresponde.
-  - Una descarga fallida dejaba el spinner girando indefinidamente; `__reloadIcon`
-    tolera imágenes nulas y `async.stop()` notifica los callbacks pendientes
-    (`nil, 'cancelled'`) para detener cualquier spinner atascado.
+  - Una descarga fallida o cancelada dejaba el spinner girando indefinidamente; los
+    iconos ahora dejan de girar tras un tiempo de espera y `__reloadIcon` tolera
+    imágenes nulas.
 - **Addons automáticos eliminados del release**: ya no se generan ni adjuntan
   `Light-Engine-screen-overlay-addon.zip` ni `Light-Engine-screen-overlay-android.apk`
   (`.github/workflows/release.yml`, `.github/workflows/engine-checks.yml`).
