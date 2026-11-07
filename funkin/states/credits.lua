@@ -141,15 +141,7 @@ function CreditsState:enter()
 	self.throttles.down = Throttle:make({controls.down, controls, "ui_down"})
 
 	if love.system.getDevice() == "Mobile" then
-		self.buttons = VirtualPadGroup()
-		local w = 134
-
-		local down = VirtualPad("down", 0, game.height - w)
-		local up = VirtualPad("up", 0, down.y - w)
-
-		self.buttons:add(down)
-		self.buttons:add(up)
-
+		self.buttons = util.createButtons("udb")
 		self:add(self.buttons)
 	end
 end

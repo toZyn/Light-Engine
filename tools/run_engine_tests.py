@@ -12,8 +12,8 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay'}
-DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'overlay-addon', 'screen-overlay', 'editors-and-modding', 'recorder-and-fixes']
+STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors'}
+DEFAULT = ['extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'editors-and-modding', 'recorder-and-fixes']
 SUCCESS = {
     'extension-examples': r'EXTENSION EXAMPLES PASSED:',
     'chart-timing': r'CHART TIMING: \d+ passed, 0 failed',
@@ -29,8 +29,6 @@ SUCCESS = {
     'compat-controls': r'COMPAT CONTROLS PASS:',
     'display': r'DISPLAY PASSED:',
     'recoverable-errors': r'RECOVERABLE ERRORS PASSED:',
-    'overlay-addon': r'OVERLAY ADDON PASSED:',
-    'screen-overlay': r'SCREEN OVERLAY PASSED:',
 }
 BOOT = '''dofile(%s)
 local originalLoad=love.load

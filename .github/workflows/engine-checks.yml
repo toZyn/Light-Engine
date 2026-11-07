@@ -15,7 +15,6 @@ on:
       - 'tests/**'
       - 'tools/**'
       - 'examples/**'
-      - 'separate-addons/**'
       - '.github/workflows/**'
   workflow_dispatch:
   workflow_call:
@@ -92,30 +91,6 @@ jobs:
       - name: Verify direct Android assets and original byte preservation
         run: python3 tests/android-assets.py
 
-      - name: Set up Java for overlay policy tests
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Test Android overlay consent and cancellation policy
-        run: |
-          mkdir -p .ci/overlay-classes
-          OVERLAY_SOURCE=separate-addons/screen-overlay/android
-          javac --release 8 -d .ci/overlay-classes \
-            "$OVERLAY_SOURCE/src/com/zyn/lightengine/overlay/OverlayRequest.java" \
-            "$OVERLAY_SOURCE/src/com/zyn/lightengine/overlay/OverlaySession.java" \
-            "$OVERLAY_SOURCE/src/com/zyn/lightengine/overlay/OverlayGeometry.java" \
-            "$OVERLAY_SOURCE/tests/OverlayPolicyTest.java"
-          java -cp .ci/overlay-classes com.zyn.lightengine.overlay.OverlayPolicyTest
-
-      - name: Test desktop overlay transport and native window
-        run: |
-          python3 -m pip install -r separate-addons/screen-overlay/desktop/requirements.txt
-          python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_policy.py
-          python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_installer.py
-          xvfb-run -a python3 -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_gui.py
-
       - name: Upload Linux test logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -170,14 +145,6 @@ jobs:
         shell: pwsh
         run: |
           python tools/run_engine_tests.py --copy --love "$env:LOVE_BINARY" --logs test-results/windows
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Test desktop overlay transport and protocol installer
-        shell: pwsh
-        run: |
-          python -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_policy.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m unittest discover -s separate-addons/screen-overlay/desktop/tests -p test_installer.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload Windows test logs

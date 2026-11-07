@@ -48,7 +48,9 @@ function UserCard:__reloadIcon(image, url, error)
 	if self.icon.loading ~= url then return end
 	self.icon.loading = nil
 	self.icon.angle = 0
-	self.icon:loadTexture(image)
+	if image then
+		self.icon:loadTexture(image)
+	end
 	self.icon:setGraphicSize(100, 100)
 	self.icon:updateHitbox()
 end
@@ -70,7 +72,8 @@ function UserCard:reload(d)
 	if d.icon:startsWith("https://") then
 		self.icon:loadTexture(paths.getImage("menus/credits/icons/loading"))
 
-		local icon = d.icon .. "?size=100"
+		local separator = d.icon:find("?", 1, true) and "&" or "?"
+		local icon = d.icon .. separator .. "size=100"
 		self.icon.loading = icon
 		paths.async.getImage(icon, bind(self, self.__reloadIcon))
 	else

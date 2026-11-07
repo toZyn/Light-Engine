@@ -5,6 +5,35 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-11-07
+
+### Corregido
+- **Caídas de FPS en canciones con muchas flechas** (`funkin/gameplay/notefield.lua`):
+  las notas ya consumidas o perdidas (`tooLate`, sostenidos completados) se mantenían
+  para siempre en `activeNotes`, por lo que los escaneos por fotograma de
+  `getNotes`/`__prepareLane` crecían sin límite. Ahora se recortan en `Notefield:update`
+  cuando ya salieron del área de dibujo, manteniendo la lista activa pequeña durante
+  toda la canción.
+- **Botón para salir de Créditos** (`funkin/states/credits.lua`): el estado solo tenía
+  flechas arriba/abajo en móvil y ninguna entrada táctil para volver. Ahora usa
+  `util.createButtons("udb")`, que añade el botón "escape"/back junto a las flechas.
+- **Bug de las fotos (iconos de créditos)** (`funkin/ui/credits/usercard.lua`,
+  `funkin/ui/credits/userlist.lua`, `funkin/backend/paths/async.lua`):
+  - El sufijo `?size=100` rompía URLs que ya traían query string (`?v=4`); ahora se
+    usa `&` cuando corresponde.
+  - Una descarga fallida dejaba el spinner girando indefinidamente; `__reloadIcon`
+    tolera imágenes nulas y `async.stop()` notifica los callbacks pendientes
+    (`nil, 'cancelled'`) para detener cualquier spinner atascado.
+- **Addons automáticos eliminados del release**: ya no se generan ni adjuntan
+  `Light-Engine-screen-overlay-addon.zip` ni `Light-Engine-screen-overlay-android.apk`
+  (`.github/workflows/release.yml`, `.github/workflows/engine-checks.yml`).
+
+### Añadido
+- **Textura para los botones virtuales** (`assets/images/ui/virtual-input.png` y `.txt`,
+  `loxel/virtualpad.lua`): los botones táctiles (flechas, A/B/C) usan ahora el sprite
+  sheet `virtual-input`, con variante de reposo y presionado, escalado suave y un
+  fallback al rectángulo original si la textura no está disponible.
+
 ## [0.2.4] - 2026-10-30
 
 ### Corregido

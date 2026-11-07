@@ -330,6 +330,20 @@ function Notefield:update(dt)
 		end
 	end
 
+	-- Cull notes that are fully passed and already consumed by gameplay so the
+	-- active list stays small; otherwise it grows forever and the per-frame
+	-- scans in getNotes/__prepareLane tank the FPS on note-heavy songs.
+	local cullBottom = -(self.drawSize / 2 + 150) / (450 * math.max(maxSpeed, 0.01))
+	local timeNow = self.time - self.offsetTime
+	for i = #self.activeNotes, 1, -1 do
+		local note = self.activeNotes[i]
+		if note.tooLate or (note.wasGoodHit and (not note.sustain or note.wasGoodSustainHit)) then
+			if (note.time + (note.sustainTime or 0)) < timeNow + cullBottom then
+				self:removeNoteFromIndex(i)
+			end
+		end
+	end
+
 	for _, lane in ipairs(self.lanes) do
 		for _, note in ipairs(lane.renderedNotes) do
 			note:update(dt)

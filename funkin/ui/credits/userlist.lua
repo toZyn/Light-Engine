@@ -85,7 +85,7 @@ function UserList:addUsers(name, people, i)
 			img:loadTexture(getLoadingIcon())
 			img.loading = true
 
-			icon = icon .. "?size=100"
+			icon = icon .. (icon:find("?", 1, true) and "&" or "?") .. "size=100"
 			paths.async.getImage(icon, function(image, url)
 				img.loading = nil
 				img.angle = 0

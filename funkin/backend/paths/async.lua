@@ -359,6 +359,15 @@ function async.stop()
  group.tasks:clear()
  for _ = 1, #group.threads do group.tasks:push('exit') end
  drain(group)
+ -- Drop any pending callback list so waiters (e.g. credits icons) are not
+ -- left spinning forever when queued tasks are cancelled.
+ local dropped = queue.callbacks
+ queue.callbacks = {}
+ for id, list in pairs(dropped) do
+  for _, callback in ipairs(list) do
+   xpcall(function() callback(nil, 'cancelled') end, debug.traceback)
+  end
+ end
  retired[#retired + 1] = group
  queue, active, pending = {tasks = {}, callbacks = {}}, {}, {}
  stats.queued, stats.completed, stats.failed, stats.lastError = 0, 0, 0, nil

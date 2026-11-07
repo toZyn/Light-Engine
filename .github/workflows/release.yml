@@ -20,7 +20,6 @@ on:
       - 'tests/android-manifest.py'
       - 'tests/fixtures/**'
       - 'examples/**'
-      - 'separate-addons/**'
       - 'docs/**'
       - '.github/workflows/**'
   workflow_dispatch:
@@ -144,18 +143,16 @@ jobs:
           cp notes.md inputs/notes.md
           find inputs -type f | sort
 
-      - name: Package universal .love archive, modding kit, and optional addon
+      - name: Package universal .love archive and modding kit
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           python3 tools/make_game_love.py "Light-Engine-${VERSION}.love"
           python3 tools/make_modding_kit.py --archive "Light-Engine-${VERSION}-modding-kit.zip"
-          python3 tools/make_addon_release.py Light-Engine-screen-overlay-addon.zip
           sha256sum \
             "Light-Engine-${VERSION}.love" \
-            "Light-Engine-${VERSION}-modding-kit.zip" \
-            Light-Engine-screen-overlay-addon.zip > sha256-core.txt
+            "Light-Engine-${VERSION}-modding-kit.zip" > sha256-core.txt
 
       - name: Open draft release
         env:
@@ -176,7 +173,6 @@ jobs:
             CHANGELOG.md \
             "Light-Engine-${VERSION}.love" \
             "Light-Engine-${VERSION}-modding-kit.zip" \
-            Light-Engine-screen-overlay-addon.zip \
             --clobber
 
       - name: Upload build inputs
@@ -721,14 +717,6 @@ jobs:
           PY
           ls -l Light-Engine-*.apk
 
-      - name: Build the separate image-overlay companion
-        run: |
-          python3 tools/build_screen_overlay.py \
-            --jdk "$JAVA_HOME" \
-            --android-jar "$ANDROID_SDK_ROOT/platforms/android-35/android.jar" \
-            --build-tools "$ANDROID_SDK_ROOT/build-tools/35.0.0" \
-            --output Light-Engine-screen-overlay-android.apk
-
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -787,8 +775,6 @@ jobs:
             "Light-Engine-${VERSION}-android-armeabi-v7a.apk"
             "Light-Engine-${VERSION}.love"
             "Light-Engine-${VERSION}-modding-kit.zip"
-            "Light-Engine-screen-overlay-addon.zip"
-            "Light-Engine-screen-overlay-android.apk"
             "CHANGELOG.md"
             "SHA256SUMS.txt"
           )
@@ -815,7 +801,7 @@ jobs:
             {
               echo "## Published Release: [${RELEASE_NAME}](https://github.com/${REPO}/releases/tag/${TAG})"
               echo
-              echo "All compiled binaries, universal \`.love\` package, modding kit, addons, and SHA-256 checksums have been uploaded:"
+              echo "All compiled binaries, universal \`.love\` package, modding kit and SHA-256 checksums have been uploaded:"
               echo
               while IFS= read -r asset; do
                 [ -n "$asset" ] && echo "- [\`${asset}\`](https://github.com/${REPO}/releases/download/${TAG}/${asset})"
