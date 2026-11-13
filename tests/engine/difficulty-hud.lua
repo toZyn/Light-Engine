@@ -141,7 +141,7 @@ if originalLove then
    assert(state.scoreText.content:find('Score: 350',1,true))
    assert((state.scoreText.content:find('Accuracy:',1,true)~=nil)==(mode~='Simple'))
    assert(state.informationText.visible==(mode=='Full'))
-   assert(state.informationText.cameras[1]==state.camHUD)
+   assert(state.informationText.cameras[1]==state.camOther)
    if mode=='Full' then
     assert(state.informationText.content:find('Sick: 1',1,true))
     assert(state.informationText.content:find('IPS:',1,true))
@@ -151,3 +151,61 @@ if originalLove then
   state:pauseSong()
  end)
 end
+
+if originalLove then
+ check('Story Mode loads no song charts before selecting a week',function()
+  local state=StoryMenuState();state.weeksData={}
+  local calls=0;local original=paths.getJSON
+  paths.getJSON=function(key)
+   if key:find('songs/',1,true)==1 then calls=calls+1 end
+   return original(key)
+  end
+  state:loadWeeks();paths.getJSON=original
+  assert(#state.weeksData>0 and calls==0,'menu eagerly decoded '..calls..' song charts')
+ end)
+ check('difficulty indexes reuse decoding and invalidate safely',function()
+  local D=require 'funkin.backend.difficulties'
+  D.clearCache()
+  local calls=0;local original=paths.getJSON
+  paths.getJSON=function(key)calls=calls+1;return original(key)end
+  local first=D.forSong('bopeebo',{'Easy','Normal','Hard'})
+  calls=0
+  local second=D.forSong('bopeebo',{'Easy','Normal','Hard'})
+  local cached=calls;paths.getJSON=original
+  assert(table.concat(first,',')==table.concat(second,',') and cached==0)
+  D.clearCache();calls=0
+  paths.getJSON=function(key)calls=calls+1;return original(key)end
+  D.forSong('bopeebo',{'Easy','Normal','Hard'});paths.getJSON=original
+  assert(calls>0,'reload reused a stale index')
+ end)
+ check('Full HUD docks beside health bar outside the receptor edge',function()
+  local state=PlayState(false,'bopeebo','normal')
+  state:preload();paths.async.stop();game.switchState(state,true);game.update(0)
+  local saved=ClientPrefs.data.gameplayInformation
+  ClientPrefs.data.gameplayInformation='Full'
+  for _,downscroll in ipairs({false,true}) do
+   state.downScroll=downscroll;state.healthBar.y=game.height*(downscroll and 0.1 or 0.9)
+   state:positionText();state:updateInformation()
+   local panel=assert(state.informationBackground)
+   assert(table.find(state.members,panel)<table.find(state.members,state.scoreText),'backdrop covers score')
+   assert(panel.visible and panel.x>=0 and panel.x+panel.width<=game.width)
+   assert(panel.y>=0 and panel.y+panel.height<=game.height)
+   assert(downscroll and panel.y>=state.healthBar.y or not downscroll and panel.y+panel.height<=state.healthBar.y)
+   assert(state.informationText.cameras[1]==state.camOther)
+  end
+  ClientPrefs.data.gameplayInformation='Simple';state:updateInformation()
+  assert(not state.informationBackground.visible and not state.informationText.visible)
+  ClientPrefs.data.gameplayInformation=saved;state:pauseSong()
+ end)
+end
+
+check('rolling inputs remain bounded and unsorted notes remain intact',function()
+ local Info=require 'funkin.gameplay.information'
+ local notes={{t=3000,l=2000},{t=1000},{t=2000}}
+ local info=Info.new(notes,{{t=4000}})
+ assert(notes[1].t==3000 and notes[2].t==1000)
+ assert(info:turnText(4,1)=='Both playing')
+ for i=1,10000 do info:update(0.01);info:tap() end
+ assert(info.ips>=99 and info.ips<=101 and #info.taps<=256)
+ info:update(2);assert(info.ips==0)
+end)

@@ -1,6 +1,6 @@
 # Story difficulties and gameplay information
 
-Story Mode scans the charts once when loading weeks. It recognizes `charts/<difficulty>.json`,
+Story Mode scans only the selected week on demand. Compact file summaries are cached without retaining note arrays; content reload and file size/modification-time changes invalidate them. It recognizes `charts/<difficulty>.json`,
 `chart-<difficulty>.json`, `<song>-chart-<difficulty>.json`, `<difficulty>.json`,
 and difficulty keys in V-Slice `chart.json` files. Generic native/vanilla charts
 use declared week difficulties and song metadata. Only common variants across
@@ -62,9 +62,7 @@ playback rate, not camera-focus or vocal-volume guesses. The timeline is built
 once and queried by binary search, including after seeking. Turn countdowns refresh
 ten times per second; score and judgement updates remain immediate.
 
-All information objects use the HUD camera and respect gameplay-only recording.
-The compact score line remains near the health bar; Full details move away from
-the receptor edge when downscroll changes and fit the viewport's screen margins.
+Simple/Informative use the HUD camera. Full uses the existing overlay camera so notes cannot cover its compact background panel. All modes respect gameplay-only recording. Full docks above the health bar in upscroll and below it in downscroll, within the viewport margins. Score/misses/accuracy update immediately; the detail block refreshes at 10 Hz even during dense patterns.
 
 ## Optional credit avatars
 

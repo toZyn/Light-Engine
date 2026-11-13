@@ -2,20 +2,23 @@ local Information = {}
 Information.__index = Information
 
 local function timeline(notes)
- local intervals = {}
- for _, note in ipairs(notes or {}) do
-  local start = (tonumber(note.t) or 0) / 1000
-  intervals[#intervals + 1] = {start, start + math.max((tonumber(note.l) or 0) / 1000, 0.2)}
- end
- table.sort(intervals, function(a,b) return a[1] < b[1] end)
- local merged = {}
- for _, interval in ipairs(intervals) do
-  local last = merged[#merged]
-  if last and interval[1] <= last[2] + 0.35 then
-   last[2] = math.max(last[2], interval[2])
-  else
-   merged[#merged + 1] = interval
+ notes = notes or {}
+ local ordered = notes
+ for i = 2, #notes do
+  if (tonumber(notes[i].t) or 0) < (tonumber(notes[i-1].t) or 0) then
+   ordered = {}
+   for j, note in ipairs(notes) do ordered[j] = note end
+   table.sort(ordered, function(a,b) return (tonumber(a.t) or 0) < (tonumber(b.t) or 0) end)
+   break
   end
+ end
+ local merged = {}
+ for _, note in ipairs(ordered) do
+  local start = (tonumber(note.t) or 0) / 1000
+  local finish = start + math.max((tonumber(note.l) or 0) / 1000, 0.2)
+  local last = merged[#merged]
+  if last and start <= last[2] + 0.35 then last[2] = math.max(last[2], finish)
+  else merged[#merged+1] = {start, finish} end
  end
  return merged
 end
@@ -36,13 +39,13 @@ end
 
 function Information.new(player, opponent)
  return setmetatable({player=timeline(player),opponent=timeline(opponent),clock=0,
-  taps={},hits={},ips=0,nps=0,peakIps=0,peakNps=0,totalHits=0,weight=0,
+  taps={},hits={},tapHead=1,hitHead=1,ips=0,nps=0,peakIps=0,peakNps=0,totalHits=0,weight=0,
   meanOffset=0,meanAbsolute=0,lastOffset=0,peakCombo=0,timingSamples=0},Information)
 end
 
 function Information:tap()
  self.taps[#self.taps+1] = self.clock
- self.ips = #self.taps
+ self.ips = #self.taps - self.tapHead + 1
  self.peakIps = math.max(self.peakIps,self.ips)
 end
 
@@ -57,21 +60,27 @@ function Information:hit(weight, offset, bot)
   self.meanAbsolute = self.meanAbsolute + (math.abs(self.lastOffset)-self.meanAbsolute)/n
  end
  self.hits[#self.hits+1] = self.clock
- self.nps = #self.hits
+ self.nps = #self.hits - self.hitHead + 1
  self.peakNps = math.max(self.peakNps,self.nps)
+end
+
+local function expire(queue, head, cutoff)
+ local count = #queue
+ while head <= count and queue[head] <= cutoff do head = head + 1 end
+ if head > 128 and head > count / 2 then
+  local remaining = count - head + 1
+  for i = 1, remaining do queue[i] = queue[head+i-1] end
+  for i = count, remaining+1, -1 do queue[i] = nil end
+  head = 1
+ end
+ return head, #queue-head+1
 end
 
 function Information:update(dt)
  self.clock = self.clock + math.max(dt,0)
- for _, queue in ipairs({self.taps,self.hits}) do
-  local expired = 0
-  while queue[expired+1] and queue[expired+1] <= self.clock-1 do expired=expired+1 end
-  if expired>0 then
-   for i=expired+1,#queue do queue[i-expired]=queue[i] end
-   for i=#queue,#queue-expired+1,-1 do queue[i]=nil end
-  end
- end
- self.ips,self.nps = #self.taps,#self.hits
+ local cutoff = self.clock-1
+ self.tapHead, self.ips = expire(self.taps,self.tapHead,cutoff)
+ self.hitHead, self.nps = expire(self.hits,self.hitHead,cutoff)
 end
 
 function Information:accuracy(misses)
@@ -100,10 +109,8 @@ function Information:format(state, mode, time)
  if mode~='Full' then return summary end
  self.peakCombo=math.max(self.peakCombo,math.max(state.combo or 0,0))
  return table.concat({summary,
-  string.format('Hits: %d | Combo: %d | Max combo: %d',self.totalHits,math.max(state.combo or 0,0),self.peakCombo),
-  string.format('Sick: %d | Good: %d | Bad: %d | Shit: %d',state.sicks or 0,state.goods or 0,state.bads or 0,state.shits or 0),
-  string.format('IPS: %d (Peak: %d) | NPS: %d (Peak: %d)',self.ips,self.peakIps,self.nps,self.peakNps),
-  string.format('Health: %.1f%% | Speed: %.2fx%s',(state.health or 0)*50,state.playback or 1,state.usedBotPlay and ' | Botplay used' or ''),
+  string.format('Hits: %d | Combo: %d (Max: %d) | Health: %.1f%% | Speed: %.2fx%s',self.totalHits,math.max(state.combo or 0,0),self.peakCombo,(state.health or 0)*50,state.playback or 1,state.usedBotPlay and ' | Botplay used' or ''),
+  string.format('Sick: %d | Good: %d | Bad: %d | Shit: %d | IPS: %d (Peak: %d) | NPS: %d (Peak: %d)',state.sicks or 0,state.goods or 0,state.bads or 0,state.shits or 0,self.ips,self.peakIps,self.nps,self.peakNps),
   string.format('Offset: %+.1f ms | Mean offset: %+.1f ms | Mean error: %.1f ms',self.lastOffset,self.meanOffset,self.meanAbsolute),
   self:turnText(time,state.playback)},'\n')
 end

@@ -111,7 +111,7 @@ function StoryMenuState:enter()
 		self.sprDifficulty = Sprite(0, self.leftArrow.y)
 		self.difficultySelector:add(self.sprDifficulty)
 
-		self.txtDifficulty = Text(0, self.leftArrow.y, "", paths.getFont("vcr.ttf", 44), Color.WHITE)
+		self.txtDifficulty = Text(0, self.leftArrow.y, "", self.scoreText.font, Color.WHITE)
 		self.txtDifficulty.outline.width = 2
 		self.txtDifficulty.antialiasing = false
 		self.difficultySelector:add(self.txtDifficulty)
@@ -156,9 +156,7 @@ function StoryMenuState:enter()
 	end
 
 	if #self.weeksData > 0 then
-		self:changeWeek()
 		self.weekList:changeSelection()
-		self:changeDifficulty()
 	end
 
 	StoryMenuState.super.enter(self)
@@ -214,6 +212,7 @@ end
 
 function StoryMenuState:selectWeek()
 	local selected = self.weeksData[self.weekList.curSelected]
+	self:resolveWeekDifficulties(selected)
 	if not selected or selected.noPlayableDifficulty then
 		util.playSfx(paths.getSound("cancelMenu"))
 		return false
@@ -260,9 +259,22 @@ function StoryMenuState:selectWeek()
 	end
 end
 
+function StoryMenuState:resolveWeekDifficulties(week)
+	if not week or not week.songs then return end
+	local revision = paths.contentRevision or 0
+	if week._difficultyRevision == revision and week._resolvedDifficulties == week.difficulties then return end
+	if week._resolvedDifficulties ~= week.difficulties then week._declaredDifficulties = week.difficulties end
+	local available = Difficulties.forWeek({songs = week.songs, difficulties = week._declaredDifficulties}, self.diffs)
+	week.noPlayableDifficulty = #available == 0
+	week.difficulties = #available > 0 and available or {"Normal"}
+	week._resolvedDifficulties = week.difficulties
+	week._difficultyRevision = revision
+end
+
 function StoryMenuState:changeDifficulty(change)
 	if change == nil then change = 0 end
 	local leWeek = self.weeksData[self.weekList.curSelected]
+	self:resolveWeekDifficulties(leWeek)
 	local songDiffs = (leWeek and type(leWeek.difficulties) == "table" and #leWeek.difficulties > 0)
 		and leWeek.difficulties or self.diffs
 
@@ -271,14 +283,26 @@ function StoryMenuState:changeDifficulty(change)
 
 	local storyDiff = songDiffs[StoryMenuState.curDifficulty]
 	local imageKey = 'menus/storymenu/difficulties/' .. paths.formatToSongPath(storyDiff)
-	local hasImage = false
-	for _, ext in ipairs({"png", "dds", "ktx", "astc"}) do
-		if paths.exists(paths.getPath("images/" .. imageKey .. "." .. ext), "file") then
-			hasImage = true
-			break
+	local fontName = leWeek.difficultyFont or "difficulty.ttf"
+	local revision = paths.contentRevision or 0
+	if self._visualRevision ~= revision then self._difficultyVisuals = {}; self._visualRevision = revision end
+	local visualKey = imageKey .. "@" .. fontName
+	local visual = self._difficultyVisuals[visualKey]
+	if not visual then
+		visual = {}
+		for _, ext in ipairs({"png", "dds", "ktx", "astc"}) do
+			if paths.exists(paths.getPath("images/" .. imageKey .. "." .. ext), "file") then
+				visual.image = paths.getImage(imageKey)
+				break
+			end
 		end
+		if not visual.image then
+			if not paths.exists(paths.getPath("fonts/" .. fontName), "file") then fontName = "vcr.ttf" end
+			visual.font = paths.getFont(fontName, 44)
+		end
+		self._difficultyVisuals[visualKey] = visual
 	end
-	local newImage = not leWeek.noPlayableDifficulty and hasImage and paths.getImage(imageKey) or nil
+	local newImage = not leWeek.noPlayableDifficulty and visual.image or nil
 	local target
 	if newImage then
 		self.sprDifficulty:loadTexture(newImage)
@@ -289,9 +313,7 @@ function StoryMenuState:changeDifficulty(change)
 		self.sprDifficulty:updateHitbox()
 		target = self.sprDifficulty
 	else
-		local fontName = leWeek.difficultyFont or "difficulty.ttf"
-		if not paths.exists(paths.getPath("fonts/" .. fontName), "file") then fontName = "vcr.ttf" end
-		self.txtDifficulty.font = paths.getFont(fontName, 44)
+		self.txtDifficulty.font = visual.font or paths.getFont("difficulty.ttf", 44)
 		self.txtDifficulty.content = leWeek.noPlayableDifficulty and "UNAVAILABLE" or storyDiff:upper()
 		self.txtDifficulty.color = Difficulties.color(storyDiff, leWeek)
 		self.txtDifficulty.scale:set(1, 1)
@@ -373,9 +395,6 @@ local function normalizeWeekData(data, week)
 		end
 		data.difficulties = #parsed > 0 and parsed or nil
 	end
-	local available = Difficulties.forWeek(data, {"Easy", "Normal", "Hard"})
-	data.noPlayableDifficulty = #available == 0
-	data.difficulties = #available > 0 and available or {"Normal"}
 	return data
 end
 

@@ -487,12 +487,19 @@ function PlayState:enter()
 	self.healthBar:screenCenter("x").y = game.height * (self.downScroll and 0.1 or 0.9)
 	self:add(self.healthBar)
 
+	self.informationBackground = Graphic(0, 0, 1, 1, Color.fromRGB(10, 12, 18))
+	self.informationBackground.alpha = 0.78
+	self.informationBackground.config.round = {8, 8}
+	self.informationBackground.visible = false
+	self.informationBackground.cameras = {self.camOther}
+	self:add(self.informationBackground)
 	self.scoreText = Text(0, 0, "", paths.getFont("vcr.ttf", 16), Color.WHITE, "right")
 	self.scoreText.outline.width = 1
 	self.scoreText.antialiasing = false
 	self:add(self.scoreText)
 	self.informationText = Text(0, 0, "", paths.getFont("vcr.ttf", 16), Color.WHITE)
-	self.informationText.outline.width = 2
+	self.informationText.outline.width = 1
+	self.informationText.outline.precision = 4
 	self.informationText.antialiasing = false
 	self:add(self.informationText)
 
@@ -737,30 +744,48 @@ end
 
 function PlayState:positionText()
 	local margin = math.max(16, ClientPrefs.data.margin or 0)
+	local full = ClientPrefs.data.gameplayInformation == "Full"
 	self.scoreText.alignment = "center"
 	self.scoreText.limit = game.width - margin * 2
 	self.scoreText.x = margin
 	self.scoreText.y = self.healthBar.y + 30
-	if self.informationText then
-		self.informationText.limit = math.min(720, game.width - margin * 2)
-		self.informationText.x = margin
-		self.informationText.y = self.downScroll and
-			math.max(120, game.height - self.informationText:getHeight() - 110) or 100
-	end
+	self.scoreText.cameras = full and {self.camOther} or {self.camHUD}
+	if not self.informationText then return end
+	self.informationText.visible = full
+	self.informationText.cameras = {self.camOther}
+	if self.informationBackground then self.informationBackground.visible = full end
+	if not full then return end
+	local width = math.min(1040, game.width - margin * 2)
+	local x = (game.width - width) / 2
+	self.scoreText.x, self.scoreText.limit = x + 12, width - 24
+	self.informationText.x, self.informationText.limit = x + 12, width - 24
+	local summaryHeight = self.scoreText:getHeight()
+	local height = summaryHeight + self.informationText:getHeight() + 24
+	local y = self.downScroll and self.healthBar.y + 48 or self.healthBar.y - height - 20
+	y = math.max(12, math.min(y, game.height - height - 12))
+	self.scoreText.y = y + 8
+	self.informationText.y = y + summaryHeight + 12
+	local panel = self.informationBackground
+	if panel then panel.x, panel.y, panel.width, panel.height = x, y, width, height end
 end
 
-function PlayState:updateInformation()
+function PlayState:updateInformation(summaryOnly)
 	if not self.information or not self.scoreText then return end
 	local mode = ClientPrefs.data.gameplayInformation or "Simple"
 	local time = self.conductor.time / 1000
+	if summaryOnly and mode == "Full" then
+		self.scoreText.content = self.information:format(self, "Informative", time)
+		return
+	end
 	local content = self.information:format(self, mode, time)
 	local summary, details = content:match("^([^\n]+)\n(.*)$")
+	local changed = self.scoreText.content ~= (summary or content)
+		or self._informationMode ~= mode
+		or self.informationText and self.informationText.content ~= (details or "")
 	self.scoreText.content = summary or content
-	if self.informationText then
-		self.informationText.content = details or ""
-		self.informationText.visible = mode == "Full"
-	end
-	self:positionText()
+	if self.informationText then self.informationText.content = details or "" end
+	self._informationMode = mode
+	if changed then self:positionText() end
 end
 
 function PlayState:getRating(a, b)
@@ -1587,7 +1612,7 @@ function PlayState:recalculateRating(rating)
 		self[field] = (self[field] or 0) + 1
 		self:popUpScore(rating)
 	end
-	self:updateInformation()
+	self:updateInformation(true)
 end
 
 function PlayState:popUpScore(rating)

@@ -14,6 +14,8 @@ local function test()
  Logger = dofile(root .. '/loxel/system/logger.lua')
  Logger.print = function(text) logLines[#logLines + 1] = text end
  Toast = {showDeprecations = false}
+ love.filesystem.createDirectory('lib')
+ love.filesystem.write('lib/https.lua', 'return {available=false}')
  love.filesystem.write('https.lua', 'return true') -- valid require result, unusable transport
  local image = love.image.newImageData(2, 2)
  image:encode('png', 'async-processor.png')

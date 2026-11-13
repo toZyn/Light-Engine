@@ -5,6 +5,30 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-11-13
+
+### Optimized
+- Story Mode resolves difficulties only for the selected week instead of decoding
+  every week's charts on entry. Compact file-index summaries avoid repeat JSON
+  decoding and retain no note arrays. Content reload and file metadata changes
+  invalidate the cache.
+- Cached difficulty image/font resolution and removed redundant initial selection
+  calls. FNFont, automatic colors, custom names and mod overrides are preserved.
+- Turn timelines merge sorted chart notes directly, allocating only the merged
+  intervals. Unsorted charts remain supported without modifying the source notes.
+- Rolling IPS/NPS use queue cursors with bounded occasional compaction instead of
+  copying queues and creating temporary tables every frame.
+- Full details refresh at 10 Hz even during dense patterns. Score, misses and
+  accuracy remain immediate; unchanged content skips repeat layout measurements.
+
+### Fixed
+- Full information now uses a compact background panel beside the health bar:
+  above it for upscroll, below it for downscroll. The existing overlay camera
+  prevents notes/receptors from covering the information without adding a camera.
+  Gameplay-only recording continues to exclude the panel.
+
+Android version code: 210.
+
 ## [0.2.7] - 2026-11-13
 
 ### Added

@@ -149,6 +149,9 @@ local function clear(tbl)
 end
 
 function paths.clearCache()
+	paths.contentRevision = (paths.contentRevision or 0) + 1
+	local difficulties = package.loaded["funkin.backend.difficulties"]
+	if type(difficulties) == "table" then difficulties.clearCache() end
 	-- Cancel callbacks/results before releasing their possible cache targets.
 	paths.async.stop()
 	clear(paths.atlases)

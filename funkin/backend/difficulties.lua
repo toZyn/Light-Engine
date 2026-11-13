@@ -1,4 +1,34 @@
 local Difficulties = {}
+local indexCache = {}
+local cacheOwner
+
+function Difficulties.clearCache()
+ indexCache = {}
+ cacheOwner = paths
+end
+
+local function readIndex(key)
+ if cacheOwner ~= paths then Difficulties.clearCache() end
+ local resolved = paths.getPath(key .. '.json')
+ local info = love and love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(resolved, 'file')
+ local cached = info and indexCache[resolved]
+ if cached and cached.size == info.size and cached.modtime == info.modtime then return cached.data end
+ local ok, data = pcall(paths.getJSON, key)
+ if not ok or type(data) ~= 'table' then return nil end
+ local summary = {song = data.song ~= nil, difficulties = data.difficulties}
+ if type(data.playData) == 'table' then summary.playData = {difficulties = data.playData.difficulties} end
+ if type(data.notes) == 'table' then
+  summary.notes = {}
+  if #data.notes > 0 then summary.notes[1] = true
+  else
+   for name, notes in pairs(data.notes) do
+    if type(notes) == 'table' then summary.notes[name] = {} end
+   end
+  end
+ end
+ if info then indexCache[resolved] = {size = info.size, modtime = info.modtime, data = summary} end
+ return summary
+end
 
 local function normalize(value)
  local out,seen={},{}
@@ -27,10 +57,7 @@ function Difficulties.forSong(song, declared)
    if not seen[name:lower()] then seen[name:lower()]=true;found[#found+1]=name end
   end
  end
- local function json(key)
-  local ok,data=pcall(paths.getJSON,key)
-  return ok and type(data)=='table' and data or nil
- end
+ local json=readIndex
  local generic=false
  local metadata={}
  local function read(key, variant)
