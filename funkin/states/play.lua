@@ -1,6 +1,7 @@
 ---@class PlayState:State
 local PlayState = State:extend("PlayState")
 local PauseButton = require "funkin.gameplay.ui.pausebutton"
+local Information = require "funkin.gameplay.information"
 
 PlayState.defaultDifficulty = "normal"
 PlayState.transIn = TransitionData(0.5)
@@ -427,6 +428,7 @@ function PlayState:enter()
 		if notes then notefield:makeNotesFromChart(notes) end
 		table.insert(self.notefields, notefield)
 	end
+	self.information = Information.new(self.playerNotefield.chartNotes, self.enemyNotefield.chartNotes)
 	self:positionNotefields()
 	table.insert(self.notefields, 3, {character = self.gf})
 
@@ -489,9 +491,13 @@ function PlayState:enter()
 	self.scoreText.outline.width = 1
 	self.scoreText.antialiasing = false
 	self:add(self.scoreText)
+	self.informationText = Text(0, 0, "", paths.getFont("vcr.ttf", 16), Color.WHITE)
+	self.informationText.outline.width = 2
+	self.informationText.antialiasing = false
+	self:add(self.informationText)
 
 	for _, o in ipairs({
-		self.judgeSprites, self.countdown, self.healthBar, self.scoreText
+		self.judgeSprites, self.countdown, self.healthBar, self.scoreText, self.informationText
 	}) do o.cameras = {self.camHUD} end
 
 	self.ratingNeedsRecalc = false
@@ -615,6 +621,7 @@ function PlayState:resize(w, h)
 			self.camZoom = self.stage.camZoom
 		end
 	end
+	if self.scoreText then self:positionText() end
 	if self.scripts then self.scripts:call("postResize", w, h) end
 end
 
@@ -729,7 +736,31 @@ function PlayState:positionNotefields()
 end
 
 function PlayState:positionText()
-	self.scoreText.x, self.scoreText.y = self.healthBar.x + self.healthBar.bg.width - 190, self.healthBar.y + 30
+	local margin = math.max(16, ClientPrefs.data.margin or 0)
+	self.scoreText.alignment = "center"
+	self.scoreText.limit = game.width - margin * 2
+	self.scoreText.x = margin
+	self.scoreText.y = self.healthBar.y + 30
+	if self.informationText then
+		self.informationText.limit = math.min(720, game.width - margin * 2)
+		self.informationText.x = margin
+		self.informationText.y = self.downScroll and
+			math.max(120, game.height - self.informationText:getHeight() - 110) or 100
+	end
+end
+
+function PlayState:updateInformation()
+	if not self.information or not self.scoreText then return end
+	local mode = ClientPrefs.data.gameplayInformation or "Simple"
+	local time = self.conductor.time / 1000
+	local content = self.information:format(self, mode, time)
+	local summary, details = content:match("^([^\n]+)\n(.*)$")
+	self.scoreText.content = summary or content
+	if self.informationText then
+		self.informationText.content = details or ""
+		self.informationText.visible = mode == "Full"
+	end
+	self:positionText()
 end
 
 function PlayState:getRating(a, b)
@@ -1107,6 +1138,7 @@ function PlayState:resetState()
 end
 
 function PlayState:update(dt)
+	local realDt = dt
 	if game.keys.justPressed.F5 then
 		self:resetState()
 	end
@@ -1130,6 +1162,9 @@ function PlayState:update(dt)
 	self.timer:update(dt)
 	self.tween:update(dt)
 
+	if self.information and not self.paused and self.startedCountdown and not self:hasActiveDialogue() then
+		self.information:update(dt)
+	end
 	dt = dt * self.playback
 	self.lastTick = love.timer.getTime()
 
@@ -1272,6 +1307,12 @@ function PlayState:update(dt)
 		::continue::
 	end
 
+	self.informationElapsed = (self.informationElapsed or 0) + realDt
+	if self.informationElapsed >= 0.1 then
+		self.informationElapsed = 0
+		if ClientPrefs.data.gameplayInformation == "Full" then self:updateInformation() end
+	end
+
 	if self.ratingNeedsRecalc then
 		self:recalculateRating()
 		self.ratingNeedsRecalc = false
@@ -1355,6 +1396,7 @@ function PlayState:onSettingChange(category, setting)
 				self.middleScroll = ClientPrefs.data.middleScroll
 				self:positionNotefields()
 			end,
+			["gameplayInformation"] = function() self:updateInformation() end,
 			["botplayMode"] = function()
 				self.playerNotefield.bot = ClientPrefs.data.botplayMode
 				self:recalculateRating()
@@ -1454,6 +1496,10 @@ function PlayState:goodNoteHit(note, time)
 				self.gf.lastHit = notefield.time * 1000
 			end
 
+			if self.information then
+				self.information:hit(rating.mod, time - note.time, notefield.bot)
+				self.information.peakCombo = math.max(self.information.peakCombo, self.combo)
+			end
 			self:recalculateRating(rating.name)
 
 			local hitSoundVolume = ClientPrefs.data.hitSound
@@ -1536,13 +1582,12 @@ function PlayState:miss(note, dir)
 end
 
 function PlayState:recalculateRating(rating)
-	self.scoreText.content = ClientPrefs.data.botplayMode and "Botplay Enabled" or
-		"Score: " .. util.formatNumber(math.floor(self.score))
 	if rating then
 		local field = rating .. "s"
 		self[field] = (self[field] or 0) + 1
 		self:popUpScore(rating)
 	end
+	self:updateInformation()
 end
 
 function PlayState:popUpScore(rating)
@@ -1647,6 +1692,8 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 	key = self:getKeyFromEvent(boundControls)
 	if key < 0 then return end
 
+	if self.information and self.startedCountdown and not self.startingSong
+		and not self.paused and not self.playerNotefield.bot then self.information:tap() end
 	local pressWallTime = time or love.timer.getTime()
 	local fixedKey, offset = key + 1,
 		(pressWallTime - (self.lastTick or pressWallTime)) * game.sound.music:getActualPitch()

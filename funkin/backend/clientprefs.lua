@@ -17,6 +17,7 @@ ClientPrefs.data = {
 	botplayMode = false,
 	playback = 1,
 	gameOverInfos = true,
+	gameplayInformation = "Simple",
 
 	-- gameplay - notes
 	splitReceptors = not desktop,
@@ -115,6 +116,11 @@ if (tonumber(ClientPrefs.data.recordingProfileVersion) or 0) < 4 then
 		ClientPrefs.data.autoPause = false
 	end
 	ClientPrefs.data.recordingProfileVersion = 4
+end
+
+if ClientPrefs.data.gameplayInformation ~= "Simple" and ClientPrefs.data.gameplayInformation ~= "Informative"
+	and ClientPrefs.data.gameplayInformation ~= "Full" then
+	ClientPrefs.data.gameplayInformation = "Simple"
 end
 
 local function ensureControlBind(list, bind)

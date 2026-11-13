@@ -5,6 +5,34 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-11-13
+
+### Added
+- **Automatic Story Mode difficulties**: discover split charts and difficulty keys
+  in multi-difficulty charts, including custom names. Only difficulties playable
+  across the entire week are offered; weeks with no shared chart show Unavailable.
+- **Generated difficulty labels** using the supplied FNFont (`difficulty.ttf`)
+  when no difficulty image exists. Labels fit the selector, receive stable colors,
+  and support per-week font/color overrides and `autoDifficultyColor: false`.
+  Existing difficulty images keep their own appearance.
+- **Gameplay information** in Options -> Gameplay: **Simple** shows only score;
+  **Informative** shows score, misses and judgement-weighted accuracy; **Full** also
+  shows hits, judgement counts, combo/max combo, inputs and notes per second with
+  peaks, health, playback speed, botplay usage and timing-error statistics.
+- **Full HUD turn countdowns** derived from note times and sustain durations:
+  Player turn, Opponent turn, Both playing, breaks and no remaining notes.
+  Countdown seconds account for playback speed and queries support seeking.
+
+### Fixed
+- Native HTTPS loading now calls the library initializer and validates the
+  returned request API. Optional credit avatars use a static placeholder without
+  queuing failed downloads when HTTPS is unavailable, preventing repeated module
+  errors and endless loading indicators on unsupported devices.
+- Failed avatar callbacks now retain the original URL so the selected credit card
+  finishes loading immediately instead of waiting for its timeout.
+
+Android version code: 209.
+
 ## [0.2.6] - 2026-11-13
 
 ### Cambiado

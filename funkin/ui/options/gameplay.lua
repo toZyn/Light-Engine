@@ -3,6 +3,7 @@ local Settings = require "funkin.ui.options.settings"
 local function percentvalue(value) return value .. "%" end
 local data = {
 	{"GENERAL"},
+	{"gameplayInformation", "Gameplay information", "string", {"Simple", "Informative", "Full"}},
 	{"autoPause", "Auto pause on lost focus", "boolean", function()
 		local value = not ClientPrefs.data.autoPause
 		ClientPrefs.data.autoPause = value

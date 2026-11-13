@@ -1,5 +1,6 @@
 local UserCard = SpriteGroup:extend("UserCard")
 local MediaCard = require "funkin.ui.credits.mediacard"
+local RemoteIcon = require "funkin.ui.credits.remoteicon"
 
 local ICON_TIMEOUT = 10
 
@@ -78,13 +79,13 @@ function UserCard:reload(d)
 	self.icon.loading = nil
 
 	if d.icon:startsWith("https://") then
-		self.icon:loadTexture(paths.getImage("menus/credits/icons/loading"))
+		self.icon:loadTexture(RemoteIcon.placeholder())
 
 		local separator = d.icon:find("?", 1, true) and "&" or "?"
 		local icon = d.icon .. separator .. "size=100"
 		self.icon.loading = icon
 		self.icon.loadingTime = love.timer.getTime()
-		paths.async.getImage(icon, bind(self, self.__reloadIcon))
+		RemoteIcon.load(icon, bind(self, self.__reloadIcon))
 	else
 		self.icon:loadTexture(paths.getImage("menus/credits/icons/" .. d.icon))
 	end

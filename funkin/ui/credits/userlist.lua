@@ -1,35 +1,8 @@
 local UserList = SpriteGroup:extend("UserList")
 
-local fallbackLoadingIcon
+local RemoteIcon = require "funkin.ui.credits.remoteicon"
 local ICON_TIMEOUT = 10
-
-local function getLoadingIcon()
-	local relPath = paths.getPath("images/menus/credits/icons/loading.png")
-	if paths.exists(relPath, "file") then
-		return paths.getImage("menus/credits/icons/loading")
-	end
-	if fallbackLoadingIcon then
-		local ok = pcall(fallbackLoadingIcon.getDimensions, fallbackLoadingIcon)
-		if ok then return fallbackLoadingIcon end
-	end
-	local size = 54
-	local data = love.image.newImageData(size, size)
-	local cx, cy = (size - 1) * 0.5, (size - 1) * 0.5
-	for py = 0, size - 1 do
-		for px = 0, size - 1 do
-			local dx, dy = px - cx, py - cy
-			local dist = math.sqrt(dx * dx + dy * dy)
-			if dist >= 16 and dist <= 22 then
-				local ang = (math.atan2(dy, dx) + math.pi) / (2 * math.pi)
-				local alpha = ang < 0.75 and (0.25 + 0.65 * (ang / 0.75)) or 0.12
-				data:setPixel(px, py, 1, 1, 1, alpha)
-			end
-		end
-	end
-	fallbackLoadingIcon = love.graphics.newImage(data)
-	data:release()
-	return fallbackLoadingIcon
-end
+local function getLoadingIcon() return RemoteIcon.placeholder() end
 
 function UserList:new(data, width)
 	UserList.super.new(self, 10, 10)
@@ -88,7 +61,7 @@ function UserList:addUsers(name, people, i)
 			img.loadingTime = love.timer.getTime()
 
 			icon = icon .. (icon:find("?", 1, true) and "&" or "?") .. "size=100"
-			paths.async.getImage(icon, function(image, url)
+			RemoteIcon.load(icon, function(image, url)
 				img.loading = nil
 				img.angle = 0
 				if image and url == icon then
