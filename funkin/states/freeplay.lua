@@ -2,7 +2,7 @@ local FreeplayState = State:extend("FreeplayState")
 FreeplayState.curDifficulty = 2
 
 function FreeplayState:enter()
-	Parser.clearCache()
+	Parser.clearCache(false)
 	self.notCreated = false
 
 	self.script = Script("data/states/freeplay", false)
@@ -65,7 +65,6 @@ function FreeplayState:enter()
 
 	if #self.songs.members > 0 then
 		self.songs.curSelected = math.min(#self.songs.members, self.songs.curSelected)
-		self:changeDiff(0)
 		self.songs:changeSelection()
 		self.bg.color = self.songs:getSelected().bgColor
 	end

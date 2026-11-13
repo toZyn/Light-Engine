@@ -49,16 +49,17 @@ function AnimationController:addByPrefix(name, prefix, framerate, looped)
 	if framerate == nil then framerate = 30 end
 	if looped == nil then looped = true end
 
-	local animFrames, foundFrame = {}, false
-	for _, f in ipairs(self.sprite.frames.frames) do
-		if f.name:startsWith(prefix) then
-			foundFrame = true
-			table.insert(animFrames, f)
+	local animFrames = {}
+	if self.sprite.frames.getFramesByPrefix then
+		local matched = self.sprite.frames:getFramesByPrefix(prefix)
+		for i, frame in ipairs(matched) do animFrames[i] = frame end
+	else
+		for _, frame in ipairs(self.sprite.frames.frames) do
+			if frame.name:startsWith(prefix) then animFrames[#animFrames + 1] = frame end
 		end
+		table.sort(animFrames, sortFramesByIndices(prefix, ""))
 	end
-	if not foundFrame then return end
-
-	table.sort(animFrames, sortFramesByIndices(prefix, ""))
+	if #animFrames == 0 then return end
 
 	self.animations[name] = Animation(self, name, animFrames, framerate, looped)
 end

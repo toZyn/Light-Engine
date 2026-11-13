@@ -11,6 +11,7 @@ function FrameCollection:new(texture)
 end
 
 function FrameCollection:destroy()
+	self._prefixFrames = nil
 	for _, frame in pairs(self.frames) do
 		frame:destroy()
 	end
@@ -18,7 +19,31 @@ function FrameCollection:destroy()
 end
 
 function FrameCollection:add(frame)
+	self._prefixFrames = nil
 	table.insert(self.frames, frame)
+end
+
+function FrameCollection:getFramesByPrefix(prefix)
+	local frames = self.frames
+	local cache = self._prefixFrames
+	if not cache or cache.source ~= frames or cache.count ~= #frames then
+		cache = {source = frames, count = #frames, matches = {}}
+		self._prefixFrames = cache
+	end
+	local found = cache.matches[prefix]
+	if found then return found end
+	found = {}
+	for _, frame in ipairs(frames) do
+		if frame.name:sub(1, #prefix) == prefix then found[#found + 1] = frame end
+	end
+	local start = #prefix + 1
+	table.sort(found, function(a, b)
+		local an, bn = tonumber(a.name:sub(start)), tonumber(b.name:sub(start))
+		if an == nil or bn == nil then return a.name < b.name end
+		return an < bn
+	end)
+	cache.matches[prefix] = found
+	return found
 end
 
 function FrameCollection:getFrame(index)

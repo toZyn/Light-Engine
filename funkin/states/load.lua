@@ -44,9 +44,7 @@ function LoadState:update(dt)
 		if game.sound.music then
 			game.sound.music:cancelFade()
 		end
-		Timer.wait(0.056, function()
-			game.switchState(self.nextState)
-		end)
+		game.switchState(self.nextState)
 	end
 	LoadState.super.update(self, dt)
 	self.script:call("postUpdate", dt)

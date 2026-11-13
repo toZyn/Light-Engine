@@ -259,13 +259,12 @@ end
 function Script:call(func, ...)
 	if self.closed then return true end
 
-	if self.__failedfunc[func] then return end
-
 	local f = rawget(self.variables, func)
 	if f and type(f) == "function" then
+		if self.__failedfunc[func] then return end
 		local s, err = xpcall(f, captureError, ...)
 		if s then
-			if err ~= nil and pcall(type, err) then
+			if err ~= nil then
 				return err
 			end
 			return true

@@ -3,7 +3,7 @@ local mobile = love.system.getDevice and love.system.getDevice() == 'Mobile' or 
 local MAX_THREADS, MAX_UPLOADS = mobile and 2 or 4, mobile and 1 or 2
 local THREAD_TIMEOUT = 10
 local code = assert(love.filesystem.read('funkin/backend/paths/thread.lua'))
-local queue = {tasks = {}, callbacks = {}}
+local queue = {tasks = {}, callbacks = {}, head = 1}
 local active, pending, retired = {}, {}, {}
 local generation = 0
 local session = tostring(love.timer.getTime()) .. '_' .. tostring({}):gsub('[^%w]', '')
@@ -50,6 +50,7 @@ local function cleanupRetired()
  end
  return live
 end
+local function queuedCount() return #queue.tasks - queue.head + 1 end
 local function ensureThreads()
  local retiredLive = cleanupRetired()
  for i = #group.threads, 1, -1 do
@@ -58,7 +59,7 @@ local function ensureThreads()
   if err then error('Async worker startup/runtime failed: ' .. err, 0) end
   if not thread:isRunning() then table.remove(group.threads, i) end
  end
- local needed = math.min(MAX_THREADS - retiredLive, #queue.tasks + count(active))
+ local needed = math.min(MAX_THREADS - retiredLive, queuedCount() + count(active))
  while #group.threads < needed do
   local thread = love.thread.newThread(code)
   group.threads[#group.threads + 1] = thread
@@ -73,12 +74,14 @@ local processors = {
 }
 function async.processQueue()
  ensureThreads()
- while #queue.tasks > 0 and count(active) < #group.threads do
-  local task = table.remove(queue.tasks, 1)
+ while queuedCount() > 0 and count(active) < #group.threads do
+  local task = queue.tasks[queue.head]
+  queue.head = queue.head + 1
   active[task[3]] = task
   group.tasks:push(task)
   lastWork = love.timer.getTime()
  end
+ if queuedCount() == 0 then queue.tasks = {}; queue.head = 1 end
 end
 local function callbacks(id, data, err, taskGeneration, path)
  local list = queue.callbacks[id]; queue.callbacks[id] = nil
@@ -120,7 +123,7 @@ function async.update(dt)
   end
  end
  async.processQueue()
- if #queue.tasks == 0 and count(active) == 0 and #group.threads > 0 and love.timer.getTime() - lastWork > THREAD_TIMEOUT then async.stop() end
+ if queuedCount() == 0 and count(active) == 0 and #group.threads > 0 and love.timer.getTime() - lastWork > THREAD_TIMEOUT then async.stop() end
 end
 function async.queueTask(kind, path, callback)
  local id = kind .. ':' .. path
@@ -128,7 +131,7 @@ function async.queueTask(kind, path, callback)
   if callback then queue.callbacks[id] = queue.callbacks[id] or {}; table.insert(queue.callbacks[id], callback) end
   return id
  end
- if #queue.tasks == 0 and count(active) == 0 then stats.queued, stats.completed, stats.failed, stats.lastError = 0, 0, 0, nil end
+ if queuedCount() == 0 and count(active) == 0 then stats.queued, stats.completed, stats.failed, stats.lastError = 0, 0, 0, nil end
  pending[id] = true
  if callback then queue.callbacks[id] = {callback} end
  queue.tasks[#queue.tasks + 1] = {kind, path, id, generation}
@@ -256,6 +259,8 @@ local function loadAtlas(key, kind, callback)
 	end
 
 	local function processAtlas(img)
+		local cached = paths.atlases[cacheKey]
+		if cached then if callback then callback(cached) end; return cached end
 		if not img then
 			if callback then callback(nil) end; return nil
 		end
@@ -332,10 +337,14 @@ function async.loadBatch(files)
 		animate = function(path) async.getAnimateAtlas(path) end
 	}
 
+	local seen = {}
 	for _, file in ipairs(files) do
 		local type, path, suffix, silent = file[1], file[2], file[3], file[4] or file.silent
 		local loader = loaders[type]
-		if loader then loader(path, suffix, silent) end
+		if loader then
+			local key = type .. "\0" .. path .. "\0" .. tostring(suffix)
+			if not seen[key] then seen[key] = true; loader(path, suffix, silent) end
+		end
 	end
 end
 
@@ -348,7 +357,7 @@ function async.getStats()
  local copy
  if lastError then copy = {}; for k, v in pairs(lastError) do copy[k] = v end end
  return {queued = stats.queued, completed = stats.completed, failed = stats.failed,
-  pending = #queue.tasks, inFlight = count(active), workers = #group.threads,
+  pending = queuedCount(), inFlight = count(active), workers = #group.threads,
   retiringWorkers = retiring, maxWorkers = MAX_THREADS, maxUploads = MAX_UPLOADS,
   ready = group.results:getCount(), generation = generation, lastError = copy}
 end
@@ -360,7 +369,7 @@ function async.stop()
  for _ = 1, #group.threads do group.tasks:push('exit') end
  drain(group)
  retired[#retired + 1] = group
- queue, active, pending = {tasks = {}, callbacks = {}}, {}, {}
+ queue, active, pending = {tasks = {}, callbacks = {}, head = 1}, {}, {}
  stats.queued, stats.completed, stats.failed, stats.lastError = 0, 0, 0, nil
  newGroup()
  cleanupRetired()

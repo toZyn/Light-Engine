@@ -5,6 +5,30 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-11-13
+
+### Fixed
+- Changing pause music now schedules instance timers through `Timer.wait`, avoiding
+  the numeric-self crash in `Timer:start`. Repeated changes cancel the previous
+  timer; delayed callbacks still respect a closed pause menu.
+
+### Optimized
+- Freeplay reuses decoded atlas-font descriptors and sorted animation-prefix
+  indexes. Individual font settings and animation frame lists remain independent;
+  cache reloads and atlas additions invalidate the corresponding indexes.
+- Freeplay resets parser caches without forcing an extra full garbage collection,
+  and no longer repeats its initial difficulty-selection work.
+- Script dispatch avoids an unnecessary protected `type` call and skips failed
+  callback lookups when that callback is absent. Every script still runs with its
+  original order, dynamic callbacks, cancellation and protected error handling.
+- Asset queues advance a cursor instead of shifting the remaining queue for each
+  dispatch. Repeated entries in preload batches schedule once; concurrent atlas
+  requests reuse the first parsed result. No resource quality or source bytes change.
+- Loading switches to the prepared state immediately after existing completion
+  checks, removing the additional fixed 56 ms delay.
+
+Android version code: 211.
+
 ## [0.2.8] - 2026-11-13
 
 ### Optimized

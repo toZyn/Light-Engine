@@ -262,16 +262,16 @@ function PauseSubstate:onSettingChange(setting, option)
 	if setting == "gameplay" then
 		if option == "pauseMusic" then
 			if self.activeTimer then
-				Timer.cancel(self.activeTimer)
+				self.activeTimer:cancel()
 				self.activeTimer = nil
 			end
 
-			self.activeTimer = Timer.start(1, function()
+			self.activeTimer = Timer.wait(1, function()
 				if self._closed or not self.parent or ClientPrefs.data.pauseMusic == self.curPauseMusic then return end
 				if self.music then
 					self.music:fade(0.7, self.music:getVolume(), 0)
 				end
-				self.activeTimer = Timer.start(0.8, function()
+				self.activeTimer = Timer.wait(0.8, function()
 					if self._closed or not self.parent or ClientPrefs.data.pauseMusic == self.curPauseMusic then return end
 					if self.music then
 						self.music:stop()
@@ -309,7 +309,7 @@ end
 function PauseSubstate:close()
 	self._closed = true
 	if self.activeTimer then
-		Timer.cancel(self.activeTimer)
+		self.activeTimer:cancel()
 		self.activeTimer = nil
 	end
 

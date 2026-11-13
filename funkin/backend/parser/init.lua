@@ -403,12 +403,12 @@ function Parser.getDummyStage()
 	}
 end
 
-function Parser.clearCache()
+function Parser.clearCache(collect)
 	chartCache = setmetatable({}, weakValue)
 	characterCache = setmetatable({}, weakValue)
 	stageCache = setmetatable({}, weakValue)
 	metaCache = setmetatable({}, weakValue)
-	collectgarbage("collect")
+	if collect ~= false then collectgarbage("collect") end
 end
 
 return Parser

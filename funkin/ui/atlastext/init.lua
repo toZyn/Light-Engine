@@ -6,8 +6,25 @@ AtlasText:exclude(
 
 local Glyph = require "funkin.ui.atlastext.glyph"
 
+local fontDescriptors = {}
+local fontRevision
+local fontPaths
+
 function AtlasText.getFont(name, size)
-	local font = paths.getJSON("data/fonts/" .. name)
+	local revision = paths.contentRevision or 0
+	if fontRevision ~= revision or fontPaths ~= paths then
+		fontDescriptors = {}
+		fontRevision, fontPaths = revision, paths
+	end
+	local descriptor = fontDescriptors[name]
+	if not descriptor then
+		descriptor = paths.getJSON("data/fonts/" .. name)
+		if descriptor then fontDescriptors[name] = descriptor end
+	end
+	local font
+	if descriptor then
+		font = table.clone(descriptor)
+	end
 	if font == nil and AtlasText.defaultFont ~= nil then
 		return AtlasText.defaultFont
 	elseif not font then
