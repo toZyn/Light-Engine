@@ -5,6 +5,18 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-11-13
+
+### Cambiado
+- Los botones virtuales usan las nuevas texturas de `androidcontrols.7z`, con su
+  atlas actualizado y variantes de reposo y presionado.
+
+### Corregido
+- Las hitboxes de las cuatro columnas de juego ya no muestran la textura de los
+  botones: conservan las zonas táctiles completas y su respuesta visual original.
+
+Android version code: 208.
+
 ## [0.2.5] - 2026-11-07
 
 ### Corregido

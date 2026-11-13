@@ -33,6 +33,7 @@ end
 
 function VirtualPad:new(key, x, y, width, height, color)
 	VirtualPad.super.new(self, x, y)
+	self.skinEnabled = true
 	getSkinAtlas()
 	self.width = width or 134
 	self.height = height or 134
@@ -174,7 +175,7 @@ function VirtualPad:update(dt)
 end
 
 function VirtualPad:__render(camera)
-	local atlas = getSkinAtlas()
+	local atlas = self.skinEnabled and getSkinAtlas()
 	local frame = atlas and VirtualPad.skinFramesMap[VirtualPad.skinKeys[self.key]]
 	if not frame then
 		return VirtualPad.super.__render(self, camera)

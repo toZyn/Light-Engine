@@ -528,6 +528,7 @@ function PlayState:enter()
 		self.buttons:add(up)
 		self.buttons:add(right)
 		self.buttons:set({
+			skinEnabled = false,
 			fill = "line",
 			lined = false,
 			blend = "add",
