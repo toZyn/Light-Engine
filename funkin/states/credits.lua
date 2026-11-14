@@ -20,8 +20,9 @@ end
 CreditsState.defaultData = {
 	category("Owners", {
 
-		user("Zyn", "tozyn", "#FF6B35", "Owner Actual · GitHub: toZyn",
+		user("Zyn", "tozyn", "#FF6B35", "Independent Light Engine developer, teenager, and current owner of Light Engine\n\nGreetings! - Zyn",
 			"X", "@Zyn",
+			"Youtube", "@Chatger",
 			"Github", "/toZyn"
 		),
 

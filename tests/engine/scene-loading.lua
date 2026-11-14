@@ -23,13 +23,13 @@ check('cancelled preparation never resumes and errors retain phase and traceback
  assert(not ok and tostring(err):find('Stage props',1,true) and tostring(err):find('broken prop',1,true))
  assert(tostring(err):find('stack traceback',1,true))
 end)
-check('loading view defers work until first update and does not invent completion',function()
+check('loading view defers work until first rendered frame and does not invent completion',function()
  local Screen=require 'funkin.ui.loadscreen'
  local calls=0
  local target={preload=function()calls=calls+1 end}
  local view=Screen(target)
  assert(calls==0,'preload blocks before the loading screen can be drawn')
- view:update(0.016)
+ view:draw();view:update(0.016)
  assert(calls==1 and view.progress<1)
  assert(view.runner:isOnScreen(game.camera),'loading runner is outside the viewport')
  view:destroy()
@@ -41,7 +41,7 @@ check('native song preparation spans frames and finalizes before gameplay',funct
  game.switchState(state,true);game.update(0)
  assert(state._prepareJob and not state._postCreated,'scene construction blocked the state switch')
  local frames=0
- while state._prepareJob and frames<300 do game.update(0.016);frames=frames+1 end
+ while state._prepareJob and frames<300 do state:draw();game.update(0.016);frames=frames+1 end
  assert(frames>3 and not state._prepareJob and state._postCreated,'scene did not finish')
  assert(state.playerNotefield and state.stage.boyfriend and state.startedCountdown)
  game.switchState(FreeplayState(),true);game.update(0)
@@ -58,7 +58,7 @@ check('prepared shader instances are independent and invalid shaders fail once w
 end)
 check('disabled effects and spacing preferences survive mod creation',function()
  local saved=table.clone(ClientPrefs.data)
- ClientPrefs.data.downScroll=true;ClientPrefs.data.middleScroll=false
+ ClientPrefs.data.downScroll=true;ClientPrefs.data.middleScroll=true
  ClientPrefs.data.splitReceptors=true;ClientPrefs.data.splitWidth=600;ClientPrefs.data.noteWidth=90
  ClientPrefs.data.flashingLights=false;ClientPrefs.data.shader=false
  local s=PlayState(false,'bopeebo','normal');s:preload();paths.async.stop()

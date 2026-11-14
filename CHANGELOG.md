@@ -5,6 +5,25 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-11-14
+
+### Fixed
+- Removed forced preference reapplication after mod `postCreate`. User settings
+  remain the default, and explicit mod layout requirements retain their effect
+  without changing saved user preferences.
+- Restored middlescroll-only receptor spacing. Saved mobile split widths no longer
+  push player receptors outside the viewport when middlescroll is disabled.
+- Retained the loading view until the actual state switch, including pause and
+  Game Over retries, and removed the second transition over scene preparation.
+- Isolated loading in its own topmost camera; preparation advances after a drawn
+  frame and readiness is presented before revealing gameplay. Loading handoffs
+  use incremental garbage collection instead of forced full collections.
+
+### Changed
+- Updated Zyn's credits description and YouTube handle to `@Chatger`.
+
+Android version code: 213.
+
 ## [0.3.0] - 2026-11-14
 
 ### Added

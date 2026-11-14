@@ -47,7 +47,6 @@ function GameOverSubstate:resetState()
 	self.lock = true
 
 	self.load = LoadScreen(getmetatable(game.getState())())
-	self.load.cameras = {self.parent.camOther}
 	self:add(self.load)
 end
 
@@ -68,8 +67,8 @@ function GameOverSubstate:update(dt)
 	if self.load then
 		if self.load:isReady() then
 			local state = self.load:handoff(self)
-			state.skipTransIn = false
-			self.parent.skipTransOut = false
+			state.skipTransIn = true
+			self.parent.skipTransOut = true
 			game.switchState(state)
 		end
 	end
