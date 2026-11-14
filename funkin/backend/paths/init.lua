@@ -112,7 +112,54 @@ local function insertFile(path, file, type, tbl)
 	end
 end
 
+local sceneUsed,scenePrevious
+
+function paths.touch(cache,key)
+ if sceneUsed then
+  sceneUsed[cache]=sceneUsed[cache] or {}
+  sceneUsed[cache][key]=true
+ end
+end
+
+function paths.beginScene()
+ sceneUsed,scenePrevious={},{}
+ for _,cache in ipairs({paths.atlases,paths.animate_atlases,paths.images,paths.audio,paths.fonts,paths.skins}) do
+  local snapshot={};for key,obj in pairs(cache) do snapshot[key]=obj end
+  scenePrevious[cache]=snapshot
+ end
+end
+
+function paths.finishScene()
+ if not scenePrevious then return end
+ local Job=require "funkin.backend.scenejob"
+ local textures,frames={},{}
+ for _,cache in ipairs({paths.atlases,paths.animate_atlases}) do
+  for key,obj in pairs(cache) do
+   if not scenePrevious[cache][key] or (sceneUsed[cache] and sceneUsed[cache][key]) or paths.isPersistant(key) then
+    if obj.texture then textures[obj.texture]=true end
+    for _,frame in ipairs(obj.frames or obj.spritemaps or {}) do
+     frames[frame]=true
+     if frame.texture then textures[frame.texture]=true end
+    end
+   end
+  end
+ end
+ for _,cache in ipairs({paths.atlases,paths.animate_atlases,paths.images,paths.audio,paths.fonts,paths.skins}) do
+  for key,obj in pairs(scenePrevious[cache]) do
+   if cache[key]==obj and not (sceneUsed[cache] and sceneUsed[cache][key]) and not textures[obj] and not paths.isPersistant(key) then
+    Job.checkpoint("Releasing previous scene")
+    if obj.release then obj:release() end
+    if obj.destroy then obj:destroy(frames) end
+    cache[key]=nil
+   end
+  end
+ end
+ sceneUsed,scenePrevious=nil,nil
+ collectgarbage("step",64)
+end
+
 local function generate(cache, key, createFunc, error, path)
+ paths.touch(cache,key)
 	local obj = cache[key]
 	if obj then return obj end
 
@@ -149,6 +196,7 @@ local function clear(tbl)
 end
 
 function paths.clearCache()
+ sceneUsed,scenePrevious=nil,nil
 	paths.contentRevision = (paths.contentRevision or 0) + 1
 	local difficulties = package.loaded["funkin.backend.difficulties"]
 	if type(difficulties) == "table" then difficulties.clearCache() end
@@ -382,6 +430,7 @@ function paths.getAudio(key, stream, logError)
 	local cacheKey = path .. (stream and ":stream" or ":static")
 	local cached = paths.audio[path] or paths.audio[cacheKey]
 	if cached then
+  paths.touch(paths.audio,paths.audio[path] and path or cacheKey)
 		paths.audioPaths[cached] = path
 		return cached
 	end

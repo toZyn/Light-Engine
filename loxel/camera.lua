@@ -115,6 +115,11 @@ function Camera:shake(intensity, duration, onComplete, force, axes)
 end
 
 function Camera:flash(color, duration, onComplete, force)
+ if ClientPrefs and ClientPrefs.data.flashingLights == false then
+  self.__flashAlpha,self.__flashDuration=0,0
+  if onComplete then onComplete() end
+  return
+ end
 	if not force and (self.__flashAlpha > 0) then return end
 
 	self.__flashColor = color or Color.WHITE

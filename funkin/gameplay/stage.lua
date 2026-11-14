@@ -1,3 +1,4 @@
+local SceneJob = require "funkin.backend.scenejob"
 local Stage = Group:extend("Stage")
 
 function Stage:new(name)
@@ -74,6 +75,7 @@ function Stage:load()
 		local key, name, player, z, scroll = unpack(props)
 		local char, pos = PlayState.SONG[key], self[name .. "Pos"]
 		if char and char ~= "" then
+			SceneJob.checkpoint("Character: " .. char,0.4)
 			self[name] = Character(pos.x, pos.y, char, player)
 			local character = self[name]
 			character.scrollFactor:set(scroll or 1, scroll or 1)
@@ -101,6 +103,7 @@ function Stage:load()
 				character.x = character.x - character.width / 2
 				character.y = character.y - character.height
 			end
+   character._sceneBasePosition={character.x-pos.x,character.y-pos.y}
 		end
 	end
 	if self.gf and self.dad and self.dad.char:startsWith("gf") then
@@ -119,6 +122,7 @@ function Stage:generateStage()
 	local path = "stages/" .. self.name .. '/'
 
 	for _, prop in pairs(self.data.props) do
+		SceneJob.checkpoint("Stage prop: " .. tostring(prop.name or prop.assetPath),0.5)
 		local instance
 		local isAnimated = prop.animations and next(prop.animations)
 

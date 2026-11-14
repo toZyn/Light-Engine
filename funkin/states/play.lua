@@ -1,5 +1,7 @@
 ---@class PlayState:State
 local PlayState = State:extend("PlayState")
+local SceneJob = require "funkin.backend.scenejob"
+local Scene = require "funkin.backend.scene"
 local PauseButton = require "funkin.gameplay.ui.pausebutton"
 local Information = require "funkin.gameplay.information"
 
@@ -165,6 +167,8 @@ function PlayState:preload()
 
 	for i = 1, 3 do table.insert(list, {"sound", "gameplay/missnote" .. i}) end
 
+	Scene.preload(self)
+	SceneJob.checkpoint("Stage assets",0.1)
 	self.stage = Stage(PlayState.SONG.stage)
 	for _, char in pairs({PlayState.SONG.gfVersion, PlayState.SONG.player2, PlayState.SONG.player1}) do
 		if char and char ~= "" then
@@ -196,11 +200,22 @@ function PlayState:preload()
 			end
 		end
 	end
+	SceneJob.checkpoint("Character assets",0.2)
 	paths.async.loadBatch(list)
 	self._preloaded = true
 end
 
 function PlayState:enter()
+ if not self._incrementalLoad then return self:enterScene() end
+ self._incrementalLoad=nil
+ self._loadingView=self._loadingView or require("funkin.ui.loadscreen")()
+ self._loadingCamera=Camera()
+ game.cameras.add(self._loadingCamera,false)
+ self._loadingView.cameras={self._loadingCamera}
+ self._prepareJob=SceneJob.new(function() self:enterScene() end)
+end
+
+function PlayState:enterScene()
 	self._postCreated = false
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	if not self._preloaded or not self.ratings then
@@ -349,12 +364,14 @@ function PlayState:enter()
 		end
 	end
 
+	SceneJob.checkpoint("Song scripts",0.15)
 	self.scripts:call("create")
 
 	if not self.stage then
 		self.stage = Stage(PlayState.SONG.stage)
 	end
 
+	SceneJob.checkpoint("Building stage",0.25)
 	self.stage:load()
 	self:add(self.stage)
 	if self.stage.script then self.scripts:add(self.stage.script) end
@@ -367,6 +384,7 @@ function PlayState:enter()
 	if self.gf then self.scripts:add(self.gf.script) end
 	if self.dad then self.scripts:add(self.dad.script) end
 
+	SceneJob.checkpoint("Gameplay interface",0.65)
 	self.judgeSprites = Judgements(game.width / 3, 264, PlayState.SONG.skin)
 	self:add(self.judgeSprites)
 
@@ -418,6 +436,7 @@ function PlayState:enter()
 		{"enemy",  self.dad,       enemyVocals,  true},
 	}
 	for _, nf in ipairs(config) do
+		SceneJob.checkpoint("Notes: " .. nf[1],0.7)
 		local field, notes = nf[1] .. "Notefield", PlayState.SONG.notes[nf[1]]
 		self[field] = Notefield(0, y, keys, skin, nf[2], nf[3], speed)
 		local notefield = self[field]
@@ -453,6 +472,7 @@ function PlayState:enter()
 		end
 	end
 
+	SceneJob.checkpoint("Countdown and controls",0.8)
 	self.countdown = Countdown()
 	self.countdown:screenCenter()
 	self:add(self.countdown)
@@ -567,6 +587,8 @@ function PlayState:enter()
 	end
 	self:positionText()
 
+	Scene.prepareCharacters(self)
+	SceneJob.checkpoint("Finishing scene",0.9)
 	if Recorder then
 		Recorder.onGameplayEnter(PlayState.SONG and PlayState.SONG.song)
 	end
@@ -598,9 +620,12 @@ function PlayState:enter()
 	self:recalculateRating()
 
 	PlayState.super.enter(self)
-	collectgarbage()
+	collectgarbage("step",64)
 
 	self.scripts:call("postCreate")
+	self:applyPlayerPreferences()
+	paths.finishScene()
+	self:positionText()
 	self._postCreated = true
 
 	if self.stage and self.stage.fitViewport then
@@ -616,10 +641,11 @@ function PlayState:enter()
 
 	self.lastSongTime = 0
 
-	self:update(0)
+	if not self._prepareJob then self:update(0) end
 end
 
 function PlayState:resize(w, h)
+ if self._prepareJob then self._loadingView:resize();return end
 	if PlayState.super.resize then PlayState.super.resize(self, w, h) end
 	if self.scripts then self.scripts:call("resize", w, h) end
 	if self.stage and self.stage.fitViewport then
@@ -721,6 +747,20 @@ function PlayState:executeCutsceneEvent(event, onComplete)
 	})
 end
 
+function PlayState:applyPlayerPreferences()
+ self.downScroll=ClientPrefs.data.downScroll
+ self.middleScroll=ClientPrefs.data.middleScroll
+ for _,field in ipairs(self.notefields or {}) do
+  if field.is then
+   field.downscroll=self.downScroll
+   field.canSpawnSplash=field==self.playerNotefield and ClientPrefs.data.noteSplash ~= false
+  end
+ end
+ if self.healthBar then self.healthBar.y=game.height*(self.downScroll and 0.1 or 0.9) end
+ if self.playerNotefield and self.enemyNotefield then self:positionNotefields() end
+ if self.buttons and ClientPrefs.data.virtualControls == false then self.buttons:disable() end
+end
+
 function PlayState:positionNotefields()
 	local playerNF, enemyNF = self.playerNotefield, self.enemyNotefield
 	if self.middleScroll then
@@ -737,7 +777,7 @@ function PlayState:positionNotefields()
 		enemyNF:hideNotes(false)
 		enemyNF:setPosition(x, game.height / 2)
 
-		playerNF:setWidth()
+		playerNF:setWidth(ClientPrefs.data.splitReceptors and ClientPrefs.data.splitWidth or nil,ClientPrefs.data.noteWidth)
 		playerNF.x = x + game.width / 2
 	end
 end
@@ -1008,6 +1048,7 @@ function PlayState:measure(m)
 end
 
 function PlayState:focus(f)
+ if self._prepareJob or not self.scripts then return end
 	self.scripts:call("focus", f)
 	self:reconcileReceptors()
 	if Discord and love.autoPause then self:updateDiscordRPC(not f) end
@@ -1048,10 +1089,18 @@ function PlayState:swapCharacter(slot, newCharName)
 	local oldChar = isBF and self.boyfriend or (isGF and self.gf or self.dad)
 	if oldChar and (oldChar.char == newCharName or oldChar.curCharacter == newCharName) then return oldChar end
 
-	local ok, newChar = pcall(Character, 0, 0, newCharName, isBF)
+	local cacheKey=Scene.slot(slot)..':'..newCharName
+ local newChar=self._preparedCharacters and self._preparedCharacters[cacheKey]
+ if newChar then self._preparedCharacters[cacheKey]=nil end
+ local ok=true
+ if not newChar then ok,newChar=pcall(Character,0,0,newCharName,isBF) end
 	if not ok or not newChar then return nil end
 
-	local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
+ if newChar._sceneBasePosition then newChar:setPosition(unpack(newChar._sceneBasePosition)) end
+ if newChar._sceneBaseCameraPosition then newChar.cameraPosition:set(unpack(newChar._sceneBaseCameraPosition)) end
+ if newChar._deferredScript then newChar:activateScript() end
+ if oldChar then newChar.zIndex=oldChar.zIndex end
+ local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
 	local camPoint = isBF and self.stage.boyfriendCam or (isGF and self.stage.gfCam or self.stage.dadCam)
 	if posPoint then
 		newChar:setPosition(newChar.x + posPoint.x, newChar.y + posPoint.y)
@@ -1110,7 +1159,16 @@ function PlayState:swapCharacter(slot, newCharName)
 	if self.camTarget == oldChar then
 		self.camTarget = newChar
 	end
-	if oldChar then oldChar:destroy() end
+ if oldChar then
+  if self._preparedCharacters then
+   oldChar.script=nil
+   oldChar._deferredScript=true
+   local oldKey=Scene.slot(slot)..':'..oldChar.char
+   local existing=self._preparedCharacters[oldKey]
+   if existing then existing:destroy() end
+   self._preparedCharacters[oldKey]=oldChar
+  else oldChar:destroy() end
+ end
 	return newChar
 end
 
@@ -1163,14 +1221,32 @@ function PlayState:resetState()
 end
 
 function PlayState:update(dt)
+ if self._prepareJob then
+  local job=self._prepareJob
+  if job.done then
+   self._prepareJob=nil
+   self._loadingView:destroy();self._loadingView=nil
+   game.cameras.remove(self._loadingCamera);self._loadingCamera=nil
+   require("funkin.backend.benchmark").ready()
+   self.lastTick=love.timer.getTime()
+   return
+  end
+  job:step()
+  table.delete(game.cameras.list,self._loadingCamera)
+  table.insert(game.cameras.list,self._loadingCamera)
+  self._loadingView.stageProgress=0.5+job.progress*0.5
+  self._loadingView.phase=job.phase
+  self._loadingView:update(dt)
+  return
+ end
 	local realDt = dt
 	if game.keys.justPressed.F5 then
 		self:resetState()
 	end
 	if self.load then
 		self.load:update(dt)
-		if paths.async.getProgress() == 1 then
-			local state = self.load.nextState
+		if self.load:isReady() then
+			local state = self.load:handoff(self)
 			state.skipTransIn = true
 			self.skipTransOut = true
 			game.switchState(state)
@@ -1394,6 +1470,7 @@ function PlayState:update(dt)
 end
 
 function PlayState:draw()
+ if self._prepareJob then self._loadingView:draw();return end
 	self.scripts:call("draw")
 	PlayState.super.draw(self)
 	self.scripts:call("postDraw")
@@ -1413,8 +1490,8 @@ function PlayState:onSettingChange(category, setting)
 				end
 
 				self.healthBar.y = game.height * (downscroll and 0.1 or 0.9)
-				self:positionText()
 				self.downScroll = downscroll
+				self:positionText()
 				self:positionNotefields()
 			end,
 			[{"middleScroll", "splitReceptors", "noteWidth", "splitWidth"}] = function()
@@ -1707,6 +1784,7 @@ function PlayState:getKeyFromEvent(controls)
 end
 
 function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
+ if self._prepareJob then return end
 	if isrepeat then return end
 	if self.substate and not self.persistentUpdate then return end
 	if self:hasActiveDialogue() then return end
@@ -1756,6 +1834,7 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 end
 
 function PlayState:onKeyRelease(key, type, scancode, time)
+ if self._prepareJob then return end
 	if self.substate and not self.persistentUpdate then return end
 	local boundControls = controls:getControlsFromSource(type .. ":" .. key)
 
@@ -1933,6 +2012,14 @@ function PlayState:updateDiscordRPC(paused)
 end
 
 function PlayState:leave()
+ require("funkin.backend.benchmark").finish()
+ Scene.disposeCharacters(self)
+ if self._prepareJob then
+  self._prepareJob:cancel();self._prepareJob=nil
+  if self._loadingView then self._loadingView:destroy();self._loadingView=nil end
+  if self._loadingCamera then game.cameras.remove(self._loadingCamera);self._loadingCamera=nil end
+ end
+ if not self.scripts then return end
 	if Recorder then Recorder.onSongEnd() end
 	self.scripts:call("leave")
 

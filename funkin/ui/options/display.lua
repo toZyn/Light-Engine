@@ -24,6 +24,9 @@ local data = {
 		ClientPrefs.data.margin = value
 	end},
 
+	{"PERFORMANCE"},
+	{"performanceCapture", "Capture performance report", "boolean"},
+
 	{"RECORDING"},
 	{"screenRecording", "Screen recording", "boolean", function(add, optionsUI)
 		if add ~= 0 then

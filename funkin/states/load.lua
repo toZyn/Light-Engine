@@ -39,8 +39,13 @@ function LoadState:update(dt)
 		return
 	end
 
-	if paths.async.getProgress() == 1 and not self._loaded then
+	if self.load:isReady() and not self._loaded then
 		self._loaded = true
+  if self.nextState.enterScene then
+   self.nextState._incrementalLoad=true
+   self.nextState._loadingView=self.load
+   self:remove(self.load)
+  end
 		if game.sound.music then
 			game.sound.music:cancelFade()
 		end
@@ -50,7 +55,12 @@ function LoadState:update(dt)
 	self.script:call("postUpdate", dt)
 end
 
+function LoadState:resize()
+ if self.load then self.load:resize() end
+end
+
 function LoadState:leave()
+ if self.load and not self._loaded then self.load:cancel();paths.async.stop() end
 	self.script:call("leave")
 	if self.notCreated then
 		self.script:call("postLeave")

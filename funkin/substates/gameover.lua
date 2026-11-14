@@ -66,8 +66,8 @@ end
 function GameOverSubstate:update(dt)
 	self.scripts:call("gameOverUpdate", dt)
 	if self.load then
-		if paths.async.getProgress() == 1 then
-			local state = self.load.nextState
+		if self.load:isReady() then
+			local state = self.load:handoff(self)
 			state.skipTransIn = false
 			self.parent.skipTransOut = false
 			game.switchState(state)

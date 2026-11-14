@@ -5,6 +5,43 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-14
+
+### Added
+- Cooperative scene preparation across frames, including stage props, characters,
+  note fields, interface and resource retirement. Progress covers construction as
+  well as worker decoding; completion is no longer inferred from the file queue alone.
+- Native optional `songs/<song>/scene.json` manifests for assets, shaders and
+  replacement characters; chart character-change events are discovered automatically.
+- Prepared replacement visuals with activation-time scripts and reusable instances;
+  repeated swaps restore their base position and camera offsets.
+- Shader validation/compilation before scene construction, independent prepared
+  instances, per-scene failure caching and device/compiler diagnostics.
+- Supplied FunkinLoading artwork, runner animations and fonts adapted to the
+  native loading view. No fixed-time or user-skippable fake completion.
+- Scene manifest editor, resource validator, minimal native example, performance
+  capture option and reproducible benchmark/comparison tools. See
+  [scene preparation documentation](docs/preparacion-de-escenas.md).
+
+### Fixed
+- Restart/retry/F5 loading waits for actual preparation rather than a temporarily
+  empty async queue. Direct editor entry remains supported.
+- Old unused cache entries retire after scene teardown; retained atlas texture and
+  shared-frame dependencies are protected.
+- Player preferences are reapplied after mod creation; spacing also works outside
+  middle scroll. New notefields inherit downscroll, Shader respects the effects
+  preference, and direct camera flashes respect the flashing-lights preference.
+- Partial entry ignores gameplay input and guards resize/focus handling.
+
+### Verification
+- Native regression suites and tools cover incremental entry, cancellation/error
+  handling, shader isolation, preferences, character reuse and shared atlas frames.
+- Benchmark smoke checks use Linux/offscreen; no physical Android performance
+  improvement is claimed. Arbitrary scripts and individual driver calls remain
+  indivisible and can still produce a long frame.
+
+Android version code: 212.
+
 ## [0.2.9] - 2026-11-13
 
 ### Fixed

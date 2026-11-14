@@ -3,15 +3,22 @@ local Character = Sprite:extend("Character")
 Character.directions = {"left", "down", "up", "right"}
 Character.editorMode = false
 
-function Character:new(x, y, char, isPlayer)
+function Character:activateScript()
+ self._deferredScript=nil
+ self.script=Script("data/characters/"..self.char,false)
+ self.script:linkObject(self)
+ self.script:set("self",self)
+ self.script:call("create")
+end
+
+function Character:new(x, y, char, isPlayer, deferScript)
+ local originX,originY=x or 0,y or 0
 	Character.super.new(self, x, y)
 
-	if not Character.editorMode then
-		self.script = Script("data/characters/" .. char, false)
-		self.script:linkObject(self)
-		self.script:set("self", self)
-		self.script:call("create")
-	end
+ self.char=char or "bf"
+ if not Character.editorMode then
+  if deferScript then self._deferredScript=true else self:activateScript() end
+ end
 
 	self.char = char or "bf"
 	self.isPlayer = isPlayer == true
@@ -177,6 +184,8 @@ function Character:new(x, y, char, isPlayer)
 
 	self:setPosition(self.x + position.x, self.y + position.y)
 	self.type = type
+ self._sceneBasePosition={self.x-originX,self.y-originY}
+ self._sceneBaseCameraPosition={self.cameraPosition.x,self.cameraPosition.y}
 
 	self:dance()
 	self.anim:finish()

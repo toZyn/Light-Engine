@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Light Engine · Scene manifest</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui;background:#111;color:#eee}body{max-width:1000px;margin:50px auto;padding:0 24px}h1{font-size:28px}p{color:#aaa;line-height:1.6}textarea{box-sizing:border-box;width:100%;height:380px;padding:20px;background:#191919;color:#eee;border:1px solid #444;border-radius:8px;font:14px/1.6 monospace}button,input{font:inherit}button{background:#eee;color:#111;border:0;border-radius:6px;padding:10px 16px;cursor:pointer;margin:16px 12px 0 0}pre{white-space:pre-wrap;color:#ccc}label{display:block;margin:24px 0 12px}a{color:#ddd}
+</style>
+<h1>Scene manifest</h1>
+<p>Declare assets, shaders and replacement characters before a song starts. Save as <strong>songs/&lt;song&gt;/scene.json</strong> inside your native mod. This editor checks structure; the CLI checks files and the engine compiles shaders on your device.</p>
+<label>Open manifest <input id="file" type="file" accept=".json,application/json"></label>
+<label for="source">Scene JSON</label>
+<textarea id="source" spellcheck="false">{
+  "assets": [["image", "stages/stage/stageback"]],
+  "shaders": ["wave"],
+  "characters": [{"slot": "dad", "character": "pico"}]
+}</textarea>
+<button id="validate">Validate</button><button id="download">Download scene.json</button>
+<pre id="result" role="status" aria-live="polite"></pre>
+<script>
+const source=document.querySelector('#source'),result=document.querySelector('#result');
+function validate(){
+ let data;
+ try{data=JSON.parse(source.value)}catch(error){throw Error('JSON: '+error.message)}
+ if(!data||Array.isArray(data)||typeof data!=='object')throw Error('Scene must be an object');
+ const kinds=['image','sound','audio','inst','voices','animate'];
+ const slots=['bf','dad','gf','boyfriend','girlfriend','player','opponent','player1','player2','gfversion','0','1','2'];
+ for(const key of ['assets','shaders','characters']){
+  const entries=data[key]??[];
+  if(!Array.isArray(entries))throw Error(key+' must be an array');
+  entries.forEach((entry,index)=>{
+   let valid;
+   if(key==='assets')valid=Array.isArray(entry)&&kinds.includes(entry[0])&&typeof entry[1]==='string'&&entry[1].length>0;
+   else if(key==='shaders')valid=typeof entry==='string'&&entry.length>0;
+   else valid=entry&&typeof entry.character==='string'&&entry.character.length>0&&slots.includes(String(entry.slot??'dad').toLowerCase());
+   if(!valid)throw Error(key+'['+index+'] is invalid');
+  });
+ }
+ return data;
+}
+function check(){try{const data=validate();result.textContent='Structure valid. Use scene_manifest.py to check files.';return data}catch(error){result.textContent=error.message;return null}}
+document.querySelector('#validate').onclick=check;
+document.querySelector('#download').onclick=()=>{const data=check();if(!data)return;const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)+'\n'],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='scene.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+document.querySelector('#file').onchange=async event=>{const file=event.target.files[0];if(file){source.value=await file.text();check()}};
+</script>
+</html>
