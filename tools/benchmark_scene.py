@@ -38,7 +38,11 @@ def main():
             if entry.name not in {'.git', 'main.lua', 'conf.lua', 'test-results', 'release', 'android', 'docs', 'tools', '.github', '.ci', '.superpowers', 'mods', 'addons', '__pycache__'}:
                 (runner / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
         (runner / 'conf.lua').write_text("function love.conf(t) t.identity='com.zyn.lightengine.benchmark';t.window.width=1280;t.window.height=720 end")
-        script = f'''dofile({lua(engine / 'main.lua')})
+        script = f'''local project=require 'project'
+project.company='LightEngineBenchmarks'
+project.file='isolated'
+project.package='com.zyn.lightengine.benchmark'
+dofile({lua(engine / 'main.lua')})
 local B=assert(loadfile({lua(ROOT / 'funkin/backend/benchmark.lua')}))()
 local oldLoad,oldUpdate,oldDraw=love.load,love.update,love.draw
 local elapsed,done=0,false

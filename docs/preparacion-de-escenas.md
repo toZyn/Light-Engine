@@ -144,7 +144,8 @@ python3 tools/benchmark_scene.py --engine . --love love --song bopeebo --difficu
 python3 tools/compare_benchmarks.py antes.json despues.json
 ```
 
-La herramienta ejecuta contenido base con botplay en un proceso nuevo por prueba.
+La herramienta ejecuta contenido base con botplay en un proceso nuevo por prueba,
+con identidad y preferencias aisladas de la partida habitual.
 Calcula SHA-256 de `assets`, excluyendo únicamente los gráficos y fuentes de la
 pantalla de carga cambiados por esta versión. No carga mods o addons. Esta prueba
 compara el motor con el mismo contenido jugable. Para un mod, prepara el mismo
