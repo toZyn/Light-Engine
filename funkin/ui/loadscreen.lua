@@ -5,6 +5,8 @@ function LoadScreen:new(nextState)
  LoadScreen.super.new(self)
  self.scrollFactor:set(0,0)
  self.time,self.progress,self.phase=0,0,'Preparing'
+ self.drawSerial,self.workSerial=0,0
+ self:attach()
  self.nextState=nextState
  if nextState and nextState.enterScene then
   paths.beginScene()
@@ -48,12 +50,45 @@ function LoadScreen:isReady()
  return self.preloadJob and self.preloadJob.done and paths.async.getProgress()==1
 end
 
+function LoadScreen:attach()
+ if self._handoffOwner then
+  table.delete(self._handoffOwner.members,self)
+  self._handoffOwner=nil
+ end
+ if not self.camera or not table.find(game.cameras.list,self.camera) then
+  self.camera=game.cameras.add(Camera(),false)
+ end
+ self.cameras={self.camera}
+end
+
+function LoadScreen:advance(job)
+ if self.drawSerial<=self.workSerial then return false end
+ self.workSerial=self.drawSerial
+ job:step()
+ return true
+end
+
+function LoadScreen:hasPresentedWork()
+ return self.drawSerial>self.workSerial
+end
+
+function LoadScreen:draw()
+ if self.camera then
+  table.delete(game.cameras.list,self.camera)
+  table.insert(game.cameras.list,self.camera)
+ end
+ LoadScreen.super.draw(self)
+ self.drawSerial=self.drawSerial+1
+end
+
 function LoadScreen:handoff(owner)
  local target=self.nextState
  if target.enterScene then
   target._incrementalLoad=true
   target._loadingView=self
-  owner:remove(self)
+  target.skipTransIn=true
+  target.retainOnSwitch={[self]=true}
+  self._handoffOwner=owner
  end
  return target
 end
@@ -76,7 +111,7 @@ end
 
 function LoadScreen:update(dt)
  self.time=self.time+dt
- if self.preloadJob and not self.preloadJob.done then self.preloadJob:step() end
+ if self.preloadJob and not self.preloadJob.done then self:advance(self.preloadJob) end
  local stats=paths.async.getStats()
  if self.stageProgress then
   self.progress=self.stageProgress
@@ -99,6 +134,9 @@ end
 
 function LoadScreen:destroy()
  self:cancel()
+ if self.camera and table.find(game.cameras.list,self.camera) then game.cameras.remove(self.camera) end
+ self.camera=nil
+ self._handoffOwner=nil
  LoadScreen.super.destroy(self)
 end
 

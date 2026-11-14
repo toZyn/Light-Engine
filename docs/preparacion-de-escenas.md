@@ -1,6 +1,6 @@
 # Preparación de escenas y rendimiento
 
-Light Engine 0.3.0 prepara escenas nativas en el hilo principal mediante puntos
+Light Engine 0.3.1 prepara escenas nativas en el hilo principal mediante puntos
 cooperativos, mientras los workers existentes decodifican archivos. Los workers
 no ejecutan scripts ni realizan llamadas gráficas.
 
@@ -22,6 +22,11 @@ El progreso representa **fases**, no una predicción del tiempo restante:
 100 % aparece únicamente al retornar la preparación completa. No existe un
 porcentaje que avance por tiempo ni un temporizador para fingir finalización.
 Los reinicios desde pausa, Game Over y F5 comparten la misma preparación.
+La vista de carga se conserva hasta el cambio efectivo de estado, se dibuja en
+una cámara propia por encima del HUD y se transfiere sin un segundo fundido.
+Cada tramo de preparación espera un fotograma dibujado; el estado de listo se
+presenta antes de retirar la vista. Esto evita huecos negros o fotogramas de
+partida intercalados entre ambas fases de la carga.
 La entrada directa desde editores conserva su ruta síncrona compatible.
 
 Los puntos de trabajo nativos se reparten entre actualizaciones. Una llamada
@@ -84,11 +89,18 @@ La gestión nativa no puede seguir referencias creadas fuera de estas APIs.
 
 ## Preferencias
 
-El motor vuelve a aplicar downscroll, centrado, ancho/separación y splashes
-al terminar `postCreate`; los nuevos Notefields heredan downscroll. Los cambios
-de opciones durante pausa siguen actualizando el diseño. La separación se aplica
-también fuera del modo centrado. Los controles continúan pasando por el registro
-nativo de bindings y los controles virtuales respetan su preferencia global.
+La configuración del usuario es el valor inicial de downscroll, centrado,
+controles y efectos. Si un mod necesita una disposición propia, sus callbacks
+`create`/`postCreate` pueden modificar explícitamente el estado y los notefields.
+El motor no vuelve a imponer los valores del usuario después de `postCreate` ni
+modifica las preferencias guardadas para guardar esas exigencias del mod.
+
+Los cambios desde las opciones de pausa actualizan la partida inmediatamente y
+se comunican a `onSettingChange` del mod. Los mods con requisitos permanentes
+pueden volver a aplicar allí sus ajustes a la escena; deben dejar intactos los
+campos que no necesiten modificar. `splitReceptors`, `splitWidth` y `noteWidth`
+pertenecen a **MIDDLESCROLL RECEPTORS**: fuera de middlescroll se conserva la
+disposición nativa de dos lados, sin desplazar flechas fuera de pantalla.
 
 `Shader` respeta `ClientPrefs.data.shader`. `Camera:flash` respeta
 `flashingLights`, incluso si un mod llama a la cámara directamente. Las cámaras

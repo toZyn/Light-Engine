@@ -367,6 +367,7 @@ end
 function game.textinput(t) TextInput:dispatch(t) end
 
 local function switch(state)
+	local retained = state.retainOnSwitch or {}
 	game.cameras.reset()
 	game.sound.destroy()
 
@@ -382,16 +383,16 @@ local function switch(state)
 
 	for _, s in ipairs(Gamestate.stack) do
 		for _, o in pairs(s.members) do
-			if type(o) == "table" and o.destroy then o:destroy() end
+			if type(o) == "table" and o.destroy and not retained[o] then o:destroy() end
 		end
 		if s.substate then
 			Gamestate.pop(table.find(Gamestate.stack, s.substate))
 			for _, o in pairs(s.substate.members) do
-				if type(o) == "table" and o.destroy then o:destroy() end
+				if type(o) == "table" and o.destroy and not retained[o] then o:destroy() end
 			end
 			s.substate = nil
 		end
-		collectgarbage()
+		if next(retained) then collectgarbage("step",64) else collectgarbage() end
 	end
 
 	triggerCallback(game.onPreStateEnter, state)
@@ -401,7 +402,7 @@ local function switch(state)
 
 	triggerCallback(game.onPostStateSwitch, state)
 
-	collectgarbage()
+	if next(retained) then collectgarbage("step",64) else collectgarbage() end
 end
 
 function game.update(real_dt)

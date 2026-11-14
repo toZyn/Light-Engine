@@ -440,6 +440,7 @@ check("PlayState:preload and LoadScreen resolve default, pixel, mod skins, and p
 		local loadState = LoadState(PlayState(false, nil, testCase.diff))
 		game.switchState(loadState, true)
 		game.update(1 / 60)
+  loadState:draw();game.update(1 / 60)
 		assert(type(PlayState.SONG.skin) == "table" and type(PlayState.SONG.skin.getPath) == "function",
 			"PlayState:preload must resolve PlayState.SONG.skin into a Skin instance with :getPath()")
 		assert(PlayState.SONG.skin.skin == testCase.expected,

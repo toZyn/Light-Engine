@@ -209,9 +209,9 @@ function PlayState:enter()
  if not self._incrementalLoad then return self:enterScene() end
  self._incrementalLoad=nil
  self._loadingView=self._loadingView or require("funkin.ui.loadscreen")()
- self._loadingCamera=Camera()
- game.cameras.add(self._loadingCamera,false)
- self._loadingView.cameras={self._loadingCamera}
+ self._loadingView:attach()
+ self.retainOnSwitch=nil
+ self._loadingCamera=self._loadingView.camera
  self._prepareJob=SceneJob.new(function() self:enterScene() end)
 end
 
@@ -623,9 +623,7 @@ function PlayState:enterScene()
 	collectgarbage("step",64)
 
 	self.scripts:call("postCreate")
-	self:applyPlayerPreferences()
 	paths.finishScene()
-	self:positionText()
 	self._postCreated = true
 
 	if self.stage and self.stage.fitViewport then
@@ -777,7 +775,7 @@ function PlayState:positionNotefields()
 		enemyNF:hideNotes(false)
 		enemyNF:setPosition(x, game.height / 2)
 
-		playerNF:setWidth(ClientPrefs.data.splitReceptors and ClientPrefs.data.splitWidth or nil,ClientPrefs.data.noteWidth)
+		playerNF:setWidth()
 		playerNF.x = x + game.width / 2
 	end
 end
@@ -1216,24 +1214,21 @@ end
 
 function PlayState:resetState()
 	self.load = LoadScreen(getmetatable(game.getState())())
-	self.load.cameras = {self.camOther}
 	self:add(self.load)
 end
 
 function PlayState:update(dt)
  if self._prepareJob then
   local job=self._prepareJob
-  if job.done then
+  if job.done and self._loadingView:hasPresentedWork() then
    self._prepareJob=nil
    self._loadingView:destroy();self._loadingView=nil
-   game.cameras.remove(self._loadingCamera);self._loadingCamera=nil
+   self._loadingCamera=nil
    require("funkin.backend.benchmark").ready()
    self.lastTick=love.timer.getTime()
    return
   end
-  job:step()
-  table.delete(game.cameras.list,self._loadingCamera)
-  table.insert(game.cameras.list,self._loadingCamera)
+  if not job.done then self._loadingView:advance(job) end
   self._loadingView.stageProgress=0.5+job.progress*0.5
   self._loadingView.phase=job.phase
   self._loadingView:update(dt)
@@ -2017,7 +2012,7 @@ function PlayState:leave()
  if self._prepareJob then
   self._prepareJob:cancel();self._prepareJob=nil
   if self._loadingView then self._loadingView:destroy();self._loadingView=nil end
-  if self._loadingCamera then game.cameras.remove(self._loadingCamera);self._loadingCamera=nil end
+  self._loadingCamera=nil
  end
  if not self.scripts then return end
 	if Recorder then Recorder.onSongEnd() end

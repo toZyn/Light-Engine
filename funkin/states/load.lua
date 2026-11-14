@@ -41,11 +41,7 @@ function LoadState:update(dt)
 
 	if self.load:isReady() and not self._loaded then
 		self._loaded = true
-  if self.nextState.enterScene then
-   self.nextState._incrementalLoad=true
-   self.nextState._loadingView=self.load
-   self:remove(self.load)
-  end
+  self.load:handoff(self)
 		if game.sound.music then
 			game.sound.music:cancelFade()
 		end
