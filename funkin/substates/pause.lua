@@ -177,8 +177,8 @@ end
 
 function PauseSubstate:update(dt)
 	if self.load then
-		if paths.async.getProgress() == 1 then
-			local state = self.load.nextState
+		if self.load:isReady() then
+			local state = self.load:handoff(self)
 			state.skipTransIn = true
 			self.parent.skipTransOut = true
 			game.switchState(state)

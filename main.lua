@@ -2,6 +2,7 @@ io.stdout:setvbuf("no")
 
 local Diagnostics = require "funkin.backend.diagnostics"
 local RecoverableErrors = require "funkin.backend.recoverable-errors"
+local Benchmark = require "funkin.backend.benchmark"
 local funkin
 -- Installed before engine imports so initialization errors also reach disk.
 function love.errorhandler(msg)
@@ -84,10 +85,12 @@ function love.update(dt)
 	Diagnostics.checkpoint("running")
 	RecoverableErrors.update()
 	funkin.update(dt)
+	Benchmark.update()
 	game.update(dt)
 end
 
 function love.draw()
+	Benchmark.frame()
 	if Recorder then Recorder.preDraw() end
 	game.draw()
 	if Recorder then Recorder.postDraw() end
@@ -114,7 +117,7 @@ function love.fullscreen(f, t)
 end
 
 function love.quit(isError)
-	if paths and paths.async then paths.async.stop() end
+	if paths and paths.async then paths.async.shutdown() end
 	if FFT and FFT.stop then pcall(FFT.stop) end
 	funkin.quit()
 	game.quit()

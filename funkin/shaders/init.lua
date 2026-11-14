@@ -37,38 +37,69 @@ local function readOrIdentity(path, exists)
 	return path
 end
 
+local prepared, failures = {}, {}
+local SceneJob = require "funkin.backend.scenejob"
+
+local function enabled()
+ return not ClientPrefs or ClientPrefs.data.shader ~= false
+end
+
+local function sourceKey(source)
+ local frag,hasFrag=fileExists(tostring(source)..".frag")
+ local vert,hasVert=fileExists(tostring(source)..".vert")
+ return hasFrag and frag or (hasVert and vert or tostring(source))
+end
+
+local function compile(source)
+ local key=sourceKey(source)
+ if failures[key] then return nil,failures[key] end
+ local fragPath,fragExists=fileExists(tostring(source)..".frag")
+ local vertPath,vertExists=fileExists(tostring(source)..".vert")
+ local args={}
+ if fragExists then args[#args+1]=readOrIdentity(fragPath,true) end
+ if vertExists then args[#args+1]=readOrIdentity(vertPath,true) end
+ if #args==0 then args[1]=type(source)=="string" and Shader.sanitizeGLSL(source) or source end
+ local mobile=love.system.getOS()=="Android" or love.system.getOS()=="iOS"
+ local ok,compiled=pcall(function()
+  if love.graphics.validateShader then
+   local valid,message=love.graphics.validateShader(mobile,unpack(args))
+   if not valid then error(message,0) end
+  end
+  return love.graphics.newShader(unpack(args))
+ end)
+ if ok then return compiled end
+ local renderer,version,vendor,device=love.graphics.getRendererInfo()
+ local message="Shader unavailable: "..key.." ["..love.system.getOS().."; "..tostring(renderer).." "..tostring(version).."; "..tostring(vendor).."; "..tostring(device).."]\n"..tostring(compiled)
+ failures[key]=message
+ if Logger then Logger.log("warn",message) end
+ local diagnostics=package.loaded["funkin.backend.diagnostics"]
+ if diagnostics then diagnostics.report(message,debug.traceback()) end
+ return nil,message
+end
+
+function Shader.prepare(source,copies)
+ if not enabled() then return true end
+ local key=sourceKey(source)
+ prepared[key]=prepared[key] or {}
+ copies=math.max(1,math.min(32,math.floor(tonumber(copies) or 1)))
+ while #prepared[key]<copies do
+  SceneJob.checkpoint("Shader: "..tostring(source))
+  local compiled,err=compile(source)
+  if not compiled then return false,err end
+  prepared[key][#prepared[key]+1]=compiled
+ end
+ return true
+end
+
 function Shader:new(source)
-	rawset(self, "uniforms", {})
-
-	local fragPath, fragExists = fileExists(tostring(source) .. ".frag")
-	local vertPath, vertExists = fileExists(tostring(source) .. ".vert")
-
-	local ok, compiled
-	if fragExists and vertExists then
-		ok, compiled = pcall(love.graphics.newShader,
-			readOrIdentity(fragPath, true),
-			readOrIdentity(vertPath, true))
-	elseif fragExists then
-		ok, compiled = pcall(love.graphics.newShader, readOrIdentity(fragPath, true))
-	elseif vertExists then
-		ok, compiled = pcall(love.graphics.newShader, readOrIdentity(vertPath, true))
-	else
-		local src = type(source) == "string" and Shader.sanitizeGLSL(source) or source
-		ok, compiled = pcall(love.graphics.newShader, src)
-	end
-
-	if ok and compiled then
-		rawset(self, "__shader", compiled)
-		if compiled:hasUniform("time") then
-			rawset(self, "__time", 0)
-		end
-		table.insert(Shader.instances, self)
-	else
-		rawset(self, "__shader", nil)
-		if Logger then
-			Logger.log("warn", "Shader compilation skipped (" .. tostring(source) .. "): " .. tostring(compiled))
-		end
-	end
+ rawset(self,"uniforms",{})
+ if not enabled() then return end
+ local pool=prepared[sourceKey(source)]
+ local compiled=pool and table.remove(pool) or compile(source)
+ if not compiled then return end
+ rawset(self,"__shader",compiled)
+ if compiled:hasUniform("time") then rawset(self,"__time",0) end
+ table.insert(Shader.instances,self)
 end
 
 function Shader:update(dt)
@@ -118,6 +149,10 @@ function Shader.updateTime(dt)
 end
 
 function Shader.clear()
+ for _,pool in pairs(prepared) do
+  for _,shader in ipairs(pool) do shader:release() end
+ end
+ prepared,failures={},{}
 	for i = #Shader.instances, 1, -1 do
 		Shader.instances[i]:destroy()
 	end

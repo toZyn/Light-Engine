@@ -18,6 +18,12 @@ KIT_FILES = (
     "docs/crear-mods.md",
     "docs/modding-compatibility.md",
     "tools/create_mod.py",
+    "docs/preparacion-de-escenas.md",
+    "tools/scene_editor.html",
+    "tools/scene_manifest.py",
+    "tools/benchmark_scene.py",
+    "tools/compare_benchmarks.py",
+    "funkin/backend/benchmark.lua",
 )
 
 SKIP_NAMES = {".DS_Store", "Thumbs.db", "__pycache__"}

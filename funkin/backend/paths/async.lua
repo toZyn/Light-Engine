@@ -6,6 +6,7 @@ local code = assert(love.filesystem.read('funkin/backend/paths/thread.lua'))
 local queue = {tasks = {}, callbacks = {}, head = 1}
 local active, pending, retired = {}, {}, {}
 local generation = 0
+local terminated = false
 local session = tostring(love.timer.getTime()) .. '_' .. tostring({}):gsub('[^%w]', '')
 local group
 local stats = {queued = 0, completed = 0, failed = 0, lastError = nil}
@@ -13,6 +14,7 @@ local lastWork = love.timer.getTime()
 local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end; return n end
 local function isUrl(path) return path:sub(1, 7) == 'http://' or path:sub(1, 8) == 'https://' end
 local function getCachePath(path) return isUrl(path) and ('online:' .. path) or path end
+local function touch(cache,key) if paths.touch then paths.touch(cache,key) end end
 local function log(msg) if async.debug and Logger then Logger.log('warn', msg) end end
 local function release(data)
  if type(data) == 'userdata' then pcall(function() data:release() end) end
@@ -67,9 +69,9 @@ local function ensureThreads()
  end
 end
 local processors = {
- image = function(data, path) local key = getCachePath(path); local image = paths.images[key] or love.graphics.newImage(data); paths.images[key] = image; return image, isUrl(path) and path or nil end,
- sound = function(data, path) local key = getCachePath(path); local sound = paths.audio[key] or data; paths.audio[key] = sound; if sound and paths.audioPaths and not isUrl(path) then paths.audioPaths[sound] = path end; return sound, isUrl(path) and path or nil end,
- audio = function(data, path) local key = getCachePath(path); local source = paths.audio[key] or data; paths.audio[key] = source; if source and paths.audioPaths and not isUrl(path) then paths.audioPaths[source] = path end; return source, isUrl(path) and path or nil end,
+ image = function(data, path) local key = getCachePath(path); touch(paths.images, key); local image = paths.images[key] or love.graphics.newImage(data); paths.images[key] = image; return image, isUrl(path) and path or nil end,
+ sound = function(data, path) local key = getCachePath(path); touch(paths.audio,key); local sound = paths.audio[key] or data; paths.audio[key] = sound; if sound and paths.audioPaths and not isUrl(path) then paths.audioPaths[sound] = path end; return sound, isUrl(path) and path or nil end,
+ audio = function(data, path) local key = getCachePath(path); touch(paths.audio,key); local source = paths.audio[key] or data; paths.audio[key] = source; if source and paths.audioPaths and not isUrl(path) then paths.audioPaths[source] = path end; return source, isUrl(path) and path or nil end,
  text = function(data, path) return data, path end
 }
 function async.processQueue()
@@ -126,6 +128,7 @@ function async.update(dt)
  if queuedCount() == 0 and count(active) == 0 and #group.threads > 0 and love.timer.getTime() - lastWork > THREAD_TIMEOUT then async.stop() end
 end
 function async.queueTask(kind, path, callback)
+ if terminated then return nil end
  local id = kind .. ':' .. path
  if pending[id] then
   if callback then queue.callbacks[id] = queue.callbacks[id] or {}; table.insert(queue.callbacks[id], callback) end
@@ -159,6 +162,7 @@ end
 function async.getImage(key, callback, silent)
 	if isUrl(key) then
 		local cache = "online:" .. key
+		touch(paths.images,cache)
 		local obj = paths.images[cache]
 		if obj then
 			if callback then callback(obj, key) end
@@ -168,6 +172,7 @@ function async.getImage(key, callback, silent)
 		return true
 	else
 		local path = findImagePath(key)
+		touch(paths.images,path)
 		local obj = paths.images[path]
 		if obj then
 			if callback then callback(obj) end
@@ -187,6 +192,7 @@ end
 function async.getAudio(key, stream, callback, silent)
 	if isUrl(key) then
 		local cache = "online:" .. key
+		touch(paths.audio,cache)
 		local obj = paths.audio[cache]
 		if obj then
 			if callback then callback(obj, key) end
@@ -196,6 +202,7 @@ function async.getAudio(key, stream, callback, silent)
 		return true
 	else
 		local path = paths.getPath(key .. ".ogg")
+		touch(paths.audio,path)
 		local obj = paths.audio[path]
 		if obj then
 			if callback then callback(obj) end
@@ -223,7 +230,7 @@ function async.getTextFromURL(url, callback)
 end
 
 function async.getMusic(key, callback, silent)
-	return async.getAudio("music/" .. key, true, callback, silent)
+return async.getAudio("music/" .. key, true, callback, silent)
 end
 
 function async.getSound(key, callback, silent)
@@ -245,6 +252,7 @@ local function loadAtlas(key, kind, callback)
 	local ext = kind == "sparrow" and ".xml" or ".txt"
 	local dataPath = paths.getPath("images/" .. key .. ext)
 	local cacheKey = paths.getPath("images/" .. key)
+	touch(paths.atlases,cacheKey)
 	local obj = paths.atlases[cacheKey]
 
 	if obj then
@@ -305,6 +313,7 @@ end
 
 function async.getAnimateAtlas(key, callback)
 	local path = paths.getPath("images/" .. key)
+	touch(paths.animate_atlases,path)
 	local obj = paths.animate_atlases[path]
 
 	if obj then
@@ -374,4 +383,18 @@ function async.stop()
  newGroup()
  cleanupRetired()
 end
+
+function async.shutdown()
+ if terminated then return end
+ terminated=true
+ async.stop()
+ for _,g in ipairs(retired) do
+  for _,thread in ipairs(g.threads) do thread:wait() end
+  drain(g)
+  g.tasks:clear()
+  g.cancel:clear()
+ end
+ retired={}
+end
+
 return async

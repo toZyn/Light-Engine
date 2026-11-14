@@ -1,0 +1,5 @@
+{
+  "assets": [["image", "stages/stage/stageback"]],
+  "shaders": ["wave"],
+  "characters": [{"slot": "dad", "character": "pico"}]
+}

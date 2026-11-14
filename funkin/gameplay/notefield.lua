@@ -25,7 +25,7 @@ function Notefield:new(x, y, keys, skin, character, vocals, speed)
 	self.speed = speed
 	self.drawSize = game.height * 2 + self.noteWidth
 	self.drawSizeOffset = 0
-	self.downscroll = false
+	self.downscroll = ClientPrefs and ClientPrefs.data.downScroll or false
 	self.canSpawnSplash = true
 
 	self.character, self.vocals = character, vocals

@@ -115,7 +115,14 @@ function Camera:shake(intensity, duration, onComplete, force, axes)
 end
 
 function Camera:flash(color, duration, onComplete, force)
-	if not force and (self.__flashAlpha > 0) then return end
+ if not force and (self.__flashAlpha > 0 or self.__disabledFlashRemaining) then return end
+ if ClientPrefs and ClientPrefs.data.flashingLights == false then
+  self.__flashAlpha,self.__flashDuration=0,0
+  self.__disabledFlashRemaining=math.max(0.000001,duration or 1)
+  self.__disabledFlashComplete=onComplete
+  return
+ end
+ self.__disabledFlashRemaining,self.__disabledFlashComplete=nil,nil
 
 	self.__flashColor = color or Color.WHITE
 	duration = duration or 1
@@ -264,6 +271,14 @@ function Camera:clampScroll()
 end
 
 function Camera:update(dt)
+ if self.__disabledFlashRemaining then
+  self.__disabledFlashRemaining=self.__disabledFlashRemaining-dt
+  if self.__disabledFlashRemaining<=0 then
+   local complete=self.__disabledFlashComplete
+   self.__disabledFlashRemaining,self.__disabledFlashComplete=nil,nil
+   if complete then complete() end
+  end
+ end
 	self:syncPixelPerfectWidth()
 	local isnum = type(self.zoom) == "number"
 	self.__zoom.x = isnum and self.zoom or self.zoom.x

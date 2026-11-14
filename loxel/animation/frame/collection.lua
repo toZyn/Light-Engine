@@ -10,10 +10,10 @@ function FrameCollection:new(texture)
 	self.frames = {}
 end
 
-function FrameCollection:destroy()
+function FrameCollection:destroy(retainedFrames)
 	self._prefixFrames = nil
 	for _, frame in pairs(self.frames) do
-		frame:destroy()
+		if not retainedFrames or not retainedFrames[frame] then frame:destroy() end
 	end
 	FrameCollection.super.destroy(self)
 end

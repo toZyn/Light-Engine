@@ -217,3 +217,10 @@ end
 * Mouse Wheel / `CTRL + / -` — Adjusts zoom.
 
 * `CTRL+S` — Saves the character JSON directly.
+
+## Escenas, shaders y medición
+
+Desde 0.3.0 puedes declarar recursos y personajes de reemplazo en
+`songs/<cancion>/scene.json`, preparar shaders, editar el manifiesto sin servidor
+y medir carga/memoria/fotogramas. Consulta
+[Preparación de escenas y rendimiento](preparacion-de-escenas.md).
