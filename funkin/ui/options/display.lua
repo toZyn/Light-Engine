@@ -19,6 +19,8 @@ local data = {
 	end},
 	{"lowQuality", "Low quality",  "boolean"},
 	{"shader",     "Shaders",      "boolean"},
+	{"benchmark", "Capture performance", "boolean"},
+	{"loadingArtwork", "Loading artwork", "string", {"Default", "Custom", "Disable"}},
 	{"margin",     "Screen margin", "number", function(add)
 		local value = math.clamp(ClientPrefs.data.margin + add, 0, game.width / 6)
 		ClientPrefs.data.margin = value

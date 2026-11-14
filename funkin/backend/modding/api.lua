@@ -370,6 +370,7 @@ end
 
 ---Flashes a camera ("game", "hud", "other").
 function ModAPI.flash(color, duration, camName)
+	if ClientPrefs.data.flashingLights==false then return end
 	local cam = resolveCamera(camName or "game") or game.camera
 	if not cam then return end
 	local r, g, b, a = Color.get(color or Color.WHITE)
@@ -562,6 +563,23 @@ function ModAPI.createTemplate(modId, opts)
 	if Mods and Mods.reload then Mods.reload() end
 	if Parser and Parser.clearCache then Parser.clearCache() end
 	return true, dest
+end
+
+function ModAPI.sceneTrack(name,object)
+ local st=game.getState()
+ assert(st.sceneAssets,"No scene manifest loaded")
+ return st.sceneAssets:track(name,object)
+end
+
+function ModAPI.prepareScene(name)
+ local st=game.getState()
+ assert(st.sceneAssets,"No scene manifest loaded")
+ return st.sceneAssets:prepare(name)
+end
+
+function ModAPI.layoutNotes()
+ local st=game.getState()
+ if st and st.positionNotefields then st:positionNotefields() end
 end
 
 return ModAPI

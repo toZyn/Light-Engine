@@ -2,6 +2,9 @@
 local PlayState = State:extend("PlayState")
 local PauseButton = require "funkin.gameplay.ui.pausebutton"
 local Information = require "funkin.gameplay.information"
+local Scenes = require "funkin.backend.modding.scenes"
+local Benchmark = require "funkin.backend.benchmark"
+local Loading = require "funkin.backend.loading"
 
 PlayState.defaultDifficulty = "normal"
 PlayState.transIn = TransitionData(0.5)
@@ -105,6 +108,9 @@ function PlayState:new(storyMode, song, diff)
 end
 
 function PlayState:preload()
+ if ClientPrefs.data.benchmark or os.getenv("LIGHT_BENCHMARK")=="1" then
+  Benchmark.start({song=PlayState.SONG and PlayState.SONG.song,difficulty=PlayState.songDifficulty,preferences=table.clone(ClientPrefs.data),contentId=os.getenv("LIGHT_BENCHMARK_CONTENT")})
+ end
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	local skin = paths.getSkin(PlayState.SONG and PlayState.SONG.skin or "default")
 	PlayState.SONG.skin = skin
@@ -165,6 +171,7 @@ function PlayState:preload()
 
 	for i = 1, 3 do table.insert(list, {"sound", "gameplay/missnote" .. i}) end
 
+	Loading.checkpoint("Queueing stage")
 	self.stage = Stage(PlayState.SONG.stage)
 	for _, char in pairs({PlayState.SONG.gfVersion, PlayState.SONG.player2, PlayState.SONG.player1}) do
 		if char and char ~= "" then
@@ -196,11 +203,28 @@ function PlayState:preload()
 			end
 		end
 	end
+	Loading.checkpoint("Queueing gameplay assets")
 	paths.async.loadBatch(list)
-	self._preloaded = true
+ local manifest=paths.getJSON("songs/"..song.."/scenes")
+ if manifest then
+  self.sceneAssets=Scenes.new(manifest)
+  if self.sceneAssets then
+   Benchmark.content(manifest.contentId)
+   self.sceneAssets:update(0)
+   Shader.prepare(manifest.shaders or {})
+  end
+ end
+ self._preloaded = true
 end
 
 function PlayState:enter()
+ if not self._streamedEntry then return self:_build() end
+ self._loadingOverlay=LoadScreen(nil,self._loadingStyle)
+ self._entryTask=Loading.new(function()self:_build()end)
+ self._loadingOverlay.externalTask=self._entryTask
+end
+
+function PlayState:_build()
 	self._postCreated = false
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	if not self._preloaded or not self.ratings then
@@ -349,12 +373,14 @@ function PlayState:enter()
 		end
 	end
 
+	Loading.checkpoint("Creating scripts")
 	self.scripts:call("create")
 
 	if not self.stage then
 		self.stage = Stage(PlayState.SONG.stage)
 	end
 
+	Loading.checkpoint("Building stage")
 	self.stage:load()
 	self:add(self.stage)
 	if self.stage.script then self.scripts:add(self.stage.script) end
@@ -367,6 +393,7 @@ function PlayState:enter()
 	if self.gf then self.scripts:add(self.gf.script) end
 	if self.dad then self.scripts:add(self.dad.script) end
 
+	Loading.checkpoint("Building judgement UI")
 	self.judgeSprites = Judgements(game.width / 3, 264, PlayState.SONG.skin)
 	self:add(self.judgeSprites)
 
@@ -418,6 +445,7 @@ function PlayState:enter()
 		{"enemy",  self.dad,       enemyVocals,  true},
 	}
 	for _, nf in ipairs(config) do
+		Loading.checkpoint("Building note fields",#self.notefields,2)
 		local field, notes = nf[1] .. "Notefield", PlayState.SONG.notes[nf[1]]
 		self[field] = Notefield(0, y, keys, skin, nf[2], nf[3], speed)
 		local notefield = self[field]
@@ -566,6 +594,7 @@ function PlayState:enter()
 		end
 	end
 	self:positionText()
+	Loading.checkpoint("Finalizing gameplay")
 
 	if Recorder then
 		Recorder.onGameplayEnter(PlayState.SONG and PlayState.SONG.song)
@@ -598,9 +627,10 @@ function PlayState:enter()
 	self:recalculateRating()
 
 	PlayState.super.enter(self)
-	collectgarbage()
+	collectgarbage("step",64)
 
 	self.scripts:call("postCreate")
+	Benchmark.loaded()
 	self._postCreated = true
 
 	if self.stage and self.stage.fitViewport then
@@ -616,10 +646,11 @@ function PlayState:enter()
 
 	self.lastSongTime = 0
 
-	self:update(0)
+	if not self._entryTask then self:update(0) end
 end
 
 function PlayState:resize(w, h)
+ if self._entryTask then self._loadingOverlay:resize();return end
 	if PlayState.super.resize then PlayState.super.resize(self, w, h) end
 	if self.scripts then self.scripts:call("resize", w, h) end
 	if self.stage and self.stage.fitViewport then
@@ -737,7 +768,7 @@ function PlayState:positionNotefields()
 		enemyNF:hideNotes(false)
 		enemyNF:setPosition(x, game.height / 2)
 
-		playerNF:setWidth()
+		playerNF:setWidth(ClientPrefs.data.splitReceptors and ClientPrefs.data.splitWidth or nil,ClientPrefs.data.noteWidth)
 		playerNF.x = x + game.width / 2
 	end
 end
@@ -1163,14 +1194,33 @@ function PlayState:resetState()
 end
 
 function PlayState:update(dt)
-	local realDt = dt
+ if self._entryTask then
+  if controls:pressed("back") then
+   paths.async.stop()
+   game.switchState(MainMenuState(),true)
+   return
+  end
+  local task=self._entryTask
+  self._loadingOverlay:update(dt)
+  if task:step() then
+   self._entryTask=nil
+   self._loadingOverlay:destroy();self._loadingOverlay=nil
+   Benchmark.loaded()
+   self:update(0)
+  end
+  return
+ end
+ if self.sceneAssets then self.sceneAssets:update((PlayState.conductor and PlayState.conductor.time or 0)/1000) end
+ local realDt = dt
 	if game.keys.justPressed.F5 then
 		self:resetState()
 	end
 	if self.load then
 		self.load:update(dt)
-		if paths.async.getProgress() == 1 then
+		if self.load:isReady() then
 			local state = self.load.nextState
+			state._streamedEntry=true
+			state._loadingStyle=self.load.style
 			state.skipTransIn = true
 			self.skipTransOut = true
 			game.switchState(state)
@@ -1394,6 +1444,7 @@ function PlayState:update(dt)
 end
 
 function PlayState:draw()
+ if self._loadingOverlay then self._loadingOverlay:draw();return end
 	self.scripts:call("draw")
 	PlayState.super.draw(self)
 	self.scripts:call("postDraw")
@@ -1442,8 +1493,8 @@ function PlayState:onSettingChange(category, setting)
 			if vocals then vocals.volume = volume end
 		end
 	elseif category == "controls" then
-		controls:unbindPress(self.bindedKeyPress)
-		controls:unbindRelease(self.bindedKeyRelease)
+		if self.bindedKeyPress then controls:unbindPress(self.bindedKeyPress) end
+		if self.bindedKeyRelease then controls:unbindRelease(self.bindedKeyRelease) end
 
 		self.bindedKeyPress = bind(self, self.onKeyPress)
 		controls:bindPress(self.bindedKeyPress)
@@ -1707,6 +1758,7 @@ function PlayState:getKeyFromEvent(controls)
 end
 
 function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
+ if self._entryTask then return end
 	if isrepeat then return end
 	if self.substate and not self.persistentUpdate then return end
 	if self:hasActiveDialogue() then return end
@@ -1825,8 +1877,8 @@ function PlayState:endSong(skip)
 		Highscore.saveScore(PlayState.SONG.song, self.score, self.songDifficulty)
 	end
 	if self.chartingMode or PlayState.chartingMode then
-		controls:unbindPress(self.bindedKeyPress)
-		controls:unbindRelease(self.bindedKeyRelease)
+		if self.bindedKeyPress then controls:unbindPress(self.bindedKeyPress) end
+		if self.bindedKeyRelease then controls:unbindRelease(self.bindedKeyRelease) end
 		game.sound.music.onComplete = nil
 		self.skipResync = true
 		game.switchState(ChartingState())
@@ -1887,8 +1939,8 @@ function PlayState:endSong(skip)
 
 		util.playMenuMusic()
 	end
-	controls:unbindPress(self.bindedKeyPress)
-	controls:unbindRelease(self.bindedKeyRelease)
+	if self.bindedKeyPress then controls:unbindPress(self.bindedKeyPress) end
+	if self.bindedKeyRelease then controls:unbindRelease(self.bindedKeyRelease) end
 	game.sound.music.onComplete = nil
 	self.skipResync = true
 
@@ -1933,8 +1985,11 @@ function PlayState:updateDiscordRPC(paused)
 end
 
 function PlayState:leave()
+ Benchmark.finish()
+ self._entryTask=nil
+ if self._loadingOverlay then self._loadingOverlay:destroy();self._loadingOverlay=nil end
 	if Recorder then Recorder.onSongEnd() end
-	self.scripts:call("leave")
+	if self.scripts then self.scripts:call("leave") end
 
 	PlayState.prevCamFollow = self.camFollow
 	if PlayState.conductor then
@@ -1947,12 +2002,13 @@ function PlayState:leave()
 	if self.timer then self.timer:clear() end
 	if self.tween then self.tween:clear() end
 
-	controls:unbindPress(self.bindedKeyPress)
-	controls:unbindRelease(self.bindedKeyRelease)
+	if self.bindedKeyPress then controls:unbindPress(self.bindedKeyPress) end
+	if self.bindedKeyRelease then controls:unbindRelease(self.bindedKeyRelease) end
 	Parser.clearCache()
 
-	self.scripts:call("postLeave")
-	self.scripts:close()
+	if self.scripts then self.scripts:call("postLeave") end
+	if self.sceneAssets then self.sceneAssets:dispose();self.sceneAssets=nil end
+	if self.scripts then self.scripts:close() end
 end
 
 return PlayState

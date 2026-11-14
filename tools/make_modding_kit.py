@@ -18,6 +18,10 @@ KIT_FILES = (
     "docs/crear-mods.md",
     "docs/modding-compatibility.md",
     "tools/create_mod.py",
+    "tools/benchmark.py",
+    "tools/scene_editor.html",
+    "docs/scene-runtime.md",
+    "docs/performance-comparisons.md",
 )
 
 SKIP_NAMES = {".DS_Store", "Thumbs.db", "__pycache__"}

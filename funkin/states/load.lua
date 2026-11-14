@@ -32,18 +32,26 @@ function LoadState:enter()
 end
 
 function LoadState:update(dt)
-	self.script:call("update", dt)
+ self.script:call("update", dt)
+ if not self.notCreated and controls:pressed("back") then
+  paths.async.stop()
+  if self.nextState.sceneAssets then self.nextState.sceneAssets:dispose() end
+  game.switchState(MainMenuState(),true)
+  return
+ end
 	if self.notCreated then
 		LoadState.super.update(self, dt)
 		self.script:call("postUpdate", dt)
 		return
 	end
 
-	if paths.async.getProgress() == 1 and not self._loaded then
+	if self.load:isReady() and not self._loaded then
 		self._loaded = true
 		if game.sound.music then
 			game.sound.music:cancelFade()
 		end
+		self.nextState._streamedEntry=true
+		self.nextState._loadingStyle=self.load.style
 		game.switchState(self.nextState)
 	end
 	LoadState.super.update(self, dt)

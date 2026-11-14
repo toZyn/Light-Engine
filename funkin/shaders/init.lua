@@ -37,38 +37,56 @@ local function readOrIdentity(path, exists)
 	return path
 end
 
+Shader.prepared={}
+local failures={}
+local function compile(source)
+ local fragPath,fragExists=fileExists(tostring(source)..".frag")
+ local vertPath,vertExists=fileExists(tostring(source)..".vert")
+ local frag=fragExists and readOrIdentity(fragPath,true) or nil
+ local vert=vertExists and readOrIdentity(vertPath,true) or nil
+ if not frag and not vert then frag=type(source)=="string" and Shader.sanitizeGLSL(source) or source end
+ local ok,valid,message=pcall(love.graphics.validateShader,true,frag or vert,frag and vert or nil)
+ if not ok or not valid then return nil,tostring(message or valid) end
+ local success,result=pcall(love.graphics.newShader,frag or vert,frag and vert or nil)
+ if not success then return nil,tostring(result) end
+ return result
+end
+local function failure(source,message)
+ if failures[source] then return end
+ failures[source]=message
+ require("funkin.backend.recoverable-errors").report("Shader unavailable: "..tostring(source)..". The effect was disabled. "..tostring(message),nil,{source="shader"})
+end
+function Shader.prepare(sources)
+ local results={}
+ if ClientPrefs and ClientPrefs.data.shader==false then return results end
+ for index,source in ipairs(sources) do
+  require("funkin.backend.loading").checkpoint("Preparing shaders",index-1,#sources)
+  if type(source)=="string" then
+   local pool=Shader.prepared[source] or {}
+   local program,err
+   if not failures[source] then program,err=compile(source) end
+   if program then pool[#pool+1]=program;Shader.prepared[source]=pool elseif err then failure(source,err) end
+   results[source]=#pool>0
+  end
+ end
+ return results
+end
 function Shader:new(source)
-	rawset(self, "uniforms", {})
-
-	local fragPath, fragExists = fileExists(tostring(source) .. ".frag")
-	local vertPath, vertExists = fileExists(tostring(source) .. ".vert")
-
-	local ok, compiled
-	if fragExists and vertExists then
-		ok, compiled = pcall(love.graphics.newShader,
-			readOrIdentity(fragPath, true),
-			readOrIdentity(vertPath, true))
-	elseif fragExists then
-		ok, compiled = pcall(love.graphics.newShader, readOrIdentity(fragPath, true))
-	elseif vertExists then
-		ok, compiled = pcall(love.graphics.newShader, readOrIdentity(vertPath, true))
-	else
-		local src = type(source) == "string" and Shader.sanitizeGLSL(source) or source
-		ok, compiled = pcall(love.graphics.newShader, src)
-	end
-
-	if ok and compiled then
-		rawset(self, "__shader", compiled)
-		if compiled:hasUniform("time") then
-			rawset(self, "__time", 0)
-		end
-		table.insert(Shader.instances, self)
-	else
-		rawset(self, "__shader", nil)
-		if Logger then
-			Logger.log("warn", "Shader compilation skipped (" .. tostring(source) .. "): " .. tostring(compiled))
-		end
-	end
+ rawset(self,"uniforms",{})
+ if ClientPrefs and ClientPrefs.data.shader==false then return end
+ local pool=Shader.prepared[source]
+ local compiled=pool and table.remove(pool)
+ if pool and #pool==0 then Shader.prepared[source]=nil end
+ local err
+ if not compiled and not failures[source] then compiled,err=compile(source) end
+ if compiled then
+  rawset(self,"__shader",compiled)
+  if compiled:hasUniform("time") then rawset(self,"__time",0) end
+  table.insert(Shader.instances,self)
+ else
+  rawset(self,"__shader",nil)
+  if err then failure(source,err) end
+ end
 end
 
 function Shader:update(dt)
@@ -100,7 +118,10 @@ function Shader:set(name, value)
 	pcall(sh.send, sh, name, value)
 end
 
-function Shader:get() return rawget(self, "__shader") end
+function Shader:get()
+ if ClientPrefs and ClientPrefs.data.shader==false then return nil end
+ return rawget(self,"__shader")
+end
 
 function Shader:destroy()
 	local sh = rawget(self, "__shader")
@@ -118,6 +139,9 @@ function Shader.updateTime(dt)
 end
 
 function Shader.clear()
+ for _,pool in pairs(Shader.prepared) do for _,program in ipairs(pool) do program:release() end end
+ Shader.prepared={}
+ failures={}
 	for i = #Shader.instances, 1, -1 do
 		Shader.instances[i]:destroy()
 	end

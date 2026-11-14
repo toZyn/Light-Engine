@@ -74,6 +74,7 @@ function Stage:load()
 		local key, name, player, z, scroll = unpack(props)
 		local char, pos = PlayState.SONG[key], self[name .. "Pos"]
 		if char and char ~= "" then
+			require("funkin.backend.loading").checkpoint("Building character "..char)
 			self[name] = Character(pos.x, pos.y, char, player)
 			local character = self[name]
 			character.scrollFactor:set(scroll or 1, scroll or 1)
@@ -119,6 +120,7 @@ function Stage:generateStage()
 	local path = "stages/" .. self.name .. '/'
 
 	for _, prop in pairs(self.data.props) do
+		require("funkin.backend.loading").checkpoint("Building stage props")
 		local instance
 		local isAnimated = prop.animations and next(prop.animations)
 

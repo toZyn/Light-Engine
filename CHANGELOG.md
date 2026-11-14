@@ -5,6 +5,41 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-14
+
+### Added
+- Optional song scene manifests with ahead-of-time image/atlas/Animate and character
+  preparation, overlapping resource ownership, tracked object retirement and safe
+  cache eviction. Existing cached resources are borrowed rather than destroyed.
+- Native scene manifest editor, bundled-content example and documentation for
+  resource lifetimes, user preferences and Android shader preparation.
+- Opt-in performance captures exporting loading time, frame timing percentiles,
+  sampled Lua/texture/process memory and device/settings metadata. Content
+  fingerprint and comparison tools reject mismatched runs.
+- OpenGL ES shader validation and a prepared-program pool consumed before gameplay
+  without sharing mutable uniforms. Unsupported effects produce diagnostics.
+
+### Changed
+- Native loading presentation uses the supplied Funkin' Loading visual resources:
+  artwork, running BF/GF, microphone and bouncing letters. Artwork mode is saved
+  in Display options; original resource metadata is retained.
+- Normal loading yields between preload/construction checkpoints and continues
+  drawing during stage, character, note-field and shader preparation. Phase names
+  and real asset counts replace the smoothed percentage; countdown updates begin
+  after construction. Individual GPU operations and custom synchronous callbacks
+  remain indivisible and may exceed the cooperative frame budget.
+- Native scripts receive a read-only preference/control-binding view; attempted
+  preference writes generate a diagnostic instead of changing saved settings.
+- Custom player lane spacing also applies outside middle scroll. Native flash and
+  shader APIs respect effect preferences; custom renderers must follow the same
+  documented contract.
+
+### Verification
+- Added native regression coverage for scene ownership and late callbacks,
+  preference protection, GLES validation, prepared programs, performance export
+  and actual staged menu-to-song construction. Desktop software-rendered checks
+  do not certify performance or driver support on physical Android devices.
+
 ## [0.2.9] - 2026-11-13
 
 ### Fixed

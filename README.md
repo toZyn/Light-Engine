@@ -54,3 +54,7 @@ Please follow our [contributing guidelines](CONTRIBUTING.md) while contributing 
 
 - [Raltyro](https://github.com/Raltyro) (huge thanks to them for the 3d and modchart code)
 - [Ikawa](https://github.com/ikawaluvyu)
+
+## Native scene tools
+
+See [scene assets, loading and Android shaders](docs/scene-runtime.md) and [reproducible performance captures](docs/performance-comparisons.md). Open [the scene editor](tools/scene_editor.html) locally to edit song manifests.

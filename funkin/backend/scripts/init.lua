@@ -164,6 +164,7 @@ function Script:new(path, notFoundMsg, noLink, fullPath)
 			self._addonModules:bind()
 			require("funkin.backend.modding.addonassets").bind(self)
 			require("funkin.backend.recoverable-errors").bind(self)
+			require("funkin.backend.modding.preferences").bind(self)
 
 			self:set("send", function(...)
 				if self.closed then return end

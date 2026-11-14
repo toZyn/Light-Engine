@@ -1,0 +1,7 @@
+{
+  "shaders": [],
+  "scenes": [
+    {"name":"intro-decoration","start":0,"finish":8,"assets":[["image","stages/stage/stage_light"]]},
+    {"name":"next-character","start":12,"finish":24,"lead":4,"characters":["dad"],"assets":[]}
+  ]
+}

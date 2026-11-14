@@ -2,6 +2,8 @@ io.stdout:setvbuf("no")
 
 local Diagnostics = require "funkin.backend.diagnostics"
 local RecoverableErrors = require "funkin.backend.recoverable-errors"
+local Benchmark = require "funkin.backend.benchmark"
+local benchmarkLastFrame
 local funkin
 -- Installed before engine imports so initialization errors also reach disk.
 function love.errorhandler(msg)
@@ -81,6 +83,10 @@ function love.gamepadreleased(joystick, button, ...)
 end
 
 function love.update(dt)
+ local now=love.timer.getTime()
+ local state=game.getState()
+ if benchmarkLastFrame and state and state.is and state:is(PlayState) and state._postCreated and not state._entryTask and not state.paused and not state.startingSong then Benchmark.frame(now-benchmarkLastFrame) end
+ benchmarkLastFrame=now
 	Diagnostics.checkpoint("running")
 	RecoverableErrors.update()
 	funkin.update(dt)
