@@ -152,3 +152,13 @@ check('built-in shader sources validate against GLES',function()
   assert(valid,name..': '..tostring(message))
  end
 end)
+check('disabled flashes preserve callback timing without recursive immediate execution',function()
+ local saved=ClientPrefs.data.flashingLights;ClientPrefs.data.flashingLights=false
+ local camera=Camera();local calls=0
+ camera:flash(Color.WHITE,0.1,function()calls=calls+1 end)
+ assert(calls==0)
+ camera:update(0.05);assert(calls==0 and camera.__flashAlpha==0)
+ camera:update(0.06);assert(calls==1 and camera.__flashAlpha==0)
+ camera:update(0.2);assert(calls==1)
+ camera:destroy();ClientPrefs.data.flashingLights=saved
+end)
