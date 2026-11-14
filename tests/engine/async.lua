@@ -76,6 +76,7 @@ local function test()
  -- Restart workers with a real deterministic HTTP mock; no network required.
  love.filesystem.write('https.lua', [[return {request = function(url)
  if url:find('slow', 1, true) then love.thread.getChannel('async_test_requests'):push(true); love.timer.sleep(0.2) end
+ if url:find('shutdown', 1, true) then love.thread.getChannel('async_test_shutdown_done'):push(true) end
  if url:find('audio', 1, true) then return 200, love.filesystem.read('async-sound.wav') end
  return 200, love.filesystem.read('async-image-1.png')
  end}]])
@@ -159,6 +160,18 @@ local function test()
  for _, value in pairs(paths.images) do value:release() end
  for _, value in pairs(paths.audio) do value:release() end
  love.event.clear()
+ requests:clear()
+ local finished=love.thread.getChannel('async_test_shutdown_done');finished:clear()
+ A.queueTask('image','https://mock.invalid/slow-shutdown.png',function()error('cancelled shutdown callback ran')end)
+ while requests:getCount()==0 do A.update(0.016);love.timer.sleep(0.002) end
+ A.stop()
+ assert(finished:getCount()==0 and A.getStats().retiringWorkers>0)
+ A.shutdown()
+ assert(finished:getCount()==1,'terminal shutdown returned before retired transport finished')
+ local stopped=A.getStats()
+ assert(stopped.workers==0 and stopped.retiringWorkers==0,'terminal shutdown left native workers running')
+ assert(A.queueTask('image','async-image-1.png')==nil,'terminal shutdown must prevent worker restart')
+ A.shutdown()
  print('ASYNC PASSED: bounded workers/uploads, broken HTTPS local loads, failures/progress, remote Source, stop/restart, cache clear, AnimateLibrary and contextual callback errors')
 end
 function love.load()

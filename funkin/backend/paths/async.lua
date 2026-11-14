@@ -6,6 +6,7 @@ local code = assert(love.filesystem.read('funkin/backend/paths/thread.lua'))
 local queue = {tasks = {}, callbacks = {}, head = 1}
 local active, pending, retired = {}, {}, {}
 local generation = 0
+local terminated = false
 local session = tostring(love.timer.getTime()) .. '_' .. tostring({}):gsub('[^%w]', '')
 local group
 local stats = {queued = 0, completed = 0, failed = 0, lastError = nil}
@@ -127,6 +128,7 @@ function async.update(dt)
  if queuedCount() == 0 and count(active) == 0 and #group.threads > 0 and love.timer.getTime() - lastWork > THREAD_TIMEOUT then async.stop() end
 end
 function async.queueTask(kind, path, callback)
+ if terminated then return nil end
  local id = kind .. ':' .. path
  if pending[id] then
   if callback then queue.callbacks[id] = queue.callbacks[id] or {}; table.insert(queue.callbacks[id], callback) end
@@ -228,7 +230,7 @@ function async.getTextFromURL(url, callback)
 end
 
 function async.getMusic(key, callback, silent)
-	return async.getAudio("music/" .. key, true, callback, silent)
+return async.getAudio("music/" .. key, true, callback, silent)
 end
 
 function async.getSound(key, callback, silent)
@@ -381,4 +383,18 @@ function async.stop()
  newGroup()
  cleanupRetired()
 end
+
+function async.shutdown()
+ if terminated then return end
+ terminated=true
+ async.stop()
+ for _,g in ipairs(retired) do
+  for _,thread in ipairs(g.threads) do thread:wait() end
+  drain(g)
+  g.tasks:clear()
+  g.cancel:clear()
+ end
+ retired={}
+end
+
 return async

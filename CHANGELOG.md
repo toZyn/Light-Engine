@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   middle scroll. New notefields inherit downscroll, Shader respects the effects
   preference, and direct camera flashes respect the flashing-lights preference.
 - Partial entry ignores gameplay input and guards resize/focus handling.
+- Terminal shutdown joins cancelled/retired asset workers before native modules
+  close; ordinary scene cancellation stays nonblocking.
 
 ### Verification
 - Native regression suites and tools cover incremental entry, cancellation/error

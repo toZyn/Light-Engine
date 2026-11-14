@@ -117,7 +117,7 @@ function love.fullscreen(f, t)
 end
 
 function love.quit(isError)
-	if paths and paths.async then paths.async.stop() end
+	if paths and paths.async then paths.async.shutdown() end
 	if FFT and FFT.stop then pcall(FFT.stop) end
 	funkin.quit()
 	game.quit()

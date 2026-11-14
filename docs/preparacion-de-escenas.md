@@ -72,7 +72,9 @@ Al comenzar una carga se toma una instantánea de los caches. Durante la precarg
 y la construcción se marcan las entradas reutilizadas. Después del cambio de
 estado y de construir la escena, se liberan las entradas anteriores sin uso.
 Las texturas y los fotogramas compartidos por atlas conservados permanecen
-válidos. Las entradas de `paths.addPersistant` siguen conservándose. Los recursos
+válidos. Las entradas de `paths.addPersistant` siguen conservándose. La cancelación durante
+el juego no espera a las peticiones en curso; el cierre definitivo sí espera a
+que terminen los workers retirados antes de cerrar las bibliotecas nativas. Los recursos
 nuevos declarados para cambios futuros pertenecen a la escena hasta su salida.
 
 Usa `paths.getImage/getAtlas/getAnimateAtlas` y las APIs nativas. Guardar userdata
