@@ -107,3 +107,29 @@ check("dense chart update hit and render frames preserve every playable note", f
 	camera:destroy()
 	canvas:release()
 end)
+
+check("dense render departures compact lane arrays without per-note shifts", function()
+ local field=Notefield(0,0,4,"default")
+ local notes={}
+ for i=1,12000 do notes[i]=field:addNote(Note(0,i%4,0,nil,field.skin)) end
+ for i,lane in ipairs(field.lanes) do
+  field:__prepareLane(i-1,lane,0)
+  lane.drawSize,lane.drawSizeOffset=lane._drawSize,lane._drawSizeOffset
+ end
+ local calls=0
+ for _,lane in ipairs(field.lanes) do
+  local remove=lane.remove
+  lane.remove=function(self,note) calls=calls+1;return remove(self,note) end
+ end
+ local before=love.timer.getTime()
+ for i,lane in ipairs(field.lanes) do field:__prepareLane(i-1,lane,100) end
+ for _,lane in ipairs(field.lanes) do
+  assert(#lane.renderedNotes==0)
+  assert(#lane.members==1 and lane.members[1]==lane.receptor)
+ end
+ print(string.format("DEPARTURE COST notes=%d removals=%d elapsed=%.3fms",#notes,calls,(love.timer.getTime()-before)*1000))
+ assert(calls==0,"render departures shift lane members once per note")
+ assert(#field.activeNotes==#notes,"leaving the viewport discarded playable notes")
+ print(string.format("RENDER DEPARTURES notes=%d elapsed=%.3fms",#notes,(love.timer.getTime()-before)*1000))
+ field:destroy()
+end)

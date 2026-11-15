@@ -5,6 +5,8 @@ function LoadScreen:new(nextState)
  LoadScreen.super.new(self)
  self.scrollFactor:set(0,0)
  self.time,self.progress,self.phase=0,0,'Preparing'
+ self.enterDuration,self.exitDuration=0.22,0.3
+ self.opacity=0
  self.drawSerial,self.workSerial=0,0
  self:attach()
  self.nextState=nextState
@@ -57,6 +59,7 @@ function LoadScreen:attach()
  if not self.camera or not table.find(game.cameras.list,self.camera) then
   self.camera=game.cameras.add(Camera(),false)
  end
+ self.camera.alpha=self.opacity
  self.cameras={self.camera}
 end
 
@@ -78,6 +81,17 @@ function LoadScreen:draw()
  end
  LoadScreen.super.draw(self)
  self.drawSerial=self.drawSerial+1
+ if self.exiting and self.exitTime>=self.exitDuration then self.exitPresented=true end
+end
+
+function LoadScreen:beginExit()
+ if self.exiting then return end
+ self.exiting,self.exitTime=true,0
+ self.exitPresented=false
+end
+
+function LoadScreen:isExitComplete()
+ return self.exiting and self.exitTime>=self.exitDuration and self.exitPresented
 end
 
 function LoadScreen:handoff(owner)
@@ -110,6 +124,15 @@ end
 
 function LoadScreen:update(dt)
  self.time=self.time+dt
+ if self.exiting then
+  self.exitTime=math.min(self.exitDuration,self.exitTime+dt)
+  local t=self.exitTime/self.exitDuration
+  self.opacity=1-t*t*(3-2*t)
+ else
+  local t=math.min(1,self.time/self.enterDuration)
+  self.opacity=t*t*(3-2*t)
+ end
+ if self.camera then self.camera.alpha=self.opacity end
  if self.preloadJob and not self.preloadJob.done then self:advance(self.preloadJob) end
  local stats=paths.async.getStats()
  if self.stageProgress then

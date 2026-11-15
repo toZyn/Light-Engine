@@ -445,14 +445,57 @@ function Notefield:destroy()
 	self.chartNotes = nil
 end
 
+local function compactRendered(lane, keep)
+ local rendered, departed = lane.renderedNotes, lane._departedNotes or {}
+ lane._departedNotes = departed
+ local write, count = 1, #rendered
+ for i = 1, count do
+  local note = rendered[i]
+  if keep and keep[note] then
+   rendered[write], write = note, write + 1
+  elseif note.group == lane then
+   note.group = nil
+   departed[note] = true
+  end
+ end
+ for i = write, count do rendered[i] = nil end
+ if next(departed) then
+  local members = lane.members
+  write, count = 1, #members
+  for i = 1, count do
+   local member = members[i]
+   if departed[member] then
+    if member.leave then member:leave(lane.group) end
+   else
+    members[write], write = member, write + 1
+   end
+  end
+  for i = write, count do members[i] = nil end
+  table.clear(departed)
+ end
+end
+
+function Notefield:prepareGraphics(camera)
+ local SceneJob = require "funkin.backend.scenejob"
+ local canvas = love.graphics.newCanvas(8, 8)
+ for direction = 0, self.keys - 1 do
+  local note = Note(0, direction, 1, nil, self.skin)
+  note.parent, note.group = self, self.lanes[direction + 1]
+  love.graphics.push("all")
+  love.graphics.setCanvas(canvas)
+  love.graphics.clear()
+  local ok, err = pcall(note.__render, note, camera or game.camera)
+  love.graphics.pop()
+  note:destroy()
+  if not ok then canvas:release();error(err, 0) end
+  SceneJob.checkpoint("Preparing note graphics")
+ end
+ canvas:release()
+end
+
 function Notefield:__prepareLane(direction, lane, time)
 	if self.noNoteRender then
-		for i = #lane.renderedNotes, 1, -1 do
-			local note = lane.renderedNotes[i]
-			note.group = nil
-			lane:remove(note)
-			lane.renderedNotes[i] = nil
-		end
+		compactRendered(lane)
 		return
 	end
 
@@ -467,12 +510,7 @@ function Notefield:__prepareLane(direction, lane, time)
 	table.clear(renderedNotesI)
 
 	if size == 0 then
-		for i = #renderedNotes, 1, -1 do
-			local note = renderedNotes[i]
-			note.group = nil
-			lane:remove(note)
-			renderedNotes[i] = nil
-		end
+		compactRendered(lane)
 		return
 	end
 
@@ -514,14 +552,7 @@ function Notefield:__prepareLane(direction, lane, time)
 		noteI = noteI + 1
 	end
 
-	for i = #renderedNotes, 1, -1 do
-		local note = renderedNotes[i]
-		if not renderedNotesI[note] then
-			note.group = nil
-			lane:remove(note)
-			table.remove(renderedNotes, i)
-		end
-	end
+	compactRendered(lane, renderedNotesI)
 end
 
 function Notefield:__render(camera)

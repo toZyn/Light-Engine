@@ -104,6 +104,8 @@ check('loading state transfers live artwork across teardown and presents readine
  for _=1,5 do game.update(0.001) end
  assert(target._prepareJob,'ready view must remain until its frame is drawn')
  target:draw();game.update(0.016)
+ assert(target._prepareJob and view.exiting,"ready view skipped its exit transition")
+ for _=1,30 do target:draw();game.update(0.016) end
  assert(not target._prepareJob and not target._loadingView)
  game.switchState(FreeplayState(),true);game.update(0)
 end)
@@ -127,4 +129,52 @@ check('pause restart retains its loading view across parent and substate teardow
  end
  assert(not target._loadingView)
  game.switchState(FreeplayState(),true);game.update(0)
+end)
+
+check('loading transitions retain intermediate opacity and wait for the final drawn frame',function()
+ local view=Screen()
+ assert(view.camera.alpha==0)
+ view:update(0.11)
+ assert(view.camera.alpha>0 and view.camera.alpha<1)
+ view:update(0.11)
+ assert(view.camera.alpha==1)
+ view:beginExit();view:update(0.15)
+ assert(view.camera.alpha>0 and view.camera.alpha<1)
+ assert(not view:isExitComplete())
+ view:update(0.15)
+ assert(view.camera.alpha==0 and not view:isExitComplete())
+ view:draw();assert(view:isExitComplete())
+ view:destroy()
+end)
+
+check('note graphics preparation warms all directions without spawning chart notes or callbacks',function()
+ local field=Notefield(0,0,4,'default')
+ local callbacks=0
+ field.state={scripts={call=function() callbacks=callbacks+1 end}}
+ field:makeNotesFromChart({{t=0,d=0,l=0},{t=100,d=1,l=100}})
+ local job=Job.new(function() field:prepareGraphics(game.camera) end)
+ local steps=0
+ while not job.done do job:step();steps=steps+1 end
+ assert(steps==5 and callbacks==0)
+ assert(#field.activeNotes==0 and field.chartIndex==1 and #field.chartNotes==2)
+ for _,lane in ipairs(field.lanes) do assert(#lane.members==1 and lane.members[1]==lane.receptor) end
+ field:destroy()
+end)
+
+check('prepared note colors reuse palettes and observe live palette edits',function()
+ local skin=paths.getSkin('default').data
+ local first=Note(0,0,0,nil,skin)
+ local original=Color.fromString
+ local conversions=0
+ Color.fromString=function(...) conversions=conversions+1;return original(...) end
+ local second=Note(0,0,0,nil,skin)
+ Color.fromString=original
+ assert(conversions==0 and first.shader==second.shader)
+ local color=skin.notes.colors[1]
+ local saved=color[1]
+ color[1]='#112233'
+ local changed=Note(0,0,0,nil,skin)
+ color[1]=saved
+ assert(changed.shader~=first.shader,'prepared palette ignored a live color change')
+ first:destroy();second:destroy();changed:destroy()
 end)
