@@ -4,6 +4,11 @@ local lfs = love.filesystem
 
 local Addons = {all = {}, root = Storage.getContentRoot("addons")}
 
+local function persistSelection()
+ -- Android may terminate the process without calling love.quit.
+ return game.save.bind("funkin")
+end
+
 if Storage.mounted then
 	-- Android/media is already mounted by the storage backend.
 elseif love.system.getDevice() == "Desktop" and lfs.isFused() and
@@ -61,12 +66,14 @@ function Addons.move(addon, n)
 		new = ((idx - 1 + n) % #order) + 1
 		table.shift(order, idx, new)
 		Addons.sortAddons()
+		return persistSelection()
 	end
 end
 
 function Addons.setState(addon, enabled)
 	addon.active = enabled
 	game.save.data.addons.active[addon.path] = addon.active
+	return persistSelection()
 end
 
 function Addons.reload()

@@ -55,6 +55,8 @@ local function cached(id, relative, category, expected, create, cacheSuffix)
  local path = Assets.getPath(id, relative)
  if not paths or type(paths[category]) ~= 'table' then fail(id, path, 'engine asset cache is not initialized') end
  local cache, key = paths[category], path .. (cacheSuffix or '')
+ -- Cache hits are still dependencies of this scene, including on song retry.
+ paths.touch(cache, key)
  local object = cache[key]
  if object then
   local ok, matches = pcall(object.typeOf, object, expected)

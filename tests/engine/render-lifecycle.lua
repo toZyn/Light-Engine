@@ -1,34 +1,3 @@
-check('released sprite textures are safe in bounds, nested groups and queued draws',function()
- local data=love.image.newImageData(8,12)
- local texture=love.graphics.newImage(data);data:release()
- local sprite=Sprite(0,0,texture)
- local group=SpriteGroup();group:add(sprite)
- local camera=Camera()
- texture:release()
- assert(sprite:getFrameWidth()==0 and sprite:getFrameHeight()==0)
- local _,_,w,h=sprite:getLocalBounds();assert(w==0 and h==0)
- assert(not sprite:_canDraw(),'released texture was accepted for rendering')
- group:_prepareCameraDraw(camera,true)
- -- The texture may also be released after it entered a camera queue.
- camera.__renderQueue[1]=sprite;camera:renderObjects()
- local replacement=love.graphics.newImage(love.image.newImageData(8,12))
- sprite:loadTexture(replacement)
- assert(sprite:getFrameWidth()==8 and sprite:getFrameHeight()==12 and sprite:_canDraw())
- group:destroy();camera:destroy();replacement:release()
-end)
-
-check('released frame textures are rejected even with a live fallback texture',function()
- local texture=love.graphics.newImage(love.image.newImageData(8,8))
- local frames=Sprite.getFramesFromSparrow(texture,'<TextureAtlas><SubTexture name="test0" x="0" y="0" width="8" height="8"/></TextureAtlas>')
- local sprite=Sprite();sprite:setFrames(frames)
- sprite.animation:add('test',{0},0,false);sprite.animation:play('test')
- sprite.texture=Sprite.defaultTexture
- texture:release()
- assert(not sprite:_canDraw(),'released frame texture bypassed the drawable check')
- local camera=Camera();camera.__renderQueue[1]=sprite;camera:renderObjects()
- sprite:destroy();frames:destroy();camera:destroy()
-end)
-
 check('cancelled scripted camera leaves follow and tween intact',function()
  local s=setmetatable({camTarget={},cameraOffset=Point(),camFollow=Point(31,47),
   scripts={event=function(_,_,event) event:cancel();return event end}},PlayState)
@@ -71,4 +40,18 @@ check('ActorSprite rotated atlas preserves Sprite pixels and frame texture',func
   a:release();b:release();assert(mismatch==0,'rotated frame pixels differ: '..mismatch)
  end
  sprite:destroy();actor:destroy();frames:destroy();camera:destroy();texture:release();fallback:release();c:release()
+end)
+
+check('Freeplay atlas titles keep real bounds and visible rendered glyphs',function()
+ local title=AtlasText(12,8,'FREEPLAY','bold')
+ local _,_,width,height=title:getLocalBounds()
+ assert(width==title.width and height==title.height and width>0 and height>0,
+  'AtlasText inherited zero texture dimensions instead of its actual title bounds')
+ local canvas=love.graphics.newCanvas(900,200);local camera=Camera()
+ love.graphics.push('all');love.graphics.setCanvas(canvas);love.graphics.clear(0,0,0,0)
+ title:__render(camera);love.graphics.pop()
+ local pixels=canvas:newImageData();local ink=0
+ for y=0,199 do for x=0,899 do local _,_,_,a=pixels:getPixel(x,y);if a>0.05 then ink=ink+1 end end end
+ assert(ink>100,'atlas title rendered no readable glyphs')
+ pixels:release();canvas:release();camera:destroy();title:destroy()
 end)

@@ -222,6 +222,7 @@ function ModsState:enterSelection()
 	local cur = self.curTab:getSelected(true)
 	if self.onAddons and not self.moveIndex then
 		Addons.setState(cur, not cur.active)
+		self.addonsChanged = true
 		util.playSfx(paths.getSound(
 			cur.active and 'confirmMenu' or 'cancelMenu'))
 	elseif self.onAddons and self.moveIndex then
@@ -240,6 +241,7 @@ function ModsState:changeSelection(n)
 			util.playSfx(paths.getSound('beep'))
 		end
 		Addons.move(self.curTab:getSelected(true), n)
+		self.addonsChanged = true
 		self.curTab:moveMember(n)
 	else
 		if #self.curTab.list.members > 1 then
@@ -348,6 +350,10 @@ function ModsState:swapTabs()
 end
 
 function ModsState:leave()
+ if self.addonsChanged then
+  GlobalScripts.reload()
+  Storage.refreshWatchList()
+ end
 	if self.throttles then
 		for _, v in pairs(self.throttles) do v:destroy() end
 		self.throttles = nil

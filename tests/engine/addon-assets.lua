@@ -92,6 +92,21 @@ function brokenJSON() return readAddonJSON('alpha', 'data/broken.json') end
   collectgarbage('collect'); collectgarbage('collect')
   assert(weakScript[1] == nil, 'retained asset helper must not keep closed scripts alive')
   raises(function() orphanedHelper('alpha', 'nested/shared') end, 'closed script')
+  -- Restarting a song reuses namespaced cache entries from the previous scene.
+  -- Keep each borrowed resource alive when an addon requests it again.
+  for attempt = 1, 3 do
+   paths.beginScene()
+   assert(Assets.image('alpha', 'nested/shared') == alpha)
+   assert(Assets.font('alpha', 'shared.ttf', 16) == font)
+   assert(Assets.sound('alpha', 'shared') == data)
+   assert(Assets.music('alpha', 'shared') == music)
+   paths.finishScene()
+   local particle = Sprite(0, 0, alpha)
+   assert(particle:getFrameWidth() == 2, 'restart released a borrowed particle image')
+   assert(font:getWidth('RESTART') > 0 and data:getSampleCount() > 0 and music:getChannelCount() > 0,
+    'restart released a namespaced font or audio resource')
+   particle:destroy()
+  end
   local sound1, sound2 = Sound(), Sound(); sound1:load(music); sound2:load(music)
   sound1:play(.3, true); sound2:play(.7, true)
   assert(sound1._source ~= sound2._source and sound1._source ~= music and sound2._source ~= music, 'playback must own independent Sources')

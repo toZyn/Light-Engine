@@ -5,6 +5,21 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-11-15
+
+### Fixed
+- Reverted the 0.3.2 Sprite/ActorSprite texture guards. Textureless atlas text
+  once again uses its actual bounds instead of zero-sized fallback dimensions,
+  restoring Freeplay title bounds and visibility.
+- Namespaced addon images, fonts and audio now register scene usage on cache
+  hits and new loads, preventing premature resource release during song retries.
+- Addon activation and priority changes are saved immediately instead of relying
+  on a quit callback that Android may never deliver.
+- Leaving the addon menu applies changed global addon scripts even when the
+  selected mod has not changed.
+
+Android version code: 215.
+
 ## [0.3.2] - 2026-11-14
 
 ### Fixed

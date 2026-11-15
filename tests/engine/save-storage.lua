@@ -213,3 +213,51 @@ check('Android gallery exclusion is scoped, non-destructive and nonfatal', funct
  love.system.getOS, love.filesystem.mount, love.filesystem.getInfo = originals.getOS, originals.mount, originals.getInfo
  assert(ok, failure)
 end)
+
+check('addon activation and order survive a fresh load without a quit callback', function()
+ local previousSave, previousRoot, previousAll, device = game.save, Addons.root, Addons.all, love.system.getDevice
+ local ok, message = xpcall(function()
+  love.system.getDevice = function() return 'Mobile' end
+  love.filesystem.remove('funkin.lox')
+  local Save = assert(love.filesystem.load('loxel/util/save.lua'))()
+  Save.initialized = true
+  Save.data = {addons = {order = {'decoration', 'psych-bridge'}, active = {decoration = true, ['psych-bridge'] = false}}}
+  game.save = Save; Addons.root = 'activation-regression-addons'
+  love.filesystem.createDirectory(Addons.root .. '/decoration')
+  love.filesystem.createDirectory(Addons.root .. '/psych-bridge')
+  Addons.reload()
+  local bridge
+  for _, addon in ipairs(Addons.all) do if addon.path == 'psych-bridge' then bridge = addon end end
+  Addons.setState(bridge, true)
+  assert(love.filesystem.getInfo('funkin.lox', 'file'), 'enabling an addon did not persist until quit')
+  Addons.move(bridge, -1)
+  local Fresh = assert(love.filesystem.load('loxel/util/save.lua'))()
+  Fresh.init('funkin'); game.save = Fresh; Addons.reload()
+  assert(Addons.has('decoration', true) and Addons.has('psych-bridge', true), 'fresh load lost an enabled addon')
+  assert(Fresh.data.addons.order[1] == 'psych-bridge', 'fresh load lost addon priority')
+ end, debug.traceback)
+ game.save, Addons.root, Addons.all, love.system.getDevice = previousSave, previousRoot, previousAll, device
+ assert(ok, message)
+end)
+
+check('leaving the addon menu applies globals without changing the selected mod', function()
+ local root, all, scripts, mod = Addons.root, Addons.all, GlobalScripts.scripts, GlobalScripts.currentMod
+ local settings = game.save.data.addons
+ local ok, message = xpcall(function()
+  Addons.root = 'addon-menu-apply-fixture'
+  assert(love.filesystem.createDirectory(Addons.root .. '/selection-probe'))
+  assert(love.filesystem.write(Addons.root .. '/selection-probe/global.lua',
+   'function init() game.__addonSelectionApplied = true end'))
+  game.save.data.addons = {order = {'selection-probe'}, active = {}}
+  Addons.all = {{path = 'selection-probe', active = false}}
+  GlobalScripts.scripts = {}
+  Addons.setState(Addons.all[1], true)
+  local menu = ModsState(); menu.addonsChanged = true
+  menu:leave()
+  assert(game.__addonSelectionApplied, 'addon-only selection did not initialize its global script')
+  for _, scr in ipairs(GlobalScripts.scripts) do scr:close() end
+ end, debug.traceback)
+ Addons.root, Addons.all, GlobalScripts.scripts, GlobalScripts.currentMod = root, all, scripts, mod
+ game.save.data.addons = settings; game.__addonSelectionApplied = nil
+ assert(ok, message)
+end)
