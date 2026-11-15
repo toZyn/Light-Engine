@@ -144,10 +144,8 @@ python3 tools/scene_manifest.py ruta/al/mod/songs/bopeebo/scene.json --root ruta
 
 ## Medir y comparar
 
-En **Options → Display → Capture performance report**, activa la captura para
-la siguiente canción. Al salir se escribe un JSON en `benchmarks/` dentro de la
-carpeta de guardado de LÖVE. El registro imprime su ruta. Esos informes manuales
-marcan el contenido como `unverified`: no se presentan como comparación validada.
+El juego no genera informes de rendimiento por canción ni muestra una opción de
+captura. Las mediciones son herramientas explícitas para desarrolladores.
 
 Para una comparación automática entre dos checkouts, usa la misma versión de la
 herramienta y el mismo runtime:

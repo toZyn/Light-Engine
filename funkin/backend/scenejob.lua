@@ -13,10 +13,16 @@ function Job.checkpoint(phase, progress)
  coroutine.yield()
 end
 
+function Job.poll(phase, progress)
+ if not current or coroutine.running() ~= current.thread then return end
+ if love.timer.getTime() >= current.deadline then Job.checkpoint(phase,progress) end
+end
+
 function Job:step()
  if self.done or self.cancelled then return end
  local previous=current
  current=self
+ self.deadline=love.timer.getTime()+0.006
  local ok,err=coroutine.resume(self.thread)
  current=previous
  if not ok then

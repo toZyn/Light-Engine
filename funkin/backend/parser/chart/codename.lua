@@ -1,3 +1,4 @@
+local SceneJob = require "funkin.backend.scenejob"
 local codename = {name = "Codename"}
 
 local function getFromMeta(data, tbl)
@@ -8,7 +9,7 @@ local function getFromMeta(data, tbl)
 	Parser.pset(tbl, "bpm", data.bpm)
 end
 
-local function getStuff(data, eventData, chart)
+local function getStuff(data, eventData, chart, consume)
 	local dad, bf, events =
 		{}, {}, {}
 
@@ -46,7 +47,7 @@ local function getStuff(data, eventData, chart)
 			Parser.pset(chart, "player1", s.characters[1])
 		end
 
-		for _, n in ipairs(s.notes) do
+		for noteIndex, n in ipairs(s.notes) do
 			local newNote = {
 				t = n.time,
 				d = n.id % 4,
@@ -55,13 +56,15 @@ local function getStuff(data, eventData, chart)
 				gf = gfNotes
 			}
 			table.insert(toAdd, newNote)
+   if consume then s.notes[noteIndex]=nil end
+   if noteIndex % 4096 == 0 then collectgarbage("step",128);SceneJob.poll("Preparing chart notes") end
 		end
 	end
 
 	return {enemy = dad, player = bf}, events
 end
 
-function codename.parse(data, events, meta)
+function codename.parse(data, events, meta, diff, options)
 	local chart = Parser.getDummyChart(nil, true)
 
 	if meta then getFromMeta(meta, chart) end
@@ -83,7 +86,7 @@ function codename.parse(data, events, meta)
 	end
 	chart.timeChanges = timeChanges
 
-	chart.notes, chart.events = getStuff(data, events, chart)
+	chart.notes, chart.events = getStuff(data, events, chart, options and options.consume)
 
 	return chart
 end

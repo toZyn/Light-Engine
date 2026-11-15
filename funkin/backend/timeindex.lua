@@ -1,3 +1,4 @@
+local SceneJob = require "funkin.backend.scenejob"
 local TimeIndex = {}
 TimeIndex.__index = TimeIndex
 
@@ -11,13 +12,33 @@ function TimeIndex.lowerBound(list, time)
 end
 
 function TimeIndex.sort(list)
-	for i = 2, #list do
-		if list[i].t < list[i - 1].t then
-			table.sort(list, function(a, b) return a.t < b.t end)
-			return list
-		end
-	end
-	return list
+ local count=#list
+ local ordered=true
+ for i=2,count do
+  if list[i].t<list[i-1].t then ordered=false;break end
+  if i%8192==0 then SceneJob.poll("Checking chart order") end
+ end
+ if ordered then return list end
+ if count<8192 then table.sort(list,function(a,b) return a.t<b.t end);return list end
+ local source,dest=list,{}
+ local width,work=1,0
+ while width<count do
+  for left=1,count,width*2 do
+   local middle=math.min(left+width,count+1)
+   local finish=math.min(left+width*2-1,count)
+   local i,j=left,middle
+   for k=left,finish do
+    if i<middle and (j>finish or source[i].t<=source[j].t) then dest[k]=source[i];i=i+1
+    else dest[k]=source[j];j=j+1 end
+    work=work+1
+    if work>=16384 then work=0;SceneJob.poll("Sorting chart notes") end
+   end
+  end
+  source,dest=dest,source
+  width=width*2
+ end
+ if source~=list then for i=1,count do list[i]=source[i];if i%16384==0 then SceneJob.poll("Sorting chart notes") end end end
+ return list
 end
 
 function TimeIndex.new(list)

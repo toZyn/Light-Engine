@@ -1,3 +1,4 @@
+local SceneJob = require "funkin.backend.scenejob"
 local vslice = {name = "V-Slice"}
 
 local STAGE_MAP = {
@@ -108,7 +109,7 @@ local function updateFromMeta(chart, meta)
 	end
 end
 
-local function processNotes(notes)
+local function processNotes(notes, consume)
 	local dad, bf = {}, {}
 	for idx, raw in ipairs(notes) do
 		if type(raw) ~= "table" then
@@ -118,17 +119,19 @@ local function processNotes(notes)
 		if dVal == nil then
 			error(string.format("field 'notes[%d].d' must be numeric", idx), 0)
 		end
-		local n = table.clone(raw)
+		local n = consume and raw or table.clone(raw)
 		local isPlayer = not (dVal > 3)
 		n.d = dVal % 4
 		n.k = n.k == "mom" and "alt" or n.k
 		table.insert(isPlayer and bf or dad, n)
+  if consume then notes[idx]=nil end
+  if idx % 4096 == 0 then SceneJob.poll("Preparing chart notes") end
 	end
 
 	return {enemy = dad, player = bf}
 end
 
-function vslice.parse(data, events, meta, diff)
+function vslice.parse(data, events, meta, diff, options)
 	if type(data) ~= "table" then
 		error("chart root must be a JSON object", 0)
 	end
@@ -167,7 +170,7 @@ function vslice.parse(data, events, meta, diff)
 		end
 	end
 
-	chart.notes = diffnotes and processNotes(diffnotes) or {enemy = {}, player = {}}
+	chart.notes = diffnotes and processNotes(diffnotes, options and options.consume) or {enemy = {}, player = {}}
 	chart.events = table.clone(events or data.events or {})
 
 	return chart

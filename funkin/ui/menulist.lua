@@ -21,8 +21,12 @@ local defaultScrolls = {
 		obj.x = self:lerp(dt, obj, "x", time)
 	end,
 	mobile = function(self, obj, dt, time)
-		local spacing = (#self.members + 0) * obj.yMult
-		obj.y = spacing * obj.ID - 1
+		local spacing = self.mobileRowHeight
+		local top = self.mobileTop or 100
+		local bottom = self.height - (self.mobileBottom or 80)
+		local overflow = math.max(0, top + (#self.members - 1) * spacing + spacing - 20 - bottom)
+		local scroll = math.min(overflow, math.max(0, (self.curSelected - 1) * spacing - (bottom - top) / 2))
+		obj.y = top + (obj.ID - 1) * spacing - scroll
 
 		local baseX = 80 - (obj.ID * 3)
 		local slideOffset = obj.target == 0 and 20 or 0
@@ -135,6 +139,13 @@ function MenuList:lerp(dt, obj, d, time, targ, direct)
 end
 
 function MenuList:updatePositions(dt, time)
+	if self.scroll == "mobile" then
+		self.mobileRowHeight = 80
+		for _, obj in ipairs(self.members) do
+			local height = obj.getHeight and obj:getHeight() or obj.height or 0
+			self.mobileRowHeight = math.max(self.mobileRowHeight, height * math.abs(obj.scale.y * obj.zoom.y) + 20)
+		end
+	end
 	local scrollFunc = type(self.scroll) == "function" and self.scroll or
 		defaultScrolls[self.scroll or "default"]
 	for i = 1, #self.members do
@@ -173,10 +184,13 @@ function MenuList:handleTouch(dt)
 end
 
 function MenuList:touchOverObj(tx, ty, obj)
-	local objLeft = obj.x - (obj.origin and obj.origin.x * obj.width or 0)
-	local objTop = obj.y - (obj.origin and obj.origin.y * obj.height or 0)
-	local objRight = objLeft + obj.width
-	local objBottom = objTop + obj.height
+	if self.scroll == "mobile" and (ty < self.y - self.offset.y + (self.mobileTop or 100)
+		or ty > self.y - self.offset.y + self.height - (self.mobileBottom or 80)) then return false end
+	local x, y, width, height, sx, sy = obj:_getBoundary()
+	local objLeft = self.x - self.offset.x + x
+	local objTop = self.y - self.offset.y + y
+	local objRight = objLeft + width * sx
+	local objBottom = objTop + height * sy
 
 	return tx >= objLeft and tx <= objRight and ty >= objTop and ty <= objBottom
 end
@@ -263,6 +277,10 @@ end
 function MenuList:__render(c)
 	love.graphics.stencil(function()
 		local x, y, w, h = self.x, self.y, self.width, self.height
+		if self.scroll == "mobile" then
+			local top = self.mobileTop or 100
+			y, h = y + top, h - top - (self.mobileBottom or 80)
+		end
 		x, y = x - self.offset.x - (c.scroll.x * self.scrollFactor.x),
 			y - self.offset.y - (c.scroll.y * self.scrollFactor.y)
 

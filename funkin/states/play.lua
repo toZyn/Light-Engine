@@ -63,6 +63,16 @@ function PlayState.loadSong(song, diff)
 	return true, chart
 end
 
+function PlayState.deferred(storyMode, song, diff)
+ local target = PlayState(storyMode)
+ if storyMode and type(song) == "table" then
+  PlayState.storyPlaylist = song
+  song = song[1]
+ end
+ target._songRequest = {song = song, diff = diff or PlayState.defaultDifficulty}
+ return target
+end
+
 function PlayState.getCutscene(isEnd)
 	local name = paths.formatToSongPath(PlayState.SONG.song)
 	if isEnd then name = name .. "-end" end
@@ -107,6 +117,16 @@ function PlayState:new(storyMode, song, diff)
 end
 
 function PlayState:preload()
+ if self._songRequest then
+  local request = self._songRequest
+  self._songRequest = nil
+  SceneJob.checkpoint("Reading chart", 0.01)
+  PlayState.SONG = nil
+  if not PlayState.loadSong(request.song, request.diff) then
+   self._loadFailed = true
+   return
+  end
+ end
 	if PlayState.SONG == nil then PlayState.loadSong("test") end
 	local skin = paths.getSkin(PlayState.SONG and PlayState.SONG.skin or "default")
 	PlayState.SONG.skin = skin
@@ -342,7 +362,8 @@ function PlayState:enterScene()
 	if PlayState.SONG.notes then
 		for _, sectionNotes in pairs(PlayState.SONG.notes) do
 			if type(sectionNotes) == "table" then
-				for _, n in ipairs(sectionNotes) do
+				for noteIndex, n in ipairs(sectionNotes) do
+					if noteIndex % 8192 == 0 then SceneJob.poll("Preparing note scripts") end
 					local kind = n and n.k
 					if type(kind) == "string" and kind ~= "" and kind ~= "alt" and kind ~= "gf" and not self.noteTypeScripts[kind] then
 						local ntSlug = kind:gsub(" ", "-"):lower()
@@ -1224,7 +1245,6 @@ function PlayState:update(dt)
    self._prepareJob=nil
    self._loadingView:destroy();self._loadingView=nil
    self._loadingCamera=nil
-   require("funkin.backend.benchmark").ready()
    self.lastTick=love.timer.getTime()
    return
   end
@@ -1927,16 +1947,8 @@ function PlayState:endSong(skip)
 				})
 			end
 
-			if not PlayState.loadSong(PlayState.storyPlaylist[1], PlayState.songDifficulty) then
-				GameOverSubstate.deaths = 0
-				PlayState.storyScore = 0
-				PlayState.canFadeInReceptors = true
-				local stickers = Stickers(nil, StoryMenuState())
-				self:add(stickers)
-				util.playMenuMusic()
-			else
-				self:resetState()
-			end
+			self.skipTransOut = true
+			game.switchState(LoadState(PlayState.deferred(nil, PlayState.storyPlaylist[1], PlayState.songDifficulty)))
 		else
 			GameOverSubstate.deaths = 0
 			PlayState.canFadeInReceptors = true
@@ -1950,7 +1962,7 @@ function PlayState:endSong(skip)
 
 			util.playMenuMusic()
 		end
-		Parser.clearCache()
+		Parser.clearCache(false)
 	else
 		GameOverSubstate.deaths = 0
 		PlayState.canFadeInReceptors = true
@@ -2007,7 +2019,6 @@ function PlayState:updateDiscordRPC(paused)
 end
 
 function PlayState:leave()
- require("funkin.backend.benchmark").finish()
  Scene.disposeCharacters(self)
  if self._prepareJob then
   self._prepareJob:cancel();self._prepareJob=nil
@@ -2031,7 +2042,7 @@ function PlayState:leave()
 
 	controls:unbindPress(self.bindedKeyPress)
 	controls:unbindRelease(self.bindedKeyRelease)
-	Parser.clearCache()
+	Parser.clearCache(false)
 
 	self.scripts:call("postLeave")
 	self.scripts:close()

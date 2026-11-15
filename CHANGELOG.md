@@ -5,6 +5,36 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-15
+
+### Fixed
+- Place Story Mode's difficulty selector below the week backdrop so automatic
+  and declared difficulties remain visible.
+- Space pause-menu difficulty rows using their actual text height, scroll long
+  mobile lists and restore navigation after opening a submenu.
+- Show the loading screen before reading charts from Freeplay, Story Mode,
+  campaign progression or pause-menu difficulty changes.
+- Yield large JSON decoding, chart normalization, sorting and note-script scans
+  to loading frames. Release the decoder's completed document references and
+  consume parser-owned raw notes without cloning the entire source chart.
+- Derive gameplay note spawning from visible lane bounds and the hit window
+  instead of increasing the spawn horizon with scroll speed. Preserve slow,
+  reverse and stationary notes without imposing a note cap.
+- Remove hit notes with constant-time tombstones and compact surviving notes in
+  stable batches instead of repeatedly shifting large active-note arrays.
+- Read difficulty metadata without allocating every chart note during menu scans.
+
+### Removed
+- Per-song automatic benchmark capture, its display option and gameplay hooks.
+  Explicit developer benchmark commands remain available.
+
+### Added
+- Native regression tests for loading before ingestion, decoder ownership,
+  cooperative parsing/sorting, menu layout and dense rendered gameplay.
+- Updated performance measurements and remaining limits in `docs/performance.md`.
+
+Android version code: 218.
+
 ## [0.4.0] - 2026-11-15
 
 ### Changed

@@ -392,7 +392,7 @@ local function switch(state)
 			end
 			s.substate = nil
 		end
-		if next(retained) then collectgarbage("step",64) else collectgarbage() end
+		if state.deferCollection or next(retained) then collectgarbage("step",64) else collectgarbage() end
 	end
 
 	triggerCallback(game.onPreStateEnter, state)
@@ -402,7 +402,7 @@ local function switch(state)
 
 	triggerCallback(game.onPostStateSwitch, state)
 
-	if next(retained) then collectgarbage("step",64) else collectgarbage() end
+	if state.deferCollection or next(retained) then collectgarbage("step",64) else collectgarbage() end
 end
 
 function game.update(real_dt)

@@ -1,3 +1,4 @@
+local SceneJob = require "funkin.backend.scenejob"
 local vanilla = {name = "Vanilla/Psych"}
 
 local function getFromMeta(data, tbl)
@@ -64,7 +65,7 @@ local function appendPsychEvents(rawEvents, events, seen)
 	end
 end
 
-local function getStuff(data, eventData, inlineEvents, bpm, psych)
+local function getStuff(data, eventData, inlineEvents, bpm, psych, consume)
 	local dad, bf, events, timeChanges, sectionChanges =
 		{}, {}, {}, {}, {}
 
@@ -82,7 +83,7 @@ local function getStuff(data, eventData, inlineEvents, bpm, psych)
 
 	for i, s in ipairs(data) do
 		if s.sectionNotes then
-			for _, n in ipairs(s.sectionNotes) do
+			for noteIndex, n in ipairs(s.sectionNotes) do
 				local kind = n[4]
 				local column, gf = n[2], kind == "gf" or kind == "GF Sing"
 				local hit = psych or s.mustHitSection
@@ -97,10 +98,15 @@ local function getStuff(data, eventData, inlineEvents, bpm, psych)
 					t = n[1],
 					d = column % 4,
 					l = n[3],
-					k = kind,
 					gf = gf or s.gfSection
 				}
+				if kind ~= nil then newNote.k = kind end
 				table.insert(hit and bf or dad, newNote)
+    if consume then s.sectionNotes[noteIndex] = nil end
+    if noteIndex % 4096 == 0 then
+     collectgarbage("step",128)
+     SceneJob.poll("Preparing chart notes")
+    end
 			end
 
 			focus = s.gfSection and 2 or (s.mustHitSection and 0 or 1)
@@ -140,7 +146,7 @@ local function getStuff(data, eventData, inlineEvents, bpm, psych)
 	return {enemy = dad, player = bf}, events, timeChanges
 end
 
-function vanilla.parse(data, events, meta, diff)
+function vanilla.parse(data, events, meta, diff, options)
 	if type(data) ~= "table" then
 		error("chart root must be a JSON object", 0)
 	end
@@ -148,7 +154,13 @@ function vanilla.parse(data, events, meta, diff)
 	if baseData ~= nil and type(baseData) ~= "table" and type(baseData) ~= "string" then
 		error("field 'song' must be a table or string", 0)
 	end
-	data = table.clone(type(baseData) == "table" and baseData or data)
+	local consume = options and options.consume == true
+ data = type(baseData) == "table" and baseData or data
+ if not consume then
+  local copy = {}
+  for key,value in pairs(data) do copy[key]=value end
+  data=copy
+ end
 
 	local diffKey = type(diff) == "string" and diff:lower() or "normal"
 	if type(data.speed) == "table" then
@@ -230,7 +242,7 @@ function vanilla.parse(data, events, meta, diff)
 	if rawNotes then
 		chart.notes, chart.events, chart.timeChanges =
 			getStuff(rawNotes, events, data.events, chart.bpm,
-				data.format and data.format:startsWith("psych"))
+				data.format and data.format:startsWith("psych"), consume)
 	end
 
 	return chart

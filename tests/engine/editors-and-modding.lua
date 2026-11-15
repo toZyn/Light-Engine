@@ -391,14 +391,20 @@ check("FreeplayState survives malformed metadata.json, displays Toast notice, an
 		diffs = {"normal"},
 		meta = Parser.getMeta("bopeebo")
 	})
-	assert(openOk == false, "FreeplayState:openSong must refuse invalid metadata without crashing")
-	assert(type(openErr) == "string"
-		and openErr:find("bopeebo")
-		and openErr:find("meta%.json")
-		and openErr:find("playData"),
-		"Error must report song, path, and failing field; got: " .. tostring(openErr))
-	assert(fp.songs.lock == false, "FreeplayState must unlock song list after error")
-	assert(game.getState() == fp, "Game must remain in FreeplayState")
+	assert(openOk == true and openErr == nil, "FreeplayState must defer validation until loading is visible")
+	for frame = 1, 120 do
+		game.update(1 / 60)
+		game.draw()
+		if game.getState():is(FreeplayState) then break end
+	end
+	local err = PlayState.lastLoadError
+	assert(type(err) == "string"
+		and err:find("bopeebo")
+		and err:find("meta%.json")
+		and err:find("playData"),
+		"Error must report song, path, and failing field; got: " .. tostring(err))
+	assert(game.getState():is(FreeplayState), "Game must return to FreeplayState")
+	assert(not game.getState().songs.lock, "Returned song list must be interactive")
 	assert(Toast and #Toast.instances > 0, "Visible Toast error notice must be displayed")
 
 	-- Clean up malformed override and verify bopeebo loads cleanly again

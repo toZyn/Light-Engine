@@ -1,4 +1,5 @@
 local decodeJson = (loxreq "lib.json").decode
+local SceneJob = require "funkin.backend.scenejob"
 local parseXml = loxreq "lib.xml"
 
 local FrameCollection = loxreq "animation.frame.collection"
@@ -348,11 +349,13 @@ function paths.getText(key)
 	return readFile(path), path
 end
 
-function paths.getJSON(key)
+function paths.getJSON(key, options)
 	local path = paths.getPath(key .. ".json")
 	local data = stripBom(readFile(path))
 	if data then
-		local s, r = pcall(decodeJson, data)
+		local s, r = pcall(decodeJson, data, function(position, total)
+   SceneJob.poll("Decoding chart data", math.min(0.45, position / math.max(total,1) * 0.45))
+  end, options)
 		if not s then
 			local err = r:gsub("^.-:%d+: ERROR: ", "")
 			error(path .. ": " .. err)

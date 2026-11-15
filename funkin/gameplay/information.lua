@@ -1,3 +1,4 @@
+local SceneJob = require "funkin.backend.scenejob"
 local Information = {}
 Information.__index = Information
 
@@ -13,7 +14,8 @@ local function timeline(notes)
   end
  end
  local merged = {}
- for _, note in ipairs(ordered) do
+ for index, note in ipairs(ordered) do
+  if index%8192==0 then SceneJob.poll("Preparing song timeline") end
   local start = (tonumber(note.t) or 0) / 1000
   local finish = start + math.max((tonumber(note.l) or 0) / 1000, 0.2)
   local last = merged[#merged]
