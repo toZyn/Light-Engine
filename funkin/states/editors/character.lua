@@ -1,3 +1,4 @@
+local EditorTheme = require "funkin.ui.editor.theme"
 local JSON = require("funkin.backend.jsonbuilder")
 
 local CharacterEditor = State:extend("CharacterEditor")
@@ -33,11 +34,7 @@ function CharacterEditor:enter()
 	game.cameras.add(self.camChar, false)
 	game.cameras.add(self.camMenu, false)
 
-	local bg = Sprite(0, 0, paths.getImage("menus/menuDesat"))
-	bg:setGraphicSize(game.width, game.height)
-	bg:updateHitbox()
-	bg:screenCenter()
-	bg.color = Color.fromRGB(36, 38, 52)
+	local bg = Graphic(0, 0, game.width, game.height, Color.fromRGB(24, 27, 32))
 	bg.scrollFactor:set(0, 0)
 	self:add(bg)
 
@@ -75,8 +72,8 @@ function CharacterEditor:enter()
 	self.camPoint2.cameras = {self.camChar}
 	self:add(self.camPoint2)
 
-	self.smallFont = paths.getFont("vcr.ttf", 14) or love.graphics.getFont()
-	self.uiFont = paths.getFont("vcr.ttf", 15) or love.graphics.getFont()
+	self.smallFont = EditorTheme.font(14)
+	self.uiFont = EditorTheme.font(15)
 
 	self.hudCard = Graphic(14, 14, 280, 290, Color.fromRGB(16, 18, 28))
 	self.hudCard.alpha = 0.88
@@ -143,6 +140,7 @@ function CharacterEditor:enter()
 	self:buildCharacterTab()
 	self:buildAnimationTab()
 	self:syncUIWithCharacter()
+	EditorTheme.apply(self)
 
 	if Discord then
 		Discord.changePresence({

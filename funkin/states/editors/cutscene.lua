@@ -1,3 +1,4 @@
+local EditorTheme = require "funkin.ui.editor.theme"
 local JSON = require("funkin.backend.jsonbuilder")
 
 local CutsceneState = State:extend("CutsceneState")
@@ -29,8 +30,8 @@ function CutsceneState:enter()
 	end
 
 	self.curStageName = PlayState.SONG.stage or "stage"
-	self.smallFont = paths.getFont("vcr.ttf", 14) or love.graphics.getFont()
-	self.uiFont = paths.getFont("vcr.ttf", 15) or love.graphics.getFont()
+	self.smallFont = EditorTheme.font(14)
+	self.uiFont = EditorTheme.font(15)
 
 	self.stageContainer = Group()
 	self:add(self.stageContainer)
@@ -88,6 +89,7 @@ function CutsceneState:enter()
 	self:buildStageTab()
 	self:buildCutsceneTab()
 	self:syncStageFields()
+	EditorTheme.apply(self)
 end
 
 function CutsceneState:registerInput(inp)

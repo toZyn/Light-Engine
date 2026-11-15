@@ -1,7 +1,8 @@
 local Notefield = ActorGroup:extend("Notefield")
 
+local TimeIndex = require "funkin.backend.timeindex"
+
 local EMPTY_NOTES = {}
-local function sortChartNotes(a, b) return a.t < b.t end
 local function sortActiveNotes(a, b) return a.time < b.time end
 
 function Notefield:new(x, y, keys, skin, character, vocals, speed)
@@ -110,7 +111,7 @@ function Notefield:makeNotesFromChart(notes)
 	self.chartNotes = notes
 	self.chartIndex = 1
 	self.lastSpawnTime = -math.huge
-	table.sort(self.chartNotes, sortChartNotes)
+	TimeIndex.sort(self.chartNotes)
 
 	for _, note in ipairs(self.activeNotes) do
 		if note.group then
@@ -129,13 +130,12 @@ function Notefield:makeNotesFromChart(notes)
 end
 
 function Notefield:seekTo(timeSec)
-	local targetMs = (timeSec or 0) * 1000
+	timeSec = timeSec or 0
+	local targetMs = timeSec * 1000
 	self.chartIndex = 1
 	self.lastSpawnTime = -math.huge
 	if self.chartNotes then
-		while self.chartIndex <= #self.chartNotes and self.chartNotes[self.chartIndex].t < targetMs - 5 do
-			self.chartIndex = self.chartIndex + 1
-		end
+		self.chartIndex = TimeIndex.lowerBound(self.chartNotes, targetMs - 5)
 	end
 	if self.activeNotes then
 		for i = #self.activeNotes, 1, -1 do
@@ -201,9 +201,7 @@ function Notefield:addNote(note)
 	return note
 end
 
-function Notefield:removeNoteFromIndex(idx)
-	local note = self.activeNotes[idx]
-	if not note then return end
+function Notefield:detachNote(note)
 	if self.lastSustain == note then
 		self.lastSustain = nil
 	end
@@ -215,7 +213,12 @@ function Notefield:removeNoteFromIndex(idx)
 		lane:remove(note)
 		table.delete(lane.renderedNotes, note)
 	end
+end
 
+function Notefield:removeNoteFromIndex(idx)
+	local note = self.activeNotes[idx]
+	if not note then return end
+	self:detachNote(note)
 	return table.remove(self.activeNotes, idx)
 end
 
@@ -335,14 +338,18 @@ function Notefield:update(dt)
 	-- scans in getNotes/__prepareLane tank the FPS on note-heavy songs.
 	local cullBottom = -(self.drawSize / 2 + 150) / (450 * math.max(maxSpeed, 0.01))
 	local timeNow = self.time - self.offsetTime
-	for i = #self.activeNotes, 1, -1 do
-		local note = self.activeNotes[i]
-		if note.tooLate or (note.wasGoodHit and (not note.sustain or note.wasGoodSustainHit)) then
-			if (note.time + (note.sustainTime or 0)) < timeNow + cullBottom then
-				self:removeNoteFromIndex(i)
-			end
+	local notes, count, write = self.activeNotes, #self.activeNotes, 1
+	for read = 1, count do
+		local note = notes[read]
+		local consumed = note.tooLate or (note.wasGoodHit and (not note.sustain or note.wasGoodSustainHit))
+		if consumed and note.time + (note.sustainTime or 0) < timeNow + cullBottom then
+			self:detachNote(note)
+		else
+			notes[write] = note
+			write = write + 1
 		end
 	end
+	for i = write, count do notes[i] = nil end
 
 	for _, lane in ipairs(self.lanes) do
 		for _, note in ipairs(lane.renderedNotes) do
