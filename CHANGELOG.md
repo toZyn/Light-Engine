@@ -5,6 +5,27 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-15
+
+### Added
+- Fade loading artwork in and reveal the prepared gameplay scene with a short
+  exit fade. Keep gameplay timing paused until the final fade frame is presented.
+  Queue early song-start requests so audio cannot run behind loading artwork.
+- Prepare note and sustain meshes, textures, animation prefixes and RGB shaders
+  for each lane during incremental scene loading, without spawning chart notes
+  or invoking gameplay callbacks.
+
+### Fixed
+- Compact departing rendered notes and lane members in stable linear passes
+  instead of shifting lane arrays once per departing note. Preserve receptors,
+  chart records, note identities and remaining member order.
+- Reuse prepared RGB palette conversions across note instances while observing
+  live color edits and shader cache resets.
+
+No note-count/render quota or automatic effect reduction is introduced.
+
+Android version code: 219.
+
 ## [0.4.1] - 2026-11-15
 
 ### Fixed

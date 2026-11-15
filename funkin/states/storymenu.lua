@@ -253,7 +253,8 @@ function StoryMenuState:selectWeek()
 			self.weekList.lock = true
 		end
 
-		self.skipTransOut = true
+		self.skipTransOut = false
+		self.transOut = self.transOut or TransitionData(0.18)
 		game.switchState(toState)
 	else
 		util.playSfx(paths.getSound('cancelMenu'))

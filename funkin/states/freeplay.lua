@@ -88,7 +88,8 @@ function FreeplayState:openSong(song)
 		PlayState.storyDifficulty = diff
 		game.switchState(ChartingState())
 	else
-		self.skipTransOut = true
+		self.skipTransOut = false
+		self.transOut = self.transOut or TransitionData(0.18)
 		game.switchState(LoadState(PlayState.deferred(false, song.songName, diff)))
 	end
 	return true

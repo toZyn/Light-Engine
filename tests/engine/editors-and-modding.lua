@@ -395,7 +395,7 @@ check("FreeplayState survives malformed metadata.json, displays Toast notice, an
 	for frame = 1, 120 do
 		game.update(1 / 60)
 		game.draw()
-		if game.getState():is(FreeplayState) then break end
+		if game.getState() ~= fp and game.getState():is(FreeplayState) then break end
 	end
 	local err = PlayState.lastLoadError
 	assert(type(err) == "string"

@@ -644,6 +644,12 @@ function PlayState:enterScene()
 	collectgarbage("step",64)
 
 	self.scripts:call("postCreate")
+ if self._prepareJob then
+  SceneJob.checkpoint("Preparing note graphics",0.98)
+  for _,field in ipairs(self.notefields) do
+   if field.is then field:prepareGraphics(self.camNotes) end
+  end
+ end
 	paths.finishScene()
 	self._postCreated = true
 
@@ -914,6 +920,7 @@ function PlayState:setPlayback(playback)
 end
 
 function PlayState:playSong(daTime)
+ if self._prepareJob then self._pendingSongStart={time=daTime};return end
 	self:updateDiscordRPC()
 	self:setPlayback(self.playback)
 
@@ -1242,11 +1249,17 @@ function PlayState:update(dt)
  if self._prepareJob then
   local job=self._prepareJob
   if job.done and self._loadingView:hasPresentedWork() then
-   self._prepareJob=nil
-   self._loadingView:destroy();self._loadingView=nil
-   self._loadingCamera=nil
-   self.lastTick=love.timer.getTime()
-   return
+   self._loadingView:beginExit()
+   if self._loadingView:isExitComplete() then
+    self._prepareJob=nil
+    self._loadingView:destroy();self._loadingView=nil
+    self._loadingCamera=nil
+    local pending=self._pendingSongStart
+    self._pendingSongStart=nil
+    if pending then self:playSong(pending.time) end
+    self.lastTick=love.timer.getTime()
+    return
+   end
   end
   if not job.done then self._loadingView:advance(job) end
   self._loadingView.stageProgress=0.5+job.progress*0.5
@@ -1485,7 +1498,15 @@ function PlayState:update(dt)
 end
 
 function PlayState:draw()
- if self._prepareJob then self._loadingView:draw();return end
+ if self._prepareJob then
+  if self._loadingView.exiting then
+   self.scripts:call("draw")
+   PlayState.super.draw(self)
+   self.scripts:call("postDraw")
+  end
+  self._loadingView:draw()
+  return
+ end
 	self.scripts:call("draw")
 	PlayState.super.draw(self)
 	self.scripts:call("postDraw")
@@ -1947,7 +1968,8 @@ function PlayState:endSong(skip)
 				})
 			end
 
-			self.skipTransOut = true
+			self.skipTransOut = false
+			self.transOut = self.transOut or TransitionData(0.18)
 			game.switchState(LoadState(PlayState.deferred(nil, PlayState.storyPlaylist[1], PlayState.songDifficulty)))
 		else
 			GameOverSubstate.deaths = 0

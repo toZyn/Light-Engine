@@ -59,12 +59,16 @@ function Note:_addAnim(...)
 	(type(select(2, ...)) == 'table' and self.animation.add or self.animation.addByPrefix)(self.animation, ...)
 end
 
+local preparedColors = setmetatable({}, {__mode = "k"})
+
 local function makeRGB(color)
-	return RGBShader.actorCreate(
-		Color.fromString(color[1]),
-		Color.fromString(color[2]),
-		Color.fromString(color[3])
-	)
+ local cached = preparedColors[color]
+ if cached and cached[1] == color[1] and cached[2] == color[2] and cached[3] == color[3]
+  and RGBShader.cache[cached.key] == cached.shader then return cached.shader end
+ local r,g,b = Color.fromString(color[1]),Color.fromString(color[2]),Color.fromString(color[3])
+ local shader = RGBShader.actorCreate(r,g,b)
+ preparedColors[color] = {color[1],color[2],color[3],key="actor_"..RGBShader.getKey(r,g,b),shader=shader}
+ return shader
 end
 
 function Note:loadSkinData(skinData, name, direction, noRgb)

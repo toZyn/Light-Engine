@@ -122,7 +122,8 @@ function PauseSubstate:selectDifficulty(choice)
  self.lock = true
  local song = PlayState.SONG.song
  local diff = tostring(choice)
- if self.parent then self.parent.skipTransOut = true end
+ self.skipTransOut = false
+ self.transOut = self.transOut or TransitionData(0.18)
  game.switchState(LoadState(PlayState.deferred(nil, song, diff)))
 end
 
