@@ -1,3 +1,5 @@
+local EditorTheme = require "funkin.ui.editor.theme"
+
 local EditorMenu = Substate:extend("EditorMenu")
 
 EditorMenu.entries = {
@@ -67,12 +69,12 @@ function EditorMenu:new(onSave)
 	self.headerBg.scrollFactor:set(0, 0)
 	self:add(self.headerBg)
 
-	local titleFont = paths.getFont("vcr.ttf", 28) or love.graphics.getFont()
+	local titleFont = EditorTheme.font(24)
 	self.titleText = Text(28, 18, "LIGHT ENGINE — EDITORS & MODDING TOOLS", titleFont, Color.WHITE)
 	self.titleText.scrollFactor:set(0, 0)
 	self:add(self.titleText)
 
-	local btnFont = paths.getFont("vcr.ttf", 18) or love.graphics.getFont()
+	local btnFont = EditorTheme.font(16)
 	self.backBtn = UIButton(game.width - 134, 14, 110, 36, "BACK", function()
 		util.playSfx(paths.getSound("cancelMenu"))
 		self:close()
@@ -85,7 +87,7 @@ function EditorMenu:new(onSave)
 	self:add(self.grpOptions)
 
 	for i, entry in ipairs(EditorMenu.entries) do
-		local item = AtlasText(90, 130 + (i - 1) * 110, entry.label, "bold")
+		local item = Text(90, 130 + (i - 1) * 110, entry.label, EditorTheme.font(24), Color.WHITE)
 		item.scrollFactor:set(0, 0)
 		item.ID = i
 		item._targetX = 90
@@ -98,7 +100,7 @@ function EditorMenu:new(onSave)
 	self.footerBg.scrollFactor:set(0, 0)
 	self:add(self.footerBg)
 
-	local descFont = paths.getFont("vcr.ttf", 18) or love.graphics.getFont()
+	local descFont = EditorTheme.font(16)
 	self.descText = Text(24, game.height - 44, "", descFont, Color.fromRGB(215, 220, 240), "center", game.width - 48)
 	self.descText.scrollFactor:set(0, 0)
 	self:add(self.descText)
@@ -108,11 +110,18 @@ function EditorMenu:new(onSave)
 		down = Throttle:make({controls.down, controls, "ui_down"})
 	}
 
+	self.selectionBg = Graphic(60, 114, game.width - 120, 68, Color.fromRGB(43, 65, 91))
+	self.selectionBg.scrollFactor:set(0, 0)
+	self:insert(table.find(self.members, self.grpOptions), self.selectionBg)
+	EditorTheme.apply(self)
 	self:changeSelection(0)
 end
 
 function EditorMenu:enter()
 	EditorMenu.super.enter(self)
+	self.overlayCamera = Camera()
+	game.cameras.add(self.overlayCamera, false)
+	self.cameras = {self.overlayCamera}
 	Tween.tween(self.bg, {alpha = 0.72}, 0.25, {ease = Ease.quartOut})
 end
 
@@ -181,13 +190,14 @@ function EditorMenu:changeSelection(change)
 	for _, item in ipairs(self.grpOptions.members) do
 		if item.ID == self.curSelected then
 			item.alpha = 1
-			item._targetX = 120
+			item._targetX = 90
 		else
-			item.alpha = 0.55
-			item._targetX = 80
+			item.alpha = 0.72
+			item._targetX = 90
 		end
 	end
 
+	if self.selectionBg then self.selectionBg.y = 114 + (self.curSelected - 1) * 110 end
 	local entry = EditorMenu.entries[self.curSelected]
 	if entry and self.descText then
 		self.descText.content = entry.desc .. "  [ENTER: Open | ESC: Back]"
@@ -198,11 +208,29 @@ function EditorMenu:changeSelection(change)
 	end
 end
 
-function EditorMenu:close()
+function EditorMenu:releaseCamera()
+	if self.overlayCamera and table.find(game.cameras.list, self.overlayCamera) then
+		game.cameras.remove(self.overlayCamera)
+	end
+	self.overlayCamera, self.cameras = nil, nil
+end
+
+function EditorMenu:releaseThrottles()
 	if self.throttles then
-		for _, t in pairs(self.throttles) do t:destroy() end
+		for _, throttle in pairs(self.throttles) do throttle:destroy() end
 		self.throttles = nil
 	end
+end
+
+function EditorMenu:destroy()
+	self:releaseCamera()
+	self:releaseThrottles()
+	EditorMenu.super.destroy(self)
+end
+
+function EditorMenu:close()
+	self:releaseCamera()
+	self:releaseThrottles()
 	EditorMenu.super.close(self)
 end
 

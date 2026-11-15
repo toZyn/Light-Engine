@@ -86,6 +86,7 @@ check("EditorMenu opens, navigates, and cleans up throttles on close", function(
 	local host = State()
 	game.switchState(host, true)
 	game.update(1 / 60)
+	local cameraCount = #game.cameras.list
 	local menu = EditorMenu()
 	host:openSubstate(menu)
 	game.update(1 / 60)
@@ -93,6 +94,7 @@ check("EditorMenu opens, navigates, and cleans up throttles on close", function(
 	assert(menu.curSelected == 2, "EditorMenu selection must advance")
 	menu:close()
 	assert(#Throttle.list == beforeCount, "EditorMenu must destroy all throttles on close")
+	assert(#game.cameras.list == cameraCount, "EditorMenu must release its overlay camera")
 end)
 
 check("ChartingState edits notes/events, supports undo/redo, and round-trips chart JSON", function()

@@ -1,3 +1,6 @@
+local EditorTheme = require "funkin.ui.editor.theme"
+local TimeIndex = require "funkin.backend.timeindex"
+
 local ChartingState = State:extend("ChartingState")
 
 ChartingState.GRID_SIZE = 40
@@ -124,8 +127,7 @@ function TimelineCanvas:__render(camera)
 
 	-- 2. Draw visible Events (col 0)
 	local events = ed.song.events or {}
-	for i = 1, #events do
-		local ev = events[i]
+	for i, ev in ed:getTimeIndex(events):each(ed:stepToTime(viewTopStep - 2), ed:stepToTime(viewBottomStep + 2)) do
 		local evStep = ed:timeToStep(ev.t)
 		if evStep >= viewTopStep - 2 and evStep <= viewBottomStep + 2 then
 			local ey = playheadY + (evStep - curStep) * gs
@@ -146,8 +148,7 @@ function TimelineCanvas:__render(camera)
 	-- 3. Draw visible Notes (Opponent = cols 1..4, Player = cols 5..8)
 	local function drawTrack(list, colOffset)
 		if not list then return end
-		for i = 1, #list do
-			local n = list[i]
+		for i, n in ed:getTimeIndex(list):each(ed:stepToTime(viewTopStep - 1), ed:stepToTime(viewBottomStep + 1)) do
 			local nStep = ed:timeToStep(n.t)
 			local susSteps = (n.l and n.l > 0) and (ed:timeToStep(n.t + n.l) - nStep) or 0
 			if (nStep + susSteps) >= viewTopStep - 1 and nStep <= viewBottomStep + 1 then
@@ -379,6 +380,10 @@ function ChartingState:enter()
 	self.song.notes.player = self.song.notes.player or {}
 	self.song.notes.enemy = self.song.notes.enemy or {}
 	self.song.events = self.song.events or {}
+	TimeIndex.sort(self.song.notes.player)
+	TimeIndex.sort(self.song.notes.enemy)
+	TimeIndex.sort(self.song.events)
+	self.timeIndexes = {}
 	self.curDifficulty = (PlayState.songDifficulty and PlayState.songDifficulty ~= "")
 		and PlayState.songDifficulty:lower() or "normal"
 
@@ -403,16 +408,12 @@ function ChartingState:enter()
 	self.redoStack = {}
 	self.textInputs = {}
 
-	self.smallFont = paths.getFont("vcr.ttf", 14) or love.graphics.getFont()
-	self.uiFont = paths.getFont("vcr.ttf", 15) or love.graphics.getFont()
+	self.smallFont = EditorTheme.font(14)
+	self.uiFont = EditorTheme.font(15)
 
 	-- Background
-	self.bg = Sprite(0, 0, paths.getImage("menus/menuDesat"))
-	self.bg:setGraphicSize(game.width, game.height)
-	self.bg:updateHitbox()
-	self.bg:screenCenter()
+	self.bg = Graphic(0, 0, game.width, game.height, Color.fromRGB(21, 24, 29))
 	self.bg.scrollFactor:set(0, 0)
-	self.bg.color = Color.fromRGB(34, 36, 52)
 	self:add(self.bg)
 
 	self:rebuildConductorAndSections()
@@ -426,6 +427,7 @@ function ChartingState:enter()
 	-- Build right-hand inspector UI & status HUD
 	self:buildInspectorUI()
 	self:syncSectionInspector()
+	EditorTheme.apply(self)
 
 	if Mouse and Mouse.SetCursor then Mouse.SetCursor("arrow") end
 end
@@ -903,7 +905,19 @@ function ChartingState:buildInspectorUI()
 	self.tabs:addGroup(gTools, 4)
 end
 
+function ChartingState:getTimeIndex(list)
+	self.timeIndexes = self.timeIndexes or {}
+	local index = self.timeIndexes[list]
+	if not index or index.count ~= #list then
+		index = TimeIndex.new(list)
+		index.count = #list
+		self.timeIndexes[list] = index
+	end
+	return index
+end
+
 function ChartingState:pushUndo()
+	self.timeIndexes = {}
 	local snap = {
 		player = table.clone(self.song.notes.player),
 		enemy = table.clone(self.song.notes.enemy),
@@ -915,6 +929,7 @@ function ChartingState:pushUndo()
 end
 
 function ChartingState:undo()
+	self.timeIndexes = {}
 	local snap = table.remove(self.undoStack)
 	if not snap then return end
 	table.insert(self.redoStack, {
@@ -931,6 +946,7 @@ function ChartingState:undo()
 end
 
 function ChartingState:redo()
+	self.timeIndexes = {}
 	local snap = table.remove(self.redoStack)
 	if not snap then return end
 	table.insert(self.undoStack, {
@@ -977,6 +993,7 @@ function ChartingState:syncSectionInspector()
 end
 
 function ChartingState:rebuildFocusEventsFromSections()
+	self.timeIndexes = {}
 	local kept = {}
 	for _, ev in ipairs(self.song.events or {}) do
 		if ev.e ~= "FocusCamera" then table.insert(kept, ev) end
@@ -1105,7 +1122,9 @@ end
 function ChartingState:findNoteAt(side, dir, timeMs)
 	local list = side == "player" and self.song.notes.player or self.song.notes.enemy
 	local tol = math.max(8, (self.conductor.stepCrotchet or 125) * 0.22)
-	for i, n in ipairs(list) do
+	for i = TimeIndex.lowerBound(list, timeMs - tol), #list do
+		local n = list[i]
+		if n.t > timeMs + tol then break end
 		if (n.d % 4) == dir and math.abs((n.t or 0) - timeMs) <= tol then
 			return n, i, list
 		end
@@ -1115,7 +1134,9 @@ end
 
 function ChartingState:findEventAt(timeMs)
 	local tol = math.max(8, (self.conductor.stepCrotchet or 125) * 0.25)
-	for i, ev in ipairs(self.song.events) do
+	for i = TimeIndex.lowerBound(self.song.events, timeMs - tol), #self.song.events do
+		local ev = self.song.events[i]
+		if ev.t > timeMs + tol then break end
 		if math.abs((ev.t or 0) - timeMs) <= tol then
 			return ev, i
 		end
@@ -1188,7 +1209,11 @@ function ChartingState:handleTimelineMouse(dt)
 		elseif self.hoverStep then
 			local startStep = self:timeToStep(self.dragNote.t)
 			local deltaSteps = math.max(0, self.hoverStep - startStep)
-			self.dragNote.l = self:stepToTime(deltaSteps)
+			local length = self:stepToTime(deltaSteps)
+			if self.dragNote.l ~= length then
+				self.dragNote.l = length
+				self.timeIndexes = {}
+			end
 		end
 		return
 	end
@@ -1297,8 +1322,10 @@ function ChartingState:checkPlaybackHitsounds(prevMs, nowMs)
 	end
 	local function scan(list, enabled)
 		if not enabled or not self.hitSoundAsset then return end
-		for _, n in ipairs(list) do
-			if n.t > prevMs and n.t <= nowMs then
+		for i = TimeIndex.lowerBound(list, prevMs), #list do
+			local n = list[i]
+			if n.t > nowMs then break end
+			if n.t > prevMs then
 				game.sound.play(self.hitSoundAsset, 0.7)
 				break
 			end

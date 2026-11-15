@@ -5,6 +5,29 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-15
+
+### Changed
+- Indexed chart-editor viewport queries by time and sustain end, skipping offscreen
+  blocks without dropping long holds that begin before the visible range.
+- Binary searches now locate gameplay seek positions, editor note/event selection
+  and playback hitsounds instead of walking the entire chart.
+- Already sorted gameplay charts avoid a redundant full sort. Unsorted charts
+  retain the existing sorting fallback.
+- Consumed gameplay notes are compacted in one stable pass, preserving note order
+  and lane cleanup without repeatedly shifting the active-note array.
+- Chart, character and stage/cutscene editors share readable UI fonts, neutral
+  panels and consistent input, button, tab and navigation colors. The editor menu
+  uses aligned text rows and an explicit selection background.
+- Gameplay artwork, audio, shaders, note appearance and user preferences are unchanged.
+
+### Added
+- Native regression/benchmark fixture with two million chart records, crossing
+  sustains, duplicate times, seek positions and editor undo/redo invalidation.
+- Reproduction instructions and performance limits in `docs/performance.md`.
+
+Android version code: 217.
+
 ## [0.3.4] - 2026-11-15
 
 ### Fixed
