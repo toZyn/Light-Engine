@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Fade loading artwork in and reveal the prepared gameplay scene with a short
   exit fade. Keep gameplay timing paused until the final fade frame is presented.
+  Queue early song-start requests so audio cannot run behind loading artwork.
 - Prepare note and sustain meshes, textures, animation prefixes and RGB shaders
   for each lane during incremental scene loading, without spawning chart notes
   or invoking gameplay callbacks.

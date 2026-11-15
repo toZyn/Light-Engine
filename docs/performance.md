@@ -132,6 +132,8 @@ normal gameplay.
 The loading view fades in over 220 ms, survives the scene handoff and reveals the
 prepared scene over 300 ms. Gameplay update/countdown timing stays paused through
 the exit fade; the view is released after its transparent final frame is drawn.
+Early song-start requests are queued until that point, keeping audio from
+advancing under the loading artwork when a cutscene skips the countdown.
 Standard menu exits use a short fade unless they define their own transition.
 
 During loading, each field exercises note/sustain rendering in a small temporary

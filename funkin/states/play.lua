@@ -920,6 +920,7 @@ function PlayState:setPlayback(playback)
 end
 
 function PlayState:playSong(daTime)
+ if self._prepareJob then self._pendingSongStart={time=daTime};return end
 	self:updateDiscordRPC()
 	self:setPlayback(self.playback)
 
@@ -1253,6 +1254,9 @@ function PlayState:update(dt)
     self._prepareJob=nil
     self._loadingView:destroy();self._loadingView=nil
     self._loadingCamera=nil
+    local pending=self._pendingSongStart
+    self._pendingSongStart=nil
+    if pending then self:playSong(pending.time) end
     self.lastTick=love.timer.getTime()
     return
    end

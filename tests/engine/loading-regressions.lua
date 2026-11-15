@@ -101,12 +101,15 @@ check('loading state transfers live artwork across teardown and presents readine
   assert(frames<300,'incremental scene did not finish')
  end
  assert(target._loadingView==view and view.progress==1,'ready view disappeared before being drawn')
+ target:playSong(0.5)
+ assert(target._pendingSongStart and not game.sound.music:isPlaying(),'audio started under loading artwork')
  for _=1,5 do game.update(0.001) end
  assert(target._prepareJob,'ready view must remain until its frame is drawn')
  target:draw();game.update(0.016)
  assert(target._prepareJob and view.exiting,"ready view skipped its exit transition")
  for _=1,30 do target:draw();game.update(0.016) end
  assert(not target._prepareJob and not target._loadingView)
+ assert(not target._pendingSongStart and game.sound.music:isPlaying(),'deferred audio did not start after the fade')
  game.switchState(FreeplayState(),true);game.update(0)
 end)
 
