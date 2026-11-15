@@ -270,6 +270,7 @@ json._encode_string = encode_string
 local statusBuf
 local statusPos
 local statusTop
+local statusOptions, statusField
 local statusAry = {}
 local statusRef = {}
 
@@ -446,6 +447,28 @@ local function decode_null()
 end
 
 local function decode_array()
+ if statusOptions and statusOptions.skipArrays and statusField ~= "difficulties" then
+  local start = statusPos
+  local depth,pos=1,statusPos+1
+  while depth>0 do
+   local at=string_find(statusBuf,'[%[%]"]',pos)
+   if not at then decode_error "expected closing array" end
+   local c=string_byte(statusBuf,at)
+   if c==34 then
+    pos=at+1
+    while true do
+     local ending=string_find(statusBuf,'["\\]',pos)
+     if not ending then decode_error "expected closing quote for string" end
+     if string_byte(statusBuf,ending)==92 then pos=ending+2 else pos=ending+1;break end
+    end
+   else
+    depth=depth+(c==91 and 1 or -1)
+    pos=at+1
+   end
+  end
+  statusPos=pos
+  return string_find(statusBuf,"[^ \t\r\n]",start+1)==pos-1 and {} or {true}
+ end
 	statusPos = statusPos + 1
 	if consume_byte "^[ \t\r\n]*%]" then
 		return {}
@@ -515,6 +538,7 @@ local function decode_item()
 		local key = decode_string()
 		expect_byte "^[ \t\r\n]*:"
 		statusPos = statusPos + 1
+		statusField=key
 		ref[key] = decode()
 	end
 	if top == statusTop then
@@ -534,26 +558,34 @@ local function decode_item()
 	end
 end
 
-function json.decode(str)
-	if type(str) ~= "string" then
-		error("expected argument of type string, got "..type(str))
-	end
-
-	if #str >= 3 and string_byte(str, 1) == 0xEF and string_byte(str, 2) == 0xBB and string_byte(str, 3) == 0xBF then
-		str = string_sub(str, 4)
-	end
-	
-	statusBuf = str
-	statusPos = 1
-	statusTop = 0
-	local res = decode()
-	while statusTop > 0 do
-		decode_item()
-	end
-	if string_find(statusBuf, "[^ \t\r\n]", statusPos) then
-		decode_error "trailing garbage"
-	end
-	return res
+function json.decode(str, checkpoint, options)
+ if type(str) ~= "string" then error("expected argument of type string, got "..type(str)) end
+ if #str >= 3 and string_byte(str,1)==0xEF and string_byte(str,2)==0xBB and string_byte(str,3)==0xBF then str=string_sub(str,4) end
+ local previousBuf,previousPos,previousTop,previousAry,previousRef,previousOptions,previousField=statusBuf,statusPos,statusTop,statusAry,statusRef,statusOptions,statusField
+ statusBuf,statusPos,statusTop,statusAry,statusRef=str,1,0,{},{}
+ statusOptions,statusField=options,nil
+ local ok,result=pcall(function()
+  local res=decode()
+  local work=0
+  while statusTop>0 do
+   decode_item()
+   work=work+1
+   if checkpoint and work>=4096 then
+    work=0
+    local buf,pos,top,ary,ref,opts,field=statusBuf,statusPos,statusTop,statusAry,statusRef,statusOptions,statusField
+    statusBuf,statusPos,statusTop,statusAry,statusRef=nil,nil,0,{},{}
+    checkpoint(pos,#str)
+    statusBuf,statusPos,statusTop,statusAry,statusRef=buf,pos,top,ary,ref
+    statusOptions,statusField=opts,field
+   end
+  end
+  if string_find(statusBuf,"[^ \t\r\n]",statusPos) then decode_error "trailing garbage" end
+  return res
+ end)
+ statusBuf,statusPos,statusTop,statusAry,statusRef=previousBuf,previousPos,previousTop,previousAry,previousRef
+ statusOptions,statusField=previousOptions,previousField
+ if not ok then error(result,0) end
+ return result
 end
 
 return json

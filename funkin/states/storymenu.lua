@@ -101,7 +101,7 @@ function StoryMenuState:enter()
 		self.difficultySelector = SpriteGroup()
 		self:add(self.difficultySelector)
 
-		self.leftArrow = Sprite(0, self.weekList.members[1].y)
+		self.leftArrow = Sprite(0, self.weekList.members[1].yAdd)
 		self.leftArrow:setFrames(ui_tex)
 		self.leftArrow.animation:addByPrefix('idle', "arrow left")
 		self.leftArrow.animation:addByPrefix('press', "arrow push left")
@@ -230,14 +230,14 @@ function StoryMenuState:selectWeek()
 		StoryMenuState.curDifficulty = (StoryMenuState.curDifficulty - 1) % #songDiffs + 1
 		local diff = songDiffs[StoryMenuState.curDifficulty]
 
-		if #songTable == 0 or not PlayState.loadSong(songTable[1], diff) then
+		if #songTable == 0 then
 			self.selectedWeek = false
 			self.weekList.lock = false
 			util.playSfx(paths.getSound('cancelMenu'))
 			return false
 		end
 
-		local toState = LoadState(PlayState(true, songTable, diff))
+		local toState = LoadState(PlayState.deferred(true, songTable, diff))
 		PlayState.storyWeek = leWeek.name
 		PlayState.storyWeekFile = leWeek.file
 
@@ -253,7 +253,8 @@ function StoryMenuState:selectWeek()
 			self.weekList.lock = true
 		end
 
-		Timer.wait(1, function() game.switchState(toState) end)
+		self.skipTransOut = true
+		game.switchState(toState)
 	else
 		util.playSfx(paths.getSound('cancelMenu'))
 	end

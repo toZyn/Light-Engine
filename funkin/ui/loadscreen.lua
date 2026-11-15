@@ -10,7 +10,6 @@ function LoadScreen:new(nextState)
  self.nextState=nextState
  if nextState and nextState.enterScene then
   paths.beginScene()
-  if ClientPrefs.data.performanceCapture then require('funkin.backend.benchmark').start() end
  end
  self.backdrop=Graphic(0,0,game.width,game.height,Color.BLACK)
  self:add(self.backdrop)

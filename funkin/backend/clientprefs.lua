@@ -37,7 +37,6 @@ ClientPrefs.data = {
 	fps = 0,
 	antialiasing = true,
 	lowQuality = false,
-	performanceCapture = false,
 	shader = true,
 	fullscreen = false,
 	resolution = 1,

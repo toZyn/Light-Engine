@@ -54,10 +54,9 @@ function love.load()
  if os.getenv("SDL_VIDEODRIVER")=="offscreen" then love.window.hasFocus=function()return true end end
  ClientPrefs.data.autoPause=false
  ClientPrefs.data.botplayMode=true
- ClientPrefs.data.performanceCapture=false
  local opts=(loxreq 'lib.json').decode({lua(json.dumps(options))})
  B.start(opts)
- game.switchState(LoadState(PlayState(false,opts.song,opts.difficulty)),true)
+ game.switchState(LoadState(PlayState.deferred(false,opts.song,opts.difficulty)),true)
 end
 function love.update(dt)
  B.update()

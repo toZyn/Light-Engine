@@ -1,0 +1,63 @@
+check('Story Mode automatic difficulties stay below the character backdrop', function()
+ local state=StoryMenuState()
+ state:enter()
+ assert(#state.weeksData>0)
+ local week=state.weeksData[state.weekList.curSelected]
+ assert(not week.noPlayableDifficulty and #week.difficulties>=3)
+ assert(state.sprDifficulty.visible or state.txtDifficulty.visible)
+ assert(state.leftArrow.y==state.weekList.members[1].yAdd)
+ assert(state.leftArrow.y>442,'difficulty selector is covered by the character backdrop')
+ state:leave()
+end)
+
+check('mobile difficulty rows stay separated for short and long lists', function()
+ for _,count in ipairs({1,2,3,12}) do
+  local list=MenuList(nil,false,'mobile')
+  list.mobileTop=140
+  for i=1,count do list:add(AtlasText(0,0,'Difficulty '..i,'bold')) end
+  for _,selected in ipairs({1,count}) do
+   list:setSelection(selected,true)
+   list:updatePositions(0,0)
+   for i=2,count do
+    local previous,current=list.members[i-1],list.members[i]
+    assert(current.y>=previous.y+previous.height+20,'mobile rows overlap')
+   end
+   local item=list:getSelected()
+   assert(item.y>=140 and item.y+item.height<=game.height-80,'selected difficulty is outside the usable area')
+  end
+  list:destroy()
+ end
+end)
+
+check('translated difficulty lists use visible glyph bounds for touch', function()
+ local list=MenuList(nil,false,'mobile')
+ list.x,list.y=120,35
+ local item=AtlasText(0,0,'Hard','bold')
+ list:add(item)
+ list:updatePositions(0,0)
+ local x,y,w,h,sx,sy=item:_getBoundary()
+ local tx,ty=list.x+x+w*sx/2,list.y+y+h*sy/2
+ assert(list:touchOverObj(tx,ty,item),'visible difficulty does not accept touch')
+ assert(not list:touchOverObj(tx-w*sx-1,ty,item),'touch outside difficulty hits')
+ list:destroy()
+end)
+
+check('pause difficulties open separated on desktop and permit returning', function()
+ local savedSong,savedDifficulty=PlayState.SONG,PlayState.songDifficulty
+ local savedDevice=love.system.getDevice
+ PlayState.SONG={song='bopeebo',difficulties={'Easy','Normal','Hard'}}
+ PlayState.songDifficulty='Normal'
+ love.system.getDevice=function() return 'Desktop' end
+ local pause=PauseSubstate()
+ love.system.getDevice=savedDevice
+ pause:openDifficultyMenu()
+ local first,second=pause.diffList.members[1],pause.diffList.members[2]
+ assert(second.y>=first.y+first.height,'desktop difficulty rows start stacked')
+ Tween.update(0.5)
+ assert(pause.diffList.open and not pause.blockInput,'difficulty menu blocks the back action')
+ pause:closeDifficultyMenu()
+ assert(pause.diffList.lock and not pause.menuList.lock)
+ Tween.update(0.5)
+ pause:close()
+ PlayState.SONG,PlayState.songDifficulty=savedSong,savedDifficulty
+end)

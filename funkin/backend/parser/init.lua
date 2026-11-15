@@ -1,3 +1,4 @@
+local TimeIndex = require "funkin.backend.timeindex"
 local chart = require "funkin.backend.parser.chart"
 local character = require "funkin.backend.parser.character"
 local stage = require "funkin.backend.parser.stage"
@@ -138,7 +139,7 @@ function Parser.getChart(name, diff, opts)
 		end
 
 		local okParse, parsedOrErr = xpcall(function()
-			return parser.parse(data, events, meta, diff)
+			return parser.parse(data, events, meta, diff, {consume = true})
 		end, debug.traceback)
 		if not okParse then
 			local firstLine, trace = tostring(parsedOrErr):match("^([^\n]+)\n?(.*)")
@@ -159,9 +160,9 @@ function Parser.getChart(name, diff, opts)
 		if data.player2 then data.player2 = character.resolveName(data.player2) or data.player2 end
 		if data.gfVersion then data.gfVersion = character.resolveName(data.gfVersion) or data.gfVersion end
 
-		table.sort(data.notes.enemy, Parser.sortByTime)
-		table.sort(data.notes.player, Parser.sortByTime)
-		table.sort(data.events, Parser.sortByTime)
+		TimeIndex.sort(data.notes.enemy)
+		TimeIndex.sort(data.notes.player)
+		TimeIndex.sort(data.events)
 
 		if data.song == nil then data.song = name end
 

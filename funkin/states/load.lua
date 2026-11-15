@@ -5,6 +5,7 @@ function LoadState:new(state)
 	LoadState.super.new(self)
 	self.nextState = state
 	self.persistCache = true
+	self.deferCollection = true
 end
 
 function LoadState:enter()
@@ -40,6 +41,12 @@ function LoadState:update(dt)
 	end
 
 	if self.load:isReady() and not self._loaded then
+		if self.nextState._loadFailed then
+			self.load:cancel()
+			util.playMenuMusic()
+			game.switchState((PlayState.storyMode and StoryMenuState or FreeplayState)())
+			return
+		end
 		self._loaded = true
   self.load:handoff(self)
 		if game.sound.music then

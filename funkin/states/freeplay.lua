@@ -78,18 +78,18 @@ function FreeplayState:openSong(song)
 	PlayState.storyMode = false
 	PlayState.META = song.meta
 	local diff = song.diffs[FreeplayState.curDifficulty] or "normal"
-	local ok, err = PlayState.loadSong(song.songName, diff)
-	if not ok then
-		self.songs.lock = false
-		util.playSfx(paths.getSound('cancelMenu'))
-		return false, err
-	end
-
 	if game.keys.pressed.SHIFT then
+		local ok, err = PlayState.loadSong(song.songName, diff)
+		if not ok then
+			self.songs.lock = false
+			util.playSfx(paths.getSound('cancelMenu'))
+			return false, err
+		end
 		PlayState.storyDifficulty = diff
 		game.switchState(ChartingState())
 	else
-		game.switchState(LoadState(PlayState(false, nil, diff)))
+		self.skipTransOut = true
+		game.switchState(LoadState(PlayState.deferred(false, song.songName, diff)))
 	end
 	return true
 end

@@ -13,7 +13,7 @@ local function readIndex(key)
  local info = love and love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(resolved, 'file')
  local cached = info and indexCache[resolved]
  if cached and cached.size == info.size and cached.modtime == info.modtime then return cached.data end
- local ok, data = pcall(paths.getJSON, key)
+ local ok, data = pcall(paths.getJSON, key, {skipArrays = true})
  if not ok or type(data) ~= 'table' then return nil end
  local summary = {song = data.song ~= nil, difficulties = data.difficulties}
  if type(data.playData) == 'table' then summary.playData = {difficulties = data.playData.difficulties} end
@@ -61,6 +61,10 @@ function Difficulties.forSong(song, declared)
  local generic=false
  local metadata={}
  local function read(key, variant)
+  if variant and love and love.filesystem and love.filesystem.getInfo then
+   local info=love.filesystem.getInfo(paths.getPath(key..'.json'),'file')
+   if info and info.size>262144 then add(variant);return end
+  end
   local data=json(key)
   if type(data)~='table' then return end
   if type(data.notes)=='table' and not data.notes.player and not data.notes.enemy and #data.notes==0 then

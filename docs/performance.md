@@ -1,6 +1,6 @@
 # Large charts and low-resource devices
 
-Light Engine 0.4.0 keeps the original image/audio files, shaders, note rendering,
+Light Engine 0.4.1 keeps the original image/audio files, shaders, note rendering,
 input preferences and gameplay effects. The changes reduce CPU work rather than
 reduce asset quality. The editor UI changes are confined to editing tools.
 
@@ -9,7 +9,7 @@ reduce asset quality. The editor UI changes are confined to editing tools.
 - Gameplay and editor entry check whether chart records are already sorted before
   sorting. Ordered charts take a linear validation pass instead of another sort.
 - Gameplay seeks use a binary search of raw chart times. Sprite creation remains
-  limited to the existing spawn window; the full chart is not turned into sprites.
+  limited to the visible-lane and hit-window horizon; the full chart is not turned into sprites.
 - Consumed active notes are compacted in one stable pass. Lane membership and the
   last-sustain pointer are cleared through the same detach operation as manual
   removal. Surviving notes keep their order and identity.
@@ -23,12 +23,53 @@ reduce asset quality. The editor UI changes are confined to editing tools.
 - Editor typography and widget colors are shared locally by the editing tools.
   The tool menu has its own overlay camera, released when it closes or is destroyed.
 
+## Loading and dense gameplay in 0.4.1
+
+Standard menu entry points now defer chart ingestion until the loading view has
+been drawn. JSON decoding, normalization, large sorts and note-type scans yield
+to the scene job. The legacy direct `PlayState(..., song, difficulty)` constructor
+remains synchronous for compatibility; use `PlayState.deferred(...)` when routing
+through `LoadState`.
+
+The decoder releases completed documents. Parser-owned raw note arrays are
+consumed during normalization, avoiding a deep clone of the input. Difficulty
+scans retain chart structure and names without allocating all note arrays.
+Normalizing unowned data through a chart parser does not mutate the caller's notes.
+
+Spawning uses visible lane bounds and the timing window, rather than expanding
+with scroll speed. `noteSpawn` therefore runs closer to the time the note is
+needed, particularly at extreme speeds; scripts should not depend on the old
+speed-dependent, hundreds-of-seconds-ahead callback. Actual visible stationary
+notes still spawn. Removed active notes are ignored immediately by queries and
+rendering; internal active arrays compact on the next field update or explicit
+`flushRemovedNotes()`.
+
+An isolated Linux x86_64 / LÖVE 11.5 software-rendered comparison used the same
+synthetic Vanilla chart (2,000,000 notes, 2 ms spacing, eight alternating lanes,
+zero-length sustains, speed 640), base stage/characters and base instrumental.
+Both paths entered through `LoadState` and updated/drew until the scene finished
+preparing. The previous version parsed synchronously before that state.
+
+| Measurement | 0.4.0 | 0.4.1 observed run |
+| --- | ---: | ---: |
+| First loading frame after request | 10.131 s | 0.074 s |
+| Complete scene preparation | 12.901 s | 10.223 s |
+| Peak process RSS (`VmHWM`) | 1,764,880 KiB | 1,329,300 KiB |
+| Peak Lua heap sampled per loading frame | 971.31 MiB | 492.91 MiB |
+| Lua heap after full collection | 508.90 MiB | 326.22 MiB |
+
+These are individual observations, not device guarantees. Preparation still had
+an 857 ms update/draw spike in this run; repeated instrumented runs varied and
+showed longer pauses. Lua allocation/collection, file reads, audio, GPU work and
+mod script callbacks are not all preemptible. Showing loading promptly does not
+mean all subsequent frames are smooth. Do not infer Android FPS from this table.
+
 ## Reproduce
 
 Use LÖVE 11.5 with a working graphics backend:
 
 ```sh
-python3 tools/run_engine_tests.py dense-charts
+python3 tools/run_engine_tests.py dense-charts dense-gameplay loading-ingestion menu-regressions
 python3 tools/run_engine_tests.py
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
@@ -36,7 +77,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 For Linux without a display, SDL's offscreen backend can be used if supported:
 
 ```sh
-ALSOFT_DRIVERS=null SDL_VIDEODRIVER=offscreen python3 tools/run_engine_tests.py dense-charts
+ALSOFT_DRIVERS=null SDL_VIDEODRIVER=offscreen python3 tools/run_engine_tests.py dense-charts dense-gameplay loading-ingestion menu-regressions
 ```
 
 The fixture generates 2,000,000 chart records, including a hold spanning the
@@ -69,7 +110,7 @@ simultaneously visible/hittable notes. Dense spawn windows still create and
 process every applicable note and invoke mod callbacks. There is no note cap,
 intentional note dropping or automatic disabling of effects.
 
-Raw JSON decoding, initial chart storage, index construction and editor undo
+Initial chart storage, index construction and editor undo
 snapshots still scale with chart size. Undo snapshots clone the chart; repeated
 edits of multi-million-note charts can require substantial additional memory.
 Extremely many overlapping sustains also require processing their actual visible
@@ -77,3 +118,11 @@ results. Large charts can therefore exceed the memory or CPU of low-end phones.
 This update does not claim zero latency, constant memory, or verified Android FPS.
 Test on the target device using real charts, scripts and shaders. The scene
 benchmark tooling remains available for end-to-end frame/load/memory comparison.
+
+`dense-gameplay` separately exercises actual note creation, hit removal and canvas
+rendering for 60 frames at 2,000 notes/second, and a 12,000-active-note removal
+batch. `loading-ingestion` checks deferred loading, decoder ownership, metadata
+projection, parser source ownership and a cooperative 30,000-note reverse sort.
+These fixtures supplement the index microbenchmark; none replaces testing an
+actual mod on the target device. No per-song benchmark files are generated by
+normal gameplay.

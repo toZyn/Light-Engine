@@ -30,6 +30,7 @@ function PauseSubstate:new()
 	self.diffTextList = AtlasText(18, 18, "Change difficulty", "bold")
 	self.diffList = MenuList(paths.getSound('scrollMenu'), false,
 		love.system.getDevice() == "Mobile" and "mobile" or nil)
+	self.diffList.mobileTop = 140
 	self.diffList.selectCallback = bind(self, self.selectDifficulty)
 	self.diffList.lock, self.diffList.open = true, false
 
@@ -116,10 +117,13 @@ function PauseSubstate:resetState()
 	self:add(self.load)
 end
 
-function PauseSubstate:selectDifficulty(daChoice)
-	PlayState.loadSong(PlayState.SONG.song, PlayState.SONG.difficulties[
-		table.find(PlayState.SONG.difficulties, tostring(daChoice))])
-	self:resetState()
+function PauseSubstate:selectDifficulty(choice)
+ if self.lock or self.blockInput then return end
+ self.lock = true
+ local song = PlayState.SONG.song
+ local diff = tostring(choice)
+ if self.parent then self.parent.skipTransOut = true end
+ game.switchState(LoadState(PlayState.deferred(nil, song, diff)))
 end
 
 function PauseSubstate:selectOption(daChoice)
@@ -154,7 +158,7 @@ function PauseSubstate:selectOption(daChoice)
 		end,
 		["exit to menu"] = function()
 			game.sound.music.pitch = 1
-			self.music:stop()
+			if self.music then self.music:stop() end
 			util.playMenuMusic()
 			PlayState.chartingMode = false
 			PlayState.startPos = 0
@@ -214,11 +218,8 @@ function PauseSubstate:openDifficultyMenu()
 	Tween.cancelTweensOf(self.diffTextList)
 	Tween.cancelTweensOf(self.menuList)
 
-	for i = 1, #self.diffList.members do
-		self.diffList.members[i].target = 0
-	end
-	self.diffList:updatePositions(game.dt, 0)
 	self.diffList:changeSelection(nil, true)
+	self.diffList:updatePositions(game.dt, 0)
 
 	self.menuList.lock = true
 	self.blockInput = true
@@ -227,6 +228,7 @@ function PauseSubstate:openDifficultyMenu()
 	self.diffList.x = -300
 	Tween.tween(self.diffList, {x = 120}, 0.4, {ease = "circOut", onComplete = function()
 		self.diffList.open = true
+		self.blockInput = false
 	end})
 	Tween.tween(self.menuList, {alpha = 0}, 0.4, {ease = "circOut"})
 	Tween.tween(self.diffTextList, {alpha = 1}, 0.2, {ease = "circOut"})

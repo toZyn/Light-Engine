@@ -25,7 +25,6 @@ local data = {
 	end},
 
 	{"PERFORMANCE"},
-	{"performanceCapture", "Capture performance report", "boolean"},
 
 	{"RECORDING"},
 	{"screenRecording", "Screen recording", "boolean", function(add, optionsUI)

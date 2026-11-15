@@ -54,7 +54,8 @@ check("two million chart records retain exact seek and visible-range results", f
 	field:seekTo(15000)
 	assert(field.chartIndex == 1500000 and #field.activeNotes == 0)
 	field:update(1 / 60)
-	assert(#field.activeNotes == 201 and field.chartIndex == 1500201)
+	local visibleCount = math.floor(field.spawnBuffer * 100) + 1
+	assert(#field.activeNotes == visibleCount and field.chartIndex == 1500000 + visibleCount)
 	assert(#field.chartNotes == count)
 	field:destroy()
 	print(string.format("DENSE BENCH records=%d generate=%.2fms index=%.2fms query_p50=%.4fms query_p95=%.4fms scan=%.2fms lua_heap=%.2fMiB",
