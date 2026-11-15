@@ -5,6 +5,16 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-11-15
+
+### Fixed
+- Keep cached images, fonts and atlas frames alive while a current/incoming state
+  or a global render group still uses them. The cache no longer releases a
+  drawable's texture during state entry or scene pruning.
+- Release those resources after the last render owner is removed. Sprite bounds
+  and rendering behavior are unchanged, including Freeplay atlas text.
+- Added regressions reproducing the exact released-object error before the fix.
+
 ## [0.3.3] - 2026-11-15
 
 ### Fixed

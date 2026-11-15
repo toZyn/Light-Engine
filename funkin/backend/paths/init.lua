@@ -112,6 +112,39 @@ local function insertFile(path, file, type, tbl)
 	end
 end
 
+-- Cache ownership does not imply that a live drawable stopped borrowing it.
+-- Visit render ownership edges only; script environments/back-references are not roots.
+local function liveResources(incoming)
+ local live, frames, visited = {}, {}, {}
+ local function asset(value) if type(value)=='userdata' then live[value]=true end end
+ local visit
+ local function collection(value)
+  if type(value)~='table' or visited[value] then return end
+  visited[value]=true;live[value]=true;asset(value.texture)
+  for _,frame in pairs(value.frames or value.spritemaps or {}) do
+   if type(frame)=='table' then frames[frame]=true;asset(frame.texture) end
+  end
+ end
+ visit=function(object)
+  if type(object)~='table' or visited[object] or object.exists==false then return end
+  visited[object]=true
+  asset(object.texture);asset(object.font);asset(object.canvas)
+  collection(object.frames)
+  if type(object.frame)=='table' then frames[object.frame]=true;asset(object.frame.texture) end
+  for _,child in pairs(object.members or {}) do visit(child) end
+  for _,child in pairs(object.activeNotes or {}) do visit(child) end
+  for child in pairs(object.retainOnSwitch or {}) do visit(child) end
+  visit(object._loadingView)
+  visit(object.substate)
+ end
+ if game then
+  visit(game);visit(game.bound)
+  if game.getState then visit(game.getState()) end
+ end
+ visit(incoming)
+ return live,frames
+end
+
 local sceneUsed,scenePrevious
 
 function paths.touch(cache,key)
@@ -132,10 +165,10 @@ end
 function paths.finishScene()
  if not scenePrevious then return end
  local Job=require "funkin.backend.scenejob"
- local textures,frames={},{}
+ local textures,frames=liveResources()
  for _,cache in ipairs({paths.atlases,paths.animate_atlases}) do
   for key,obj in pairs(cache) do
-   if not scenePrevious[cache][key] or (sceneUsed[cache] and sceneUsed[cache][key]) or paths.isPersistant(key) then
+   if not scenePrevious[cache][key] or (sceneUsed[cache] and sceneUsed[cache][key]) or paths.isPersistant(key) or textures[obj] then
     if obj.texture then textures[obj.texture]=true end
     for _,frame in ipairs(obj.frames or obj.spritemaps or {}) do
      frames[frame]=true
@@ -185,29 +218,30 @@ function paths.isPersistant(path)
 	return false
 end
 
-local function clear(tbl)
+local function clear(tbl,live,frames)
 	for k, o in pairs(tbl) do
-		if not paths.isPersistant(k) then
+		if not paths.isPersistant(k) and not live[o] then
 			if o.release then o:release() end
-			if o.destroy then o:destroy() end
+			if o.destroy then o:destroy(frames) end
 			tbl[k] = nil
 		end
 	end
 end
 
-function paths.clearCache()
+function paths.clearCache(incoming)
+ local live,frames=liveResources(incoming)
  sceneUsed,scenePrevious=nil,nil
 	paths.contentRevision = (paths.contentRevision or 0) + 1
 	local difficulties = package.loaded["funkin.backend.difficulties"]
 	if type(difficulties) == "table" then difficulties.clearCache() end
 	-- Cancel callbacks/results before releasing their possible cache targets.
 	paths.async.stop()
-	clear(paths.atlases)
-	clear(paths.animate_atlases)
-	clear(paths.images)
-	clear(paths.audio)
-	clear(paths.fonts)
-	clear(paths.skins)
+	clear(paths.atlases,live,frames)
+	clear(paths.animate_atlases,live,frames)
+	clear(paths.images,live,frames)
+	clear(paths.audio,live,frames)
+	clear(paths.fonts,live,frames)
+	clear(paths.skins,live,frames)
 	collectgarbage()
 end
 

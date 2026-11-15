@@ -164,7 +164,7 @@ function funkin.load()
 		GlobalScripts.call("preStateEnter", state)
 		if paths and not game.getState().persistCache and
 			getmetatable(state) ~= getmetatable(game.getState()) then
-			paths.clearCache()
+			paths.clearCache(state)
 			Shader.clear()
 		end
 	end
