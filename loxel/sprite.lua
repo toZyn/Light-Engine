@@ -100,14 +100,31 @@ function Sprite:loadTextureFromSprite(sprite)
 	return self
 end
 
+-- A shared image can be released by cache cleanup or mod code while a sprite
+-- still references its Lua userdata. A non-nil texture is not necessarily usable.
+local function textureDimensions(texture)
+	if texture then
+		local ok, width, height = pcall(texture.getDimensions, texture)
+		if ok then return width, height end
+	end
+	return 0, 0
+end
+
+function Sprite:_getDrawTexture()
+	local f = self.animation and self.animation:getCurrentFrame()
+	local texture = f and f.texture or self.texture
+	local width, height = textureDimensions(texture)
+	if width > 0 and height > 0 then return texture end
+end
+
 function Sprite:getFrameWidth()
 	local f = self.animation and self.animation:getCurrentFrame()
-	return f and f.width or self.texture and self.texture:getWidth()
+	return f and f.width or (textureDimensions(self.texture))
 end
 
 function Sprite:getFrameHeight()
 	local f = self.animation and self.animation:getCurrentFrame()
-	return f and f.height or self.texture and self.texture:getHeight()
+	return f and f.height or select(2, textureDimensions(self.texture))
 end
 
 function Sprite:getFrameDimensions() return self:getFrameWidth(), self:getFrameHeight() end
@@ -167,14 +184,15 @@ function Sprite:update(dt)
 end
 
 function Sprite:_canDraw()
-	return self.texture ~= nil and (self.width ~= 0 or self.height ~= 0) and
-		Sprite.super._canDraw(self)
+	return (self.width ~= 0 or self.height ~= 0) and
+		Sprite.super._canDraw(self) and self:_getDrawTexture() ~= nil
 end
 
 function Sprite:__render(camera)
+	local texture = self:_getDrawTexture()
+	if not texture then return end
 	love.graphics.push("all")
-	local f, texture = self:getCurrentFrame(), self.texture
-	if f and f.texture then texture = f.texture end
+	local f = self:getCurrentFrame()
 
 	local x, y, rad, sx, sy, ox, oy, kx, ky = self:setupDrawLogic(camera)
 

@@ -5,6 +5,17 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-11-14
+
+### Fixed
+- Prevented `Cannot use object after it has been released` in sprite bounds and
+  nested group rendering. Released textures now return zero fallback dimensions
+  and are skipped before drawing, including animation frame textures and sprites
+  whose textures are released after entering the camera queue.
+- Applied the same texture lifetime check to ActorSprite rendering.
+
+Android version code: 214.
+
 ## [0.3.1] - 2026-11-14
 
 ### Fixed

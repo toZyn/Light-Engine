@@ -119,18 +119,19 @@ function ActorSprite:update(dt)
 end
 
 function ActorSprite:_canDraw()
-	return self.texture ~= nil and (self.width ~= 0 or self.height ~= 0) and
-		ActorSprite.super._canDraw(self)
+	return (self.width ~= 0 or self.height ~= 0) and
+		ActorSprite.super._canDraw(self) and self:_getDrawTexture() ~= nil
 end
 
 function ActorSprite:__render(camera)
+	local texture = self:_getDrawTexture()
+	if not texture then return end
 	local r, g, b, a = love.graphics.getColor()
 	local shader = love.graphics.getShader()
 	local blendMode, alphaMode = love.graphics.getBlendMode()
 	local min, mag, anisotropy, mode
 
 	local f = self:getCurrentFrame()
-	local texture = f and f.texture or self.texture
 	mode = self.antialiasing and "linear" or "nearest"
 	min, mag, anisotropy = texture:getFilter()
 	texture:setFilter(mode, mode, anisotropy)
