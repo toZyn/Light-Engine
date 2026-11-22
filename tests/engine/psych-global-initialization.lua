@@ -10,7 +10,7 @@ check('Psych counters and globals exist before script source and onCreate', func
   assert(state[native] == expected, name .. ' initialization mismatch')
  end
  assert(state.totalPlayed == 0 and state.totalNotesHit == 0)
- assert(state.ratingName == '?' and state.ratingPercent == nil and state.ratingFC == nil)
+ assert(state.ratingName == '?' and state.ratingPercent == 0 and state.ratingFC == nil)
  local values = Globals.initial(state, {speed=2.5})
  assert(values.score == 0 and values.misses == 0 and values.hits == 0 and values.combo == 0)
  assert(values.scrollSpeed == 2.5 and values.startedCountdown == false)

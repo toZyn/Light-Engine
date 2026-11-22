@@ -4,7 +4,7 @@ function Globals.initializeState(state)
  state.totalPlayed = 0
  state.totalNotesHit = 0
  state.ratingName = '?'
- state.ratingPercent = nil
+ state.ratingPercent = 0
  state.ratingFC = nil
 end
 

@@ -1,4 +1,11 @@
 local MenuAssets = {}
+local warned = {}
+
+local function extension(key, message)
+ if warned[key] then return end
+ warned[key] = true
+ Logger.log('warn', '[Light extension] ' .. message)
+end
 
 function MenuAssets.introLines()
  local result, seen = {}, {}
@@ -23,6 +30,7 @@ function MenuAssets.introLines()
    end
   end
  end
+ if #result == 0 then extension('emptyIntro', 'Empty intro text uses a blank introduction instead of Psych random selection failure.') end
  return result
 end
 
@@ -38,14 +46,16 @@ function MenuAssets.character(name)
  local psychImage = type(data.image) == 'string' and data.image ~= '' and data.image
  local image = psychImage or (type(data.sprite) == 'string' and data.sprite ~= '' and data.sprite)
  local fallback = not image
+ local recovered = not ok or not image
  data.sprite = image or defaults.sprite
  for _, key in ipairs({'idle_anim', 'confirm_anim', 'scale', 'flipX'}) do
-  if type(data[key]) ~= type(defaults[key]) then data[key] = defaults[key] end
+  if type(data[key]) ~= type(defaults[key]) then data[key] = defaults[key]; recovered = true end
  end
- if type(data.position) ~= 'table' then data.position = {} end
+ if type(data.position) ~= 'table' then data.position = {}; recovered = true end
  for i = 1, 2 do
-  if type(data.position[i]) ~= 'number' then data.position[i] = defaults.position[i] end
+  if type(data.position[i]) ~= 'number' then data.position[i] = defaults.position[i]; recovered = true end
  end
+ if recovered then extension('character:' .. path, 'Menu character data recovered from base BF defaults: ' .. path) end
  return data, psychImage and 'menucharacters/' or 'menus/storymenu/characters/', fallback
 end
 

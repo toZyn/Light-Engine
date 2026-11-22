@@ -29,3 +29,12 @@ are integration tests, without an executing Flixel collision reference; their
 inventory entries remain `distinta` with their differences recorded.
 
 ReferenceInitialization contains unchanged PlayState field declarations in a synthetic wrapper. Reference, ReferenceInput and ReferenceFiles adapt callback registration and replace engine services with synthetic providers. Legal provenance headers identify these modifications. Psych 1.0.4 includes LICENSE (Apache-2.0) and no NOTICE file at its repository root. No mod scripts or mod assets are used by this harness.
+
+## Native field defaults
+
+Run `python tests/reference/psych104/verify_cpp_defaults.py --haxe /path/to/haxe --check`.
+This generates C++ with the actual Haxe compiler, checks emitted Float/Int/Bool/String types, and compiles a C++17 probe for zeroed allocation and the original explicit initializers. The temporary haxelib shim provides metadata for code generation only; it does not supply hxcpp or fake a successful engine build. The native initialization JSON is produced by this probe, not Haxe --interp. ReferenceInitialization remains the source declaration inventory.
+
+The allocation premise is verified against hxcpp v4.3.2: include/hx/Object.h routes object allocation to InternalNew/ImmixAllocator; src/hx/gc/Immix.cpp uses ZERO_MEM (memset(ptr,0,n)), clears recycled allocation ranges, and clears large allocations. Sources: https://github.com/HaxeFoundation/hxcpp/blob/v4.3.2/include/hx/Object.h and https://github.com/HaxeFoundation/hxcpp/blob/v4.3.2/src/hx/gc/Immix.cpp . A zeroed Float is 0, Int is 0, Bool is false; String retains its null state unless explicitly initialized. This probe does not execute hxcpp's allocator or a compiled Psych game.
+
+Psych initialization evidence: source/psychlua/FunkinLua.hx initializes all defaultPlayerStrumX/Y0–3 and defaultOpponentStrumX/Y0–3 to 0 in its constructor. source/states/PlayState.hx:956–987 assigns generated-arrow positions inside startCountdown after onStartCountdown accepts the countdown, before onCountdownStarted. The globals are therefore zero, not nil, in an initial script's onCreate.

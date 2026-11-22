@@ -44,3 +44,27 @@ check('menu characters accept Psych image and recover missing or incomplete JSON
  love.filesystem.read, paths.getPath = oldRead, oldPath
  assert(ok, err)
 end)
+
+check('Light recovery extensions emit one warning per recovery path', function()
+ local assets = assert(love.filesystem.load('funkin/backend/menuassets.lua'))()
+ local read, path, log = love.filesystem.read, paths.getPath, Logger.log
+ local defaults = assert(read('assets/data/weeks/characters/bf.json'))
+ local warnings = {}
+ local ok, err = xpcall(function()
+  paths.getPath = function(_, allowMods) return allowMods == false and 'base' or 'incomplete-fixture' end
+  love.filesystem.read = function(file) return file == 'base' and defaults or '{}' end
+  Logger.log = function(level, message)
+   assert(level == 'warn' and message:find('[Light extension]', 1, true))
+   warnings[#warnings + 1] = message
+  end
+  assets.character('incomplete')
+  assets.character('incomplete')
+  assert(#warnings == 1)
+  love.filesystem.read = function() return '' end
+  assets.introLines()
+  assets.introLines()
+  assert(#warnings == 2)
+ end, debug.traceback)
+ love.filesystem.read, paths.getPath, Logger.log = read, path, log
+ assert(ok, err)
+end)
