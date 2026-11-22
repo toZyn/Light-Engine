@@ -269,6 +269,9 @@ void main() {
    '{"song":{"song":"compat-layout-fixture","bpm":100,"speed":1,"notes":[{"mustHitSection":true,"sectionNotes":[[250,0,0]]}]}}'))
   assert(love.filesystem.write(dir .. '/events.json', '{"events":[[300,[["Test","one","two"]]]]}'))
   assert(love.filesystem.write(dir .. '/dialogue.json', '{"dialogue":[{"text":"Hola, café"}]}'))
+  assert(love.filesystem.createDirectory('fixture-mods/psych/videos'))
+  assert(love.filesystem.write('fixture-mods/psych/videos/mp4-only.mp4', 'fixture'))
+  assert(love.filesystem.write('fixture-mods/psych/videos/corrupt.ogv', 'fixture'))
   assert(love.filesystem.createDirectory('fixture-mods/psych/extra'))
   assert(love.filesystem.write('fixture-mods/psych/extra/helper.lua', [[
 function onCreate() loads = (loads or 0) + 1 end
@@ -475,6 +478,17 @@ function onEvent(name:String, a:String, b:String) {
    state.psychCutscene:update(0)
    controls:update()
    assert(not state.psychCutscene)
+   assert(not vars.startVideo('mp4-only'))
+   assert(not vars.startVideo('corrupt'))
+   assert(not state.videoCutscene and not state.psychCutscene)
+   assert(vars.startVideo('ughCutscene', false, true, true, false))
+   local video = state.videoCutscene
+   assert(video.video and video.looped and not video.video:isPlaying())
+   assert(not state.psychCutscene)
+   video:play()
+   assert(video.video:isPlaying())
+   video.onComplete()
+   assert(not state.videoCutscene and not state.psychCutscene)
    assert(vars.startVideo('ughCutscene'))
    assert(state.psychCutscene.video)
    scripts:close()

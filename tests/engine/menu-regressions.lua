@@ -93,3 +93,32 @@ check("a second finger opens pause options on the first tap", function()
 	assert(not pause.blockInput and not list.lock)
 	pause:close()
 end)
+
+check("a translated pause camera accepts taps across the visible option row", function()
+	local getDevice = love.system.getDevice
+	love.system.getDevice = function() return "Mobile" end
+	local pause = PauseSubstate()
+	pause.cameras = {Camera()}
+	pause.cameras[1].zoom = 0.85
+	pause.cameras[1].x = 48
+	pause:enter()
+	love.system.getDevice = getDevice
+	pause:update(0)
+	local list = pause.menuList
+	local option = list.members[#list.members - 1]
+	assert(tostring(option) == "Options")
+	local _, y, _, h, _, sy = option:_getBoundary()
+	local tx, ty = pause.cameras[1]:worldToScreen(game.width * 0.6, y + h * sy / 2)
+	local w, height = love.graphics.getDimensions()
+	local scale = math.min(w / game.width, height / game.height)
+	tx = tx * scale + math.floor((w - game.width * scale) / 2)
+	ty = ty * scale + math.floor((height - game.height * scale) / 2)
+	game.touchpressed("pause-row", tx, ty, 0, 0, 1, 0)
+	game.touchreleased("pause-row", tx, ty, 0, 0, 1, 0)
+	pause:update(0)
+	game.touch.reset()
+	assert(pause.optionsUI and pause.blockInput)
+	assert(game.touch.idMap["pause-row"] == nil)
+	pause:remove(pause.optionsUI)
+	pause:close()
+end)

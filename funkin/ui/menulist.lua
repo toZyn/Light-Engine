@@ -161,7 +161,7 @@ function MenuList:updatePositions(dt, time)
 end
 
 function MenuList:handleTouch(dt)
-	if not self.isMobile or self.lock then return end
+	if self.lock or (not self.isMobile and not self.activateOnTouch) then return end
 
 	if not game.touch.anyTouchJustReleased then return end
 
@@ -187,6 +187,8 @@ function MenuList:activateSelection()
 end
 
 function MenuList:touchOverObj(tx, ty, obj)
+	local camera = self.cameras and self.cameras[1]
+	if camera then tx, ty = camera:screenToWorld(tx, ty, self.scrollFactor.x, self.scrollFactor.y) end
 	if self.scroll == "mobile" and (ty < self.y - self.offset.y + (self.mobileTop or 100)
 		or ty > self.y - self.offset.y + self.height - (self.mobileBottom or 80)) then return false end
 	local x, y, width, height, sx, sy = obj:_getBoundary()
@@ -195,6 +197,10 @@ function MenuList:touchOverObj(tx, ty, obj)
 	local objRight = objLeft + width * sx
 	local objBottom = objTop + height * sy
 
+	if self.touchFullRow then
+		objLeft = self.x - self.offset.x
+		objRight = objLeft + self.width
+	end
 	return tx >= objLeft and tx <= objRight and ty >= objTop and ty <= objBottom
 end
 

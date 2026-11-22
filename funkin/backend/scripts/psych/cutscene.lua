@@ -17,38 +17,57 @@ function Cutscene.install(compat, api)
 		local object = current
 		current = nil
 		if state.psychCutscene == object then state.psychCutscene = nil end
+		if state.videoCutscene == object then state.videoCutscene = nil end
 		if kind == "dialogue" then api.stopSound("__psychDialogue") end
 		state:remove(object)
 		object:destroy()
 		if resume and not state.startedCountdown and state.startCountdown then state:startCountdown() end
 	end
 
-	api.startVideo = function(name, canSkip)
+	api.startVideo = function(name, canSkip, forMidSong, loop, playOnLoad)
 		compat:_active()
-		if state.psychCutscene then return false end
+		if state.psychCutscene or state.videoCutscene then return false end
 		name = resourceName(name)
-		local path = paths.getPath("videos/" .. name .. ".ogv")
+		local key = "videos/" .. name
+		local path = paths.getPath(key .. ".ogv")
 		if not love.filesystem.getInfo(path, "file") then
-			error("Psych video requires a native OGV asset: " .. name, 2)
+			local mp4 = paths.getPath(key .. ".mp4")
+			if love.filesystem.getInfo(mp4, "file") then
+				Logger.log("warn", "[Psych] Video skipped. This build needs an OGV copy of " .. mp4)
+			else
+				Logger.log("warn", "[Psych] Video not found: " .. key)
+			end
+			return false
 		end
-		local video = Video(0, 0, name, true, false, false)
+
+		local ok, video = pcall(Video, 0, 0, name, false, false, loop == true)
+		if not ok then
+			Logger.log("warn", "[Psych] Could not open video " .. path .. ": " .. tostring(video))
+			return false
+		end
+		video:adjust(game.width, 0)
+		video.y = (game.height - video.height * video.scale.y) / 2
 		video.scrollFactor:set(0, 0)
 		video.cameras = state.camOther and {state.camOther} or nil
-		video.onComplete = function() close(true) end
+		video.onComplete = function() close(not forMidSong) end
 		local update = video.update
 		function video:update(dt)
-			if canSkip ~= false and controls:pressed("accept") then close(true); return end
+			if canSkip ~= false and self._started and controls:pressed("accept") then
+				close(not forMidSong)
+				return
+			end
 			update(self, dt)
 		end
-		current, kind, state.psychCutscene = video, "video", video
+		current, kind, state.videoCutscene = video, "video", video
+		if not forMidSong then state.psychCutscene = video end
 		state:add(video)
-		video:play()
+		if playOnLoad ~= false then video:play() end
 		return true
 	end
 
 	api.startDialogue = function(name, music)
 		compat:_active()
-		if state.psychCutscene then return false end
+		if state.psychCutscene or current then return false end
 		name = resourceName(name)
 		local song = PlayState.SONG and PlayState.SONG.song
 		assert(song, "Psych dialogue needs an active song")

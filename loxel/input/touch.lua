@@ -91,8 +91,9 @@ function Touch.reset()
 				touch.justPressed = false
 			end
 			if touch.justReleased then
+				releaseSlot(touch.id)
+				touch.id = nil
 				touch.justReleased = false
-				touch.active = false
 				touch.pressed = false
 				touch.released = true
 			end
@@ -127,8 +128,8 @@ function Touch.onPressed(id, x, y, dx, dy, pressure)
 	local winWidth, winHeight = love.graphics.getDimensions()
 	local scale = math.min(winWidth / game.width, winHeight / game.height)
 
-	local gameX = (x - (winWidth - scale * game.width) / 2) / scale
-	local gameY = (y - (winHeight - scale * game.height) / 2) / scale
+	local gameX = (x - math.floor((winWidth - scale * game.width) / 2)) / scale
+	local gameY = (y - math.floor((winHeight - scale * game.height) / 2)) / scale
 
 	local touch = Touch.touches[slot]
 	touch.id = tostring(id)
@@ -204,8 +205,8 @@ function Touch.onMoved(id, x, y, dx, dy, pressure)
 	touch.__prevScreenX = touch.screenX
 	touch.__prevScreenY = touch.screenY
 
-	touch.x = (x - (winWidth - scale * game.width) / 2) / scale
-	touch.y = (y - (winHeight - scale * game.height) / 2) / scale
+	touch.x = (x - math.floor((winWidth - scale * game.width) / 2)) / scale
+	touch.y = (y - math.floor((winHeight - scale * game.height) / 2)) / scale
 	touch.screenX = x
 	touch.screenY = y
 	touch.pressure = pressure or 1

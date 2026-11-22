@@ -41,7 +41,9 @@ end
 
 function Stage:load()
 	local data = self.data or Parser.getDummyStage()
-	self.camZoom, self.camSpeed, self.camZoomSpeed = data.cameraZoom or 0.4, 1, 1
+	self.psych = require("funkin.backend.modding.psych").root() ~= nil
+	self.camZoom, self.camSpeed, self.camZoomSpeed = data.cameraZoom or 0.4, self.psych and data.cameraSpeed or 1, 1
+	if self.psych then self.cameraBounds = false end
 
 	self.boyfriendPos = Point(770, 100)
 	self.gfPos = Point(400, 130)
@@ -54,7 +56,14 @@ function Stage:load()
 	for char, data in pairs(data.characters) do
 		local c = char == "bf" and "boyfriend" or char
 		if data.position then self[c .. "Pos"]:set(unpack(data.position)) end
-		if data.cameraOffsets then self[c .. "Cam"]:set(unpack(data.cameraOffsets)) end
+		if data.cameraOffsets then
+			if self.psych then
+				local camera = self[c .. "Cam"]
+				camera:set(camera.x + (data.cameraOffsets[1] or 0), camera.y + (data.cameraOffsets[2] or 0))
+			else
+				self[c .. "Cam"]:set(unpack(data.cameraOffsets))
+			end
+		end
 	end
 
 	self.foreground = Group()
@@ -74,12 +83,16 @@ function Stage:load()
 	for n, props in pairs(characters) do
 		local key, name, player, z, scroll = unpack(props)
 		local char, pos = PlayState.SONG[key], self[name .. "Pos"]
-		if char and char ~= "" then
+		if char and char ~= "" and not (self.psych and n == "gf" and data.hideGirlfriend) then
 			SceneJob.checkpoint("Character: " .. char,0.4)
 			self[name] = Character(pos.x, pos.y, char, player)
 			local character = self[name]
 			character.scrollFactor:set(scroll or 1, scroll or 1)
 			character.zIndex = data.characters[n] and data.characters[n].zIndex or z
+			if self.psych then
+				character.zIndex = n == "dad" and 200 or n == "bf" and 300 or 100
+				if n == "gf" then character.scrollFactor:set(0.95, 0.95) end
+			end
 			local scale = data.characters[n] and data.characters[n].scale or 1
 			character.scale:mul(scale)
 			self:add(character)
@@ -106,7 +119,13 @@ function Stage:load()
    character._sceneBasePosition={character.x-pos.x,character.y-pos.y}
 		end
 	end
-	if self.gf and self.dad and self.dad.char:startsWith("gf") then
+	if self.psych and self.dad and self.dad.char:startsWith("gf") then
+		self.dad:setPosition(self.gfPos.x + self.dad._sceneBasePosition[1],
+			self.gfPos.y + self.dad._sceneBasePosition[2])
+		self.dad.scrollFactor:set(0.95, 0.95)
+		self.dad.danceSpeed = 2
+		if self.gf then self.gf.visible = false end
+	elseif self.gf and self.dad and self.dad.char:startsWith("gf") then
 		self.gf.visible = false
 		self.dad:setPosition(self.gf.x, self.gf.y)
 	end

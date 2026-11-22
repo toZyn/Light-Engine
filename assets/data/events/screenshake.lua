@@ -1,5 +1,15 @@
 function event(params)
 	local v = params.v or {}
+	if params.psych then
+		for index, camera in ipairs({game.camera, state.camHUD}) do
+			local duration, intensity = tostring(v[index] or ""):match("^%s*([^,]+),%s*([^,]+)")
+			duration, intensity = tonumber(duration), tonumber(intensity)
+			if duration and duration > 0 and intensity and intensity ~= 0 then
+				camera:shake(intensity, duration, nil, true)
+			end
+		end
+		return
+	end
 	-- Supports Psych ("intensity, duration" in v[1], v[2]) or structured {gameIntensity, gameDuration, hudIntensity, hudDuration}
 	if type(v[1]) == "string" and v[1]:find(",") then
 		local gi, gd = v[1]:match("^%s*([%d%.]+)%s*,%s*([%d%.]+)")

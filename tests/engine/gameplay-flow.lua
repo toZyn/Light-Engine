@@ -86,3 +86,20 @@ check('Psych stage separators preserve strict JSON as the default', function()
 	assert(stage.hide_girlfriend and stage.opponent[2] == 100)
 	assert(not pcall(decode, source))
 end)
+
+check("Psych Camera Follow Pos holds coordinates until explicitly released", function()
+	local state = setmetatable({
+		camFollow = Point(),
+		cameraOffset = Point(),
+		scripts = ScriptsHandler(),
+		eventScripts = {},
+		camSpeed = 1
+	}, PlayState)
+	state:executeEvent({e = "Camera Follow Pos", v = {"0", "345"}, psych = true})
+	assert(state.psychForcedCamera and state.camFollow.x == 0 and state.camFollow.y == 345)
+	state:cameraMovement(100, 200)
+	assert(state.camFollow.x == 0 and state.camFollow.y == 345)
+	state:executeEvent({e = "Camera Follow Pos", v = {"", ""}, psych = true})
+	state:cameraMovement(100, 200)
+	assert(not state.psychForcedCamera and state.camFollow.x == 100 and state.camFollow.y == 200)
+end)

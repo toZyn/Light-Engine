@@ -28,22 +28,49 @@ local function size(value)
 	return value
 end
 
-function Controls.install(ctx, api)
-	local control = {fonts = {}, effects = {}, completions = {}, requests = {}, nextRequest = 0}
+function Controls.install(ctx, api, psych)
+	local control = {effects = {}, completions = {}, requests = {}, nextRequest = 0}
+	ctx.textFonts = {}
 	local contextRef = setmetatable({ctx}, {__mode = "v"})
 	local function text(tag)
-		local object = ctx:_owned(tag)
+		ctx:_active()
+		local owner = ctx:_owner(tag)
+		local object = owner:_owned(tag)
 		if not object.is or not object:is(Text) then fail("tag must name an owned Text: " .. tostring(tag)) end
-		return object
+		return object, owner.textFonts
+	end
+	local aliases = {game = "camGame", hud = "camHUD", other = "camOther", notes = "camNotes"}
+	local psychAliases = {
+		game = "camGame", camgame = "camGame", hud = "camHUD", camhud = "camHUD",
+		other = "camOther", camother = "camOther", notes = "camNotes", camnotes = "camNotes"
+	}
+	local function liveCamera(object)
+		return type(object) == "table" and type(object.is) == "function" and object:is(Camera) and object.exists ~= false
 	end
 	local function camera(name)
 		ctx:_active()
-		local aliases = {game = "camGame", hud = "camHUD", other = "camOther", notes = "camNotes"}
-		local key = aliases[name] or name
-		if key ~= "camGame" and key ~= "camHUD" and key ~= "camOther" and key ~= "camNotes" then fail("unsupported camera: " .. tostring(name)) end
-		local object = ctx:_root(key)
-		if not object or not object.is or not object:is(Camera) or object.exists == false then fail("name must resolve to a live native Camera: " .. tostring(name)) end
+		local key, object
+		if psych then
+			key = type(name) == "string" and psychAliases[name:lower()]
+			if not key then
+				local variables = ctx.state.psychVariables
+				local custom = variables and variables[name]
+				if liveCamera(custom) then return custom, name end
+				key = "camGame"
+			end
+		else
+			key = aliases[name] or name
+			if key ~= "camGame" and key ~= "camHUD" and key ~= "camOther" and key ~= "camNotes" then fail("unsupported camera: " .. tostring(name)) end
+		end
+		object = ctx:_root(key)
+		if not liveCamera(object) then fail("name must resolve to a live native Camera: " .. tostring(name)) end
 		return object, key
+	end
+	if psych then
+		api.setObjectCamera = function(tag, name)
+			local target = camera(name)
+			ctx:_object(tag).cameras = {target}
+		end
 	end
 	local function fontRecord(key, fontSize)
 		local font
@@ -54,8 +81,8 @@ function Controls.install(ctx, api)
 		return {font = font, key = key, size = fontSize, owned = key == nil}
 	end
 	local function releaseFont(tag)
-		local record = control.fonts[tag]
-		control.fonts[tag] = nil
+		local record = ctx.textFonts[tag]
+		ctx.textFonts[tag] = nil
 		if record and record.owned then record.font:release() end
 	end
 	local remove = ctx._remove
@@ -72,8 +99,8 @@ function Controls.install(ctx, api)
 		local record = fontRecord(nil, 16)
 		local ok, object = pcall(Text, x, y, value, record.font, Color.WHITE, "left", width > 0 and width or nil)
 		if not ok then record.font:release(); error(object, 0) end
-		if ctx.objects[tag] then ctx:_remove(tag, true) end
-		ctx.objects[tag], control.fonts[tag] = object, record
+		ctx:_register(tag, object)
+		ctx.textFonts[tag] = record
 		return object
 	end
 	api.addLuaText = function(tag) text(tag); return api.addLuaSprite(tag, true) end
@@ -85,19 +112,23 @@ function Controls.install(ctx, api)
 		if alignment ~= "left" and alignment ~= "center" and alignment ~= "right" and alignment ~= "justify" then fail("unsupported text alignment: " .. tostring(alignment)) end
 		object.alignment = alignment
 	end
-	local function changeFont(tag, key, fontSize)
-		local object = text(tag)
+	local function changeFont(tag, object, fonts, key, fontSize)
 		local record = fontRecord(key, size(fontSize))
-		local old = control.fonts[tag]
-		object.font, control.fonts[tag] = record.font, record
+		local old = fonts[tag]
+		object.font, fonts[tag] = record.font, record
 		object:__updateDimension()
 		if old and old.owned then old.font:release() end
 	end
-	api.setTextSize = function(tag, fontSize) text(tag); changeFont(tag, control.fonts[tag].key, fontSize) end
+	api.setTextSize = function(tag, fontSize)
+		local object, fonts = text(tag)
+		local previous = fonts[tag]
+		changeFont(tag, object, fonts, previous and previous.key, fontSize)
+	end
 	api.setTextFont = function(tag, key)
-		text(tag)
+		local object, fonts = text(tag)
 		if type(key) ~= "string" or key == "" then fail("font key must be a nonempty Paths font filename") end
-		changeFont(tag, key, control.fonts[tag].size)
+		local previous = fonts[tag]
+		changeFont(tag, object, fonts, key, previous and previous.size or object.font:getHeight())
 	end
 	local fields = {shake = "__shakeComplete", flash = "__flashComplete", fade = "__fadeComplete"}
 	local function effect(kind, name, duration, forced, tag, color, intensity, axes, fadeIn)
@@ -209,7 +240,7 @@ function Controls.install(ctx, api)
 		end
 		control.effects = {}
 		dispose(self) -- Native Text destruction clears references before font release.
-		for tag in pairs(control.fonts) do releaseFont(tag) end
+		for tag in pairs(ctx.textFonts) do releaseFont(tag) end
 	end
 end
 

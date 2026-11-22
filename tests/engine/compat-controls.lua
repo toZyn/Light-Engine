@@ -116,6 +116,40 @@ function love.load()
   assert(example.chunk and not example.closed,'controls scene example failed to load')
   example:call('create');example:call('update',.2);example:call('postCreate');example:call('beat',4);example:call('leave')
   assert(next(example.__failedfunc)==nil,'controls scene example failed callback');example:close()
+  local psychScript=Script('tests/engine/compat-fixture.lua',false,true,true)
+  local compat=require('funkin.backend.scripts.compat')
+  psychScript._psych=compat.new(state,psychScript,true)
+  local psych=psychScript.variables
+  local receptor={alpha=1}
+  state.enemyNotefield={lanes={{receptor=receptor}}}
+  assert(psych.cameraFlash('Camera','FFFFFF',.1,true))
+  assert(game.camera.__flashAlpha==1)
+  assert(psych.cameraFlash('CAMHUD','FFFFFF',.1,true))
+  assert(state.camHUD.__flashAlpha==1)
+  state.psychVariables={screen=Camera()}
+  psych.makeLuaSprite('cameraTarget')
+  psych.setObjectCamera('cameraTarget','screen')
+  assert(psychScript._psych.objects.cameraTarget.cameras[1]==state.psychVariables.screen)
+  psych.noteTweenAlpha('hide',0,0,1,'.cubeInOut')
+  psychScript._psych:update(.25)
+  assert(math.abs(receptor.alpha-.75)<1e-6,'unknown Psych easing must fall back to linear')
+  receptor.alpha=1
+  psych.noteTweenAlpha('hide',0,0,1,' CubeInOut ')
+  psychScript._psych:update(.25)
+  assert(math.abs(receptor.alpha-.9375)<1e-6,'recognized Psych easing must be case insensitive')
+  local peerScript=Script('tests/engine/compat-fixture.lua',false,true,true)
+  peerScript._psych=compat.new(state,peerScript,true)
+  local shared=psych.makeLuaText('shared','initial')
+  local initialFont=shared.font
+  peerScript.variables.setTextSize('shared',24)
+  peerScript.variables.setTextString('shared','changed')
+  assert(shared.font:getHeight()>16 and shared.content=='changed')
+  assert(not pcall(initialFont.getHeight,initialFont))
+  local resizedFont=shared.font
+  peerScript.variables.removeLuaText('shared',true)
+  assert(not psych.luaTextExists('shared') and not pcall(resizedFont.getHeight,resizedFont))
+  peerScript:close()
+  psychScript:close()
   print('COMPAT CONTROLS PASS: real Text/render/fonts/ownership; native Camera effects/restart/scoped disposal; song time/BPM/beat; cached precache/real async/cancel/dispose; native scene example')
  end,debug.traceback)
  if not ok then print('COMPAT CONTROLS FAIL '..err) end

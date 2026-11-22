@@ -14,6 +14,7 @@ function nativeStage.parse(data)
 	if data.girlfriend and not chars.gf then chars.gf = {position = data.girlfriend, cameraOffsets = data.camera_girlfriend} end
 	stage.characters = chars
 	stage.hideGirlfriend = data.hide_girlfriend == true
+	stage.cameraSpeed = tonumber(data.camera_speed)
 	return stage
 end
 

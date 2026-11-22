@@ -5,6 +5,20 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Resolve pause-menu taps through the menu camera, accept taps across each
+  option row, and clear released touch identifiers before recycling slots.
+- Preserve Psych stage layer order, authored camera zoom and character
+  offsets. Keep forced camera coordinates until the chart releases them.
+- Apply Psych screen-shake parameters in duration, intensity order. Resolve
+  camera names and easing strings using the Psych fallback rules.
+- Honor Psych's countdown skip and share tagged stage objects across scripts.
+- Preserve OGV video aspect ratio and playback options. If a mod supplies
+  only MP4, log a diagnostic and continue running its script.
+
 ## [0.5.0] - 2026-11-21
 
 ### Added

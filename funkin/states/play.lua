@@ -279,6 +279,7 @@ function PlayState:enterScene()
 	self.startingSong = true
 	self.startedCountdown = false
 	self.doCountdownAtBeats = nil
+	self.skipCountdown = false
 	self.lastCountdownBeats = nil
 
 	self.isDead = false
@@ -319,7 +320,6 @@ function PlayState:enterScene()
 
 	local eventAliases = {
 		["change scroll speed"] = "scrollspeed",
-		["camera follow pos"] = "focuscamera",
 		["add camera zoom"] = "addcamerazoom",
 		["change character"] = "changecharacter",
 		["alt idle animation"] = "altidleanimation",
@@ -388,15 +388,13 @@ function PlayState:enterScene()
 		end
 	end
 
-	SceneJob.checkpoint("Song scripts",0.15)
-	self.scripts:call("create")
-	if require("funkin.backend.modding.psych").root() then
-		local changed
-		for _, event in ipairs(self.events) do
-			if event.psych and self.scripts:preparePsychEvent(event) then changed = true end
-		end
-		if changed then TimeIndex.sort(self.events) end
+	local psych = require("funkin.backend.modding.psych").root()
+	if psych then
+		self.stage = self.stage or Stage(PlayState.SONG.stage)
+		self:add(self.stage)
 	end
+	SceneJob.checkpoint("Song scripts",0.15)
+	if not psych then self.scripts:call("create") end
 
 	if not self.stage then
 		self.stage = Stage(PlayState.SONG.stage)
@@ -404,9 +402,13 @@ function PlayState:enterScene()
 
 	SceneJob.checkpoint("Building stage",0.25)
 	self.stage:load()
-	self:add(self.stage)
+	if not psych then self:add(self.stage) end
 	if self.stage.script then self.scripts:add(self.stage.script) end
-	self:add(self.stage.foreground)
+	if psych then
+		self:insert(self:indexOf(self.stage) + 1, self.stage.foreground)
+	else
+		self:add(self.stage.foreground)
+	end
 
 	self.boyfriend, self.dad, self.gf =
 		self.stage.boyfriend, self.stage.dad, self.stage.gf
@@ -436,6 +438,28 @@ function PlayState:enterScene()
 	else
 		self.camFollow = Point()
 		self.camFollow.tweening = false
+		if psych then
+			local x, y = self.stage.gfCam.x, self.stage.gfCam.y
+			if self.gf then
+				local gx, gy
+				if self.gf:getFrameWidth() and self.gf:getFrameHeight() then
+					gx, gy = self.gf:getGraphicMidpoint()
+				else
+					gx, gy = self.gf:getMidpoint()
+				end
+				x, y = x + gx + self.gf.cameraPosition.x, y + gy + self.gf.cameraPosition.y
+			end
+			self.camFollow:set(x, y)
+		end
+	end
+
+	if psych then
+		self.scripts:call("create")
+		local changed
+		for _, event in ipairs(self.events) do
+			if event.psych and self.scripts:preparePsychEvent(event) then changed = true end
+		end
+		if changed then TimeIndex.sort(self.events) end
 	end
 
 	local volume = ClientPrefs.data.vocalVolume / 100
@@ -483,7 +507,7 @@ function PlayState:enterScene()
 	self:positionNotefields()
 	table.insert(self.notefields, 3, {character = self.gf})
 
-	if PlayState.canFadeInReceptors then
+	if PlayState.canFadeInReceptors and not self.skipCountdown then
 		for _, notefield in pairs(self.notefields) do
 			if notefield.is then
 				for _, receptor in ipairs(notefield.receptors) do
@@ -899,7 +923,18 @@ function PlayState:startCountdown()
 	self:setPlayback(ClientPrefs.data.playback)
 
 	if not PlayState.conductor then return end
-	self.doCountdownAtBeats = PlayState.startPos / PlayState.conductor.crotchet - 4
+	if self.skipCountdown then
+		if PlayState.canFadeInReceptors then
+			for _, field in ipairs(self.notefields) do
+				for _, receptor in ipairs(field.receptors or {}) do receptor.alpha = 1 end
+			end
+		end
+		PlayState.canFadeInReceptors = false
+		self.doCountdownAtBeats = nil
+		PlayState.conductor.time = self.startPos
+	else
+		self.doCountdownAtBeats = self.startPos / PlayState.conductor.crotchet - 4
+	end
 	self.startedCountdown = true
 	self.countdown.duration = PlayState.conductor.crotchet / 1000
 	self.countdown.playback = 1
@@ -999,8 +1034,9 @@ function PlayState:getCameraPosition(char)
 	if not char then char = self.dad end
 	local camX, camY = char:getMidpoint()
 	if char == self.gf then
-		camX, camY = camX - char.cameraPosition.x + self.stage.gfCam.x,
-			camY - char.cameraPosition.y + self.stage.gfCam.y
+		local sign = self.stage.psych and 1 or -1
+		camX, camY = camX + sign * char.cameraPosition.x + self.stage.gfCam.x,
+			camY + sign * char.cameraPosition.y + self.stage.gfCam.y
 	elseif char.isPlayer then
 		camX, camY = camX - char.cameraPosition.x + self.stage.boyfriendCam.x,
 			camY + char.cameraPosition.y + self.stage.boyfriendCam.y
@@ -1012,6 +1048,7 @@ function PlayState:getCameraPosition(char)
 end
 
 function PlayState:cameraMovement(ox, oy, easing, time)
+	if self.psychForcedCamera then return false end
 	local event = self.scripts:event("onCameraMove", Events.CameraMove(self.camTarget))
 	if event.cancelled then return false end
 	local camX, camY = (ox or 0) + event.offset.x, (oy or 0) + event.offset.y
@@ -1100,7 +1137,15 @@ end
 
 function PlayState:executeEvent(event)
 	local oldTarget = self.camTarget
-	if self.eventScripts[event.e] then
+	if event.psych and event.e == "Camera Follow Pos" and self.camFollow then
+		local values = event.v or {}
+		local x, y = tonumber(values[1]), tonumber(values[2])
+		self.psychForcedCamera = false
+		if x ~= nil or y ~= nil then
+			self:cameraMovement(x or 0, y or 0)
+			self.psychForcedCamera = true
+		end
+	elseif self.eventScripts[event.e] and not (event.psych and event.e == "Camera Flash") then
 		self.eventScripts[event.e]:call("event", event)
 	end
 	self.scripts:call("onEvent", event)
@@ -1111,7 +1156,7 @@ function PlayState:executeEvent(event)
 	end
 end
 
-function PlayState:pushEvent(name, params)
+function PlayState:pushEvent(name, params, psych)
 	if params == nil then
 		Logger.log("error", "pushEvent: argument 2 must be the event parameter(s).")
 		return
@@ -1126,7 +1171,7 @@ function PlayState:pushEvent(name, params)
 		end
 	end
 
-	self:executeEvent({e = name, v = params, t = PlayState.conductor and PlayState.conductor.time or 0})
+	self:executeEvent({e = name, v = params, psych = psych, t = PlayState.conductor and PlayState.conductor.time or 0})
 end
 
 function PlayState:swapCharacter(slot, newCharName)
@@ -1135,7 +1180,9 @@ function PlayState:swapCharacter(slot, newCharName)
 	local isBF = (s == "bf" or s == "boyfriend" or s == "player" or s == "0" or s == "player1")
 	local isGF = (s == "gf" or s == "girlfriend" or s == "2" or s == "gfversion")
 
-	local oldChar = isBF and self.boyfriend or (isGF and self.gf or self.dad)
+	local characterKey = isBF and "boyfriend" or isGF and "gf" or "dad"
+	local oldChar = self[characterKey]
+	if self.stage.psych and isGF and not oldChar then return nil end
 	if oldChar and (oldChar.char == newCharName or oldChar.curCharacter == newCharName) then return oldChar end
 
 	local cacheKey=Scene.slot(slot)..':'..newCharName
@@ -1149,12 +1196,25 @@ function PlayState:swapCharacter(slot, newCharName)
  if newChar._sceneBaseCameraPosition then newChar.cameraPosition:set(unpack(newChar._sceneBaseCameraPosition)) end
  if newChar._deferredScript then newChar:activateScript() end
  if oldChar then newChar.zIndex=oldChar.zIndex end
- local posPoint = isBF and self.stage.boyfriendPos or (isGF and self.stage.gfPos or self.stage.dadPos)
+	local positionKey = characterKey
+	if self.stage.psych and not isBF and not isGF then
+		if newCharName:startsWith("gf") then
+			positionKey = "gf"
+			newChar.scrollFactor:set(0.95, 0.95)
+			newChar.danceSpeed = 2
+			if self.gf then self.gf.visible = false end
+		elseif oldChar and oldChar.char:startsWith("gf") and self.gf then
+			self.gf.visible = true
+		end
+	end
+	local posPoint = self.stage[positionKey .. "Pos"]
+	if self.stage.psych and isGF then newChar.scrollFactor:set(0.95, 0.95) end
+	if self.stage.psych and oldChar then newChar.alpha = oldChar.alpha end
 	local camPoint = isBF and self.stage.boyfriendCam or (isGF and self.stage.gfCam or self.stage.dadCam)
 	if posPoint then
 		newChar:setPosition(newChar.x + posPoint.x, newChar.y + posPoint.y)
 	end
-	if camPoint and newChar.cameraPosition then
+	if camPoint and newChar.cameraPosition and not self.stage.psych then
 		newChar.cameraPosition.x = newChar.cameraPosition.x + camPoint.x
 		newChar.cameraPosition.y = newChar.cameraPosition.y + camPoint.y
 	end
@@ -1339,7 +1399,7 @@ function PlayState:update(dt)
 					local skipped = self.events[self.eventIndex or 1]
 					if skipped.e == "FocusCamera" or skipped.e == "ScrollSpeed"
 						or skipped.e == "Change Scroll Speed" or skipped.e == "Change Character"
-						or skipped.e == "ChangeCharacter" then
+						or skipped.e == "ChangeCharacter" or skipped.e == "Camera Follow Pos" then
 						self:executeEvent(skipped)
 					end
 					self.eventIndex = (self.eventIndex or 1) + 1
@@ -1353,7 +1413,8 @@ function PlayState:update(dt)
 		else
 			local noFocus, events = true, self.events
 			local idx = self.eventIndex or 1
-			local curMusicMs = game.sound.music.time * 1000
+			local curMusicMs = self.stage.psych and self.startingSong and PlayState.conductor.time
+				or game.sound.music.time * 1000
 			while events[idx] do
 				local e = events[idx]
 				if e.t <= curMusicMs then
@@ -1365,7 +1426,7 @@ function PlayState:update(dt)
 				end
 			end
 			self.eventIndex = idx
-			if noFocus and self.camTarget and game.camera.followLerp then
+			if noFocus and not self.psychForcedCamera and self.camTarget and game.camera.followLerp then
 				self:cameraMovement(self:getCameraPosition(self.camTarget))
 			end
 		end
@@ -1482,6 +1543,10 @@ function PlayState:update(dt)
 
 	self.camHUD.zoom = util.coolLerp(self.camHUD.zoom, 1, 3, dt * self.camZoomSpeed)
 	self.camNotes.zoom = self.camHUD.zoom
+	if self.stage.psych then
+		self.camNotes.visible = self.camHUD.visible
+		self.camNotes.alpha = self.camHUD.alpha
+	end
 
 	if realDt > 0 and self.startedCountdown and self.canPause ~= false and not inDialogue and controls:pressed("pause") then
 		self:tryPause()
