@@ -25,7 +25,6 @@ function PauseSubstate:new()
 	self.menuList = MenuList(paths.getSound('scrollMenu'), false,
 		love.system.getDevice() == "Mobile" and "mobile" or nil)
 	self.menuList.activateOnTouch = true
-	self.menuList.touchFullRow = true
 	self.menuList.selectCallback = bind(self, self.selectOption)
 	self:add(self.menuList)
 
@@ -34,7 +33,6 @@ function PauseSubstate:new()
 		love.system.getDevice() == "Mobile" and "mobile" or nil)
 	self.diffList.mobileTop = 140
 	self.diffList.activateOnTouch = true
-	self.diffList.touchFullRow = true
 	self.diffList.selectCallback = bind(self, self.selectDifficulty)
 	self.diffList.lock, self.diffList.open = true, false
 
@@ -83,9 +81,6 @@ function PauseSubstate:loadMusic()
 end
 
 function PauseSubstate:enter()
-	self.menuList.cameras = self.cameras
-	self.diffList.cameras = self.cameras
-	self.menuList:updatePositions(0, 0)
 	if self.music then
 		self.music:play(0, true)
 		self.music:fade(6, 0, ClientPrefs.data.menuMusicVolume / 100)

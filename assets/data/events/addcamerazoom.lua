@@ -4,9 +4,10 @@ function event(params)
 	local hudAdd = tonumber(v.hud or v[2]) or 0.03
 	if params.psych then
 		if game.camera.zoom >= 1.35 then return end
-		gameAdd = gameAdd / state.camZoom
+		game.camera.zoom = game.camera.zoom + gameAdd
+	else
+		state.camZoomMult = (state.camZoomMult or 1) + gameAdd
 	end
-	state.camZoomMult = (state.camZoomMult or 1) + gameAdd
 	if state.camHUD then
 		state.camHUD.zoom = (state.camHUD.zoom or 1) + hudAdd
 	end

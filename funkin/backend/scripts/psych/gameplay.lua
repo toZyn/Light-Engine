@@ -26,6 +26,14 @@ function Gameplay.install(compat, api)
 			local name = field:gsub("^data%.", "")
 			local preference = preferences[name]
 			if preference then return ClientPrefs.data[preference] end
+			if name == "windowMove" then return false end
+		elseif class == "openfl.Lib" then
+			local axis = field:match("^application%.window%.([xy])$")
+			if axis then
+				if love.system.getDevice() == "Mobile" then return 0 end
+				local x, y = love.window.getPosition()
+				return axis == "x" and x or y
+			end
 		elseif class == "backend.Conductor" or class == "Conductor" then
 			if field == "songPosition" then return api.getSongPosition() end
 			if field == "bpm" then return api.getSongBpm() end

@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+
+- Submit each sustain body as a single mesh strip and clip geometry to the
+  visible lane span. Keep authored note density and modifiers.
+
 ### Fixed
 
-- Resolve pause-menu taps through the menu camera, accept taps across each
-  option row, and clear released touch identifiers before recycling slots.
+- Resolve mixed-case Psych song directories, expose timing globals, and
+  accept anonymous tweens and Lua numeric tween arguments.
+- Clear released touch identifiers before recycling slots so concurrent
+  Android touches retain independent input state.
 - Preserve Psych stage layer order, authored camera zoom and character
   offsets. Keep forced camera coordinates until the chart releases them.
 - Apply Psych screen-shake parameters in duration, intensity order. Resolve

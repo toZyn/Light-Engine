@@ -1,6 +1,12 @@
 local ScriptsHandler = Classic:extend("ScriptsHandler")
 
 local function syncGlobals(script, state, name)
+	local conductor = state.conductor
+	if conductor then
+		script:set("bpm", conductor.bpm)
+		script:set("crochet", conductor.crotchet)
+		script:set("stepCrochet", conductor.stepCrotchet)
+	end
 	script:set("score", state.score or 0)
 	script:set("misses", state.misses or 0)
 	script:set("combo", state.combo or 0)
@@ -22,7 +28,7 @@ local function call(script, name, ...)
 	local bridge = script._psych
 	if not bridge then return script:call(name, ...) end
 	if bridge.disposed then return end
-	if name == "update" or name == "postUpdate" or name == "create" or name == "postCreate" or name == "countdownStarted" then
+	if name == "update" or name == "postUpdate" or name == "create" or name == "postCreate" or name == "countdownStarted" or name == "beat" or name == "step" then
 		syncGlobals(script, bridge.state, name)
 	end
 	if name == "create" then

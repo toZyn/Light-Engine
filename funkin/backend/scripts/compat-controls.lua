@@ -133,6 +133,7 @@ function Controls.install(ctx, api, psych)
 	local fields = {shake = "__shakeComplete", flash = "__flashComplete", fade = "__fadeComplete"}
 	local function effect(kind, name, duration, forced, tag, color, intensity, axes, fadeIn)
 		local object, key = camera(name)
+		if psych then duration = tonumber(duration) end
 		number(duration, "camera effect duration")
 		if tag ~= nil and (type(tag) ~= "string" or tag == "") then fail("camera completion tag must be a nonempty string") end
 		local busy = kind == "flash" and object.__flashAlpha > 0 or kind == "fade" and object.__fadeDuration > 0 or kind == "shake" and object.__shakeDuration > 0

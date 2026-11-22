@@ -166,3 +166,30 @@ check("visible notes update once per frame", function()
 	assert(updates == 1, "visible note updated " .. updates .. " times")
 	field:destroy()
 end)
+
+check("long sustains submit one body strip per note", function()
+	local field = Notefield(game.width / 2, game.height / 2, 4, "default")
+	local camera = Camera()
+	local canvas = love.graphics.newCanvas(game.width, game.height)
+	for index = 1, 48 do
+		field:addNote(Note(0.01 * index, index % 4, 20, nil, field.skin))
+	end
+	field.time = 0.5
+	love.graphics.push("all")
+	love.graphics.setCanvas(canvas)
+	field:__render(camera)
+	local before = love.graphics.getStats().drawcalls
+	local start = love.timer.getTime()
+	for _ = 1, 20 do
+		field:__render(camera)
+		love.graphics.flushBatch()
+	end
+	local elapsed = (love.timer.getTime() - start) * 1000
+	local draws = love.graphics.getStats().drawcalls - before
+	love.graphics.pop()
+	print(("LONG HOLDS 48 x 20 draws=%d elapsed=%.2fms"):format(draws, elapsed))
+	field:destroy()
+	camera:destroy()
+	canvas:release()
+	assert(draws <= 20 * (48 * 2 + 4), "hold bodies submit multiple mesh draws")
+end)

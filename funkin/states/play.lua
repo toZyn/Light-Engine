@@ -280,6 +280,8 @@ function PlayState:enterScene()
 	self.startedCountdown = false
 	self.doCountdownAtBeats = nil
 	self.skipCountdown = false
+	self.inCutscene = false
+	self.health = 1
 	self.lastCountdownBeats = nil
 
 	self.isDead = false
@@ -587,7 +589,6 @@ function PlayState:enterScene()
 	self.score = 0
 	self.combo = 0
 	self.misses = 0
-	self.health = 1
 	for _, r in ipairs(self.ratings) do
 		self[r.name .. "s"] = 0
 	end
@@ -1111,7 +1112,11 @@ function PlayState:beat(b)
 
 	if --[[ClientPrefs.data.zoomCamera and]] game.camera.zoom < 1.35 and
 		self.zoomRate > 0 and self.conductor.currentBeat % self.zoomRate == 0 then
-		self.camZoomMult = self.camZoomIntensity
+		if self.stage.psych then
+			game.camera.zoom = game.camera.zoom + (self.camZoomIntensity - 1)
+		else
+			self.camZoomMult = self.camZoomIntensity
+		end
 		self.camHUD.zoom = 1 + self.hudZoomIntensity
 	end
 
@@ -1537,9 +1542,14 @@ function PlayState:update(dt)
 		self.ratingNeedsRecalc = false
 	end
 
-	self.camZoomMult = util.coolLerp(self.camZoomMult, 1, 3, dt * self.camZoomSpeed)
-	local zoomPlusBop = self.camZoom * self.camZoomMult
-	game.camera.zoom = zoomPlusBop
+	if self.stage.psych then
+		if not self.startingSong then
+			game.camera.zoom = util.coolLerp(game.camera.zoom, self.camZoom, 3.125, dt * self.camZoomSpeed)
+		end
+	else
+		self.camZoomMult = util.coolLerp(self.camZoomMult, 1, 3, dt * self.camZoomSpeed)
+		game.camera.zoom = self.camZoom * self.camZoomMult
+	end
 
 	self.camHUD.zoom = util.coolLerp(self.camHUD.zoom, 1, 3, dt * self.camZoomSpeed)
 	self.camNotes.zoom = self.camHUD.zoom

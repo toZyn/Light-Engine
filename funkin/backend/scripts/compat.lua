@@ -220,15 +220,20 @@ end
 
 function Compat:_tweenObject(tag, object, key, value, duration, ease)
 	self:_active()
-	if self.script._psych then duration = tonumber(duration) end
+	local anonymous = self.script._psych and tag == nil
+	if self.script._psych then
+		duration, value = tonumber(duration), tonumber(value)
+		if type(tag) == "number" then tag = tostring(tag) end
+	end
 	positive(duration, "tween duration")
-	if type(tag) ~= "string" or tag == "" then fail("tween tag must be a nonempty string") end
+	if not anonymous and (type(tag) ~= "string" or tag == "") then fail("tween tag must be a nonempty string") end
 	if type(object[key]) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
 	if self.script._psych and type(ease) == "string" then
 		ease = psychEases[ease:lower():match("^%s*(.-)%s*$")] or "linear"
 	end
 	ease = ease or "linear"
 	if type(ease) ~= "string" or not Ease[ease] then fail("unsupported easing: " .. tostring(ease)) end
+	if anonymous then return self.tween:tween(object, {[key] = value}, duration, {ease = ease}) end
 	self:_cancelTween(tag)
 	local tween
 	tween = self.tween:tween(object, {[key] = value}, duration, {

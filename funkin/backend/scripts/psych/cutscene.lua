@@ -27,6 +27,7 @@ function Cutscene.install(compat, api)
 	api.startVideo = function(name, canSkip, forMidSong, loop, playOnLoad)
 		compat:_active()
 		if state.psychCutscene or state.videoCutscene then return false end
+		forMidSong = forMidSong == true or (forMidSong == nil and state.startedCountdown and not state.startingSong)
 		name = resourceName(name)
 		local key = "videos/" .. name
 		local path = paths.getPath(key .. ".ogv")
