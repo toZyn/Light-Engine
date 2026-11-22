@@ -54,3 +54,30 @@ check('Psych object tags preserve spaces and parentheses through property access
  assert(ctx.objects['Upper Bar (Still Strum)'].scale.x==.5)
  ctx:dispose()
 end)
+
+check('Psych object ordering inserts a created sprite before addLuaSprite',function()
+ local state=Group();state:add(Sprite())
+ local script={variables={},closed=false,set=function(self,k,v)self.variables[k]=v end,call=function()end}
+ local ctx=require('funkin.backend.scripts.compat').new(state,script,true)
+ local api=ctx.installed
+ api.makeLuaSprite('character 1',nil,20,30)
+ api.setObjectOrder('character 1',2)
+ assert(state.members[#state.members]==ctx.objects['character 1'])
+ local count=#state.members;api.addLuaSprite('character 1',true)
+ assert(#state.members==count,'addLuaSprite duplicated reordered sprite')
+ ctx:dispose()
+end)
+
+check('Psych first animation starts and missing prefixes return without aborting script',function()
+ local key=atlasFixture()
+ local state=Group()
+ local script={variables={},closed=false,set=function(self,k,v)self.variables[k]=v end,call=function()end}
+ local ctx=require('funkin.backend.scripts.compat').new(state,script,true)
+ local api=ctx.installed
+ api.makeAnimatedLuaSprite('sprite 1',key)
+ assert(api.addAnimationByPrefix('sprite 1','idle','purple',24)==true)
+ assert(api.getProperty('sprite 1.animation.curAnim.name')=='idle')
+ assert(api.addAnimationByPrefix('sprite 1','missing','absent',24)==true)
+ assert(api.getProperty('sprite 1.animation.curAnim.name')=='idle')
+ ctx:dispose()
+end)
