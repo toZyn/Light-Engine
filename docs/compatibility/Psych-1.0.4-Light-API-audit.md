@@ -558,12 +558,12 @@ Lua registration names: **223**. Total rows: **731**.
 | buildTarget | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | cameraZoomOnBeat | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | chartPath | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| combo | Lua/global | distinta | funkin/backend/scripts/handler.lua:25 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
+| combo | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | crochet | Lua/global | distinta | funkin/backend/scripts/handler.lua:10 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curBeat | Lua/global | distinta | funkin/backend/scripts/handler.lua:15 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curBpm | Lua/global | distinta | funkin/backend/scripts/handler.lua:7 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| curDecBeat | Lua/global | distinta | funkin/backend/scripts/handler.lua:9 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| curDecStep | Lua/global | distinta | funkin/backend/scripts/handler.lua:8 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
+| curDecBeat | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| curDecStep | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | curSection | Lua/global | distinta | funkin/backend/scripts/handler.lua:18 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curStage | Lua/global | distinta | funkin/backend/modding/psych.lua:98 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curStep | Lua/global | distinta | funkin/backend/scripts/handler.lua:14 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
@@ -574,12 +574,12 @@ Lua registration names: **223**. Total rows: **731**.
 | defaultBoyfriendY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | defaultGirlfriendX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | defaultGirlfriendY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultOpponentStrumX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultOpponentStrumY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| defaultOpponentStrumX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| defaultOpponentStrumY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | defaultOpponentX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | defaultOpponentY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultPlayerStrumX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultPlayerStrumY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| defaultPlayerStrumX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| defaultPlayerStrumY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | difficulty | Lua/global | distinta | funkin/backend/modding/psych.lua:145 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | difficultyName | Lua/global | distinta | funkin/backend/modding/psych.lua:94 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | difficultyNameTranslation | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
@@ -590,15 +590,15 @@ Lua registration names: **223**. Total rows: **731**.
 | gfName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | gfSection | Lua/global | distinta | funkin/backend/scripts/handler.lua:21 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | ghostTapping | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| guitarHeroSustains | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| guitarHeroSustains | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | hasVocals | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | healthBarAlpha | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| healthGainMult | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| healthLossMult | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| healthGainMult | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| healthLossMult | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | hideHud | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| hits | Lua/global | distinta | funkin/backend/scripts/handler.lua:23 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
+| hits | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | inGameOver | Lua/global | distinta | funkin/backend/scripts/handler.lua:28 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| instakillOnMiss | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| instakillOnMiss | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | isStoryMode | Lua/global | distinta | funkin/backend/modding/psych.lua:100 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | loadedSongName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | loadedSongPath | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
@@ -606,7 +606,7 @@ Lua registration names: **223**. Total rows: **731**.
 | luaDebugMode | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | luaDeprecatedWarnings | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | middlescroll | Lua/global | distinta | funkin/backend/modding/psych.lua:101 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| misses | Lua/global | distinta | funkin/backend/scripts/handler.lua:24 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
+| misses | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | modFolder | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | mustHitSection | Lua/global | distinta | funkin/backend/scripts/handler.lua:19 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | noResetButton | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
@@ -614,16 +614,16 @@ Lua registration names: **223**. Total rows: **731**.
 | noteSkin | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | noteSkinPostfix | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | playbackRate | Lua/global | distinta | funkin/backend/scripts/handler.lua:26 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| practice | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| rating | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| ratingFC | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| ratingName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| score | Lua/global | distinta | funkin/backend/scripts/handler.lua:22 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
+| practice | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| rating | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| ratingFC | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| ratingName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| score | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | scoreZoom | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | screenHeight | Lua/global | distinta | funkin/backend/modding/psych.lua:100 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | screenWidth | Lua/global | distinta | funkin/backend/modding/psych.lua:100 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | scriptName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| scrollSpeed | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| scrollSpeed | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | seenCutscene | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | shadersEnabled | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | songLength | Lua/global | distinta | funkin/backend/scripts/handler.lua:13 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
@@ -635,8 +635,8 @@ Lua registration names: **223**. Total rows: **731**.
 | startedCountdown | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | stepCrochet | Lua/global | distinta | funkin/backend/scripts/handler.lua:11 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | timeBarType | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| totalNotesHit | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| totalPlayed | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| totalNotesHit | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| totalPlayed | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | version | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | week | Lua/global | distinta | funkin/backend/modding/psych.lua:10 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | weekRaw | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
@@ -1013,3 +1013,22 @@ Current batch exposure: 171 of the 223 Lua registration names are exposed; 52 re
 Source comparison: Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`: `TitleState.getIntroTextShit`, `Mods.mergeAllTextsNamed`, `CoolUtil.listFromString`, `MenuCharacter.changeCharacter`.
 The uploaded three ZIPs contain neither introText.txt nor menu-character JSON. The exact offending input is not available; empty intro text and missing sprite/image are reproduced fixtures, not an attribution to a specific mod file.
 Validation: native LÖVE 11.5 `menu-asset-fallbacks` (2 checks), `menu-regressions`, `syntax` pass. Full compiled Psych differential execution and Android touch/render verification have not been performed.
+
+## Counter/global initialization batch — 2026-11-22
+
+`funkin/backend/scripts/psych/globals.lua` initializes state before script loading and inserts constructor globals before executing Lua source. `handler.lua` no longer reads strum positions during onCreate/onCreatePost; positions are captured at countdownStarted.
+
+| Rows affected | Initialization result | Remaining difference |
+|---|---|---|
+| score, misses, hits, combo; PlayState.songScore/songMisses/songHits/combo | Zero at script source execution and onCreate; native getProperty aliases tested | Full mutation/callback timing and scoring differential execution remain unverified. |
+| rating, ratingName, ratingFC; PlayState.ratingPercent/ratingName/ratingFC | Original declarations compiled with Haxe interpreter: null, `?`, null | Native C++ defaults and complete RecalculateRating lifecycle are not verified; do not treat these rows as resolved. |
+| totalPlayed, totalNotesHit; corresponding PlayState fields | Zero before source execution | Hit/miss accumulation still differs; not resolved. |
+| scrollSpeed | Initial value comes from chart.speed | Event-driven updates not verified. |
+| defaultPlayerStrumX/Y0–3, defaultOpponentStrumX/Y0–3 | Loop creates all 16 names with zero before source execution; no onCreatePost overwrite | Actual countdown positions and late-loaded-script differential execution remain unverified. |
+| curDecBeat, curDecStep, healthGainMult, healthLossMult, playbackRate, inGameOver, botPlay, practice, instakillOnMiss, guitarHeroSustains | Constructor values now inserted | Nondefault gameplay settings and native reference execution remain unverified. |
+
+Automated reference: `tests/reference/psych104/ReferenceInitialization.hx` contains nine unchanged field declarations from Psych 1.0.4 PlayState. `generate.py --check` executes this reference plus prior utility/input/file references. This is not a compiled Psych game executable. Native LÖVE checks cover script source initialization and handler onCreate/onCreatePost dispatch. The family remains open: full globals, character coordinates, rating lifecycle and requested compiled-engine differentials are pending.
+
+## Non-Psych extension decision (not implemented in this batch)
+
+`loadScript`, `resizeWindow`, and `ending` are not registered Psych 1.0.4 functions. Without a mod-defined function, a Lua call raises an attempt-to-call-nil error. `ClientPrefs.windowMove` is not a Psych ClientPrefs field; class reflection returns null/nil for this absent field. Proposed separate optional extension contract: namespaced `LightExtensions.loadScript/resizeWindow`, documented return/error contracts, no implicit aliasing of `ending` or unknown properties. Awaiting user decision; existing non-Psych behavior has not been changed.

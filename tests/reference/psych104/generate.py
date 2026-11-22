@@ -10,7 +10,7 @@ parser.add_argument('--check', action='store_true')
 args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 source = Path(__file__).resolve().parent
-for main, name in [('Reference', 'utilities'), ('ReferenceInput', 'input'), ('ReferenceFiles', 'files')]:
+for main, name in [('Reference', 'utilities'), ('ReferenceInput', 'input'), ('ReferenceFiles', 'files'), ('ReferenceInitialization', 'initialization')]:
     result = subprocess.run([args.haxe, '-cp', str(source), '--main', main, '-D', 'MODS_ALLOWED', '--interp'], check=True, capture_output=True, text=True)
     records = json.loads(result.stdout)
     target = args.output / (name + '.json')

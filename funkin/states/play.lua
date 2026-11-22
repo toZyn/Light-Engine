@@ -283,6 +283,7 @@ function PlayState:enterScene()
 	self.inCutscene = false
 	self.health, self.score, self.combo, self.misses, self.songHits = 1, 0, 0, 0, 0
 	self.ratingNeedsRecalc = false
+	require('funkin.backend.scripts.psych.globals').initializeState(self)
 	for _, rating in ipairs(self.ratings) do self[rating.name .. "s"] = 0 end
 	self.psychArrowSkin = PlayState.SONG.arrowSkin
 	self.psychDisableNoteRGB = PlayState.SONG.disableNoteRGB

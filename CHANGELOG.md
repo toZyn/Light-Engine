@@ -818,3 +818,9 @@ outside the Lua recovery boundary. See docs/engine-stability.md.
 - Merge base and mod intro text without discarding literal separators or selecting an empty list.
 - Read Psych menu-character image fields and retain native sprite fields.
 - Recover missing or incomplete menu-character data from base BF data.
+
+### Psych counter and global initialization
+- Insert score, miss, hit, rating and gameplay globals before Lua source execution.
+- Initialize totalPlayed and totalNotesHit before script loading.
+- Retain zero strum defaults through onCreatePost and capture positions at countdownStarted.
+- Add Haxe declaration fixtures and native script lifecycle checks.

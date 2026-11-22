@@ -102,6 +102,9 @@ function Psych.loadScripts(state, handler, song, chart)
 				lowQuality = ClientPrefs.data.lowQuality, flashingLights = ClientPrefs.data.flashingLights,
 				Function_Continue = Script.Event_Continue, Function_Stop = Script.Event_Cancel
 			}
+			for key, value in pairs(require('funkin.backend.scripts.psych.globals').initial(state, chart)) do
+				instance.psychValues[key] = value
+			end
 			for key, value in pairs(instance.psychValues) do instance:set(key, value) end
 			instance._psych = require("funkin.backend.scripts.compat").new(state, instance, true)
 		end, file:match("%.hx$") and loadHScript or nil)

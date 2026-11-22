@@ -26,7 +26,7 @@ local function syncGlobals(script, state, name)
 	script:set("playbackRate", state.playback or 1)
 	script:set("botPlay", state.playerNotefield and state.playerNotefield.bot or false)
 	script:set("inGameOver", state.isDead == true)
-	if name == "create" or name == "postCreate" or name == "countdownStarted" then
+	if name == "countdownStarted" then
 		for label, group in pairs({Player = "playerStrums", Opponent = "opponentStrums"}) do
 			local get = script._psych.installed.getPropertyFromGroup
 			for index = 0, 3 do
