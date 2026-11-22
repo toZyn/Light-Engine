@@ -21,22 +21,50 @@ local function entry(original, animations, atlas)
 	return setmetatable({byDirection = byDirection}, {__index = original})
 end
 
+function PsychSkin.postfix()
+	local prefs = ClientPrefs and ClientPrefs.data
+	if not prefs or not prefs.noteSkin or prefs.noteSkin == "Default" then return "" end
+	return "-" .. prefs.noteSkin:match("^%s*(.-)%s*$"):lower():gsub(" ", "_")
+end
+
+PsychSkin.default = "noteSkins/NOTE_assets"
+
+function PsychSkin.nameFor(state, texture)
+	local name = texture or ""
+	if name == "" then
+		local song = state and state.psychArrowSkin or (state and state.SONG and state.SONG.arrowSkin)
+		if song and #song > 1 then return song end
+		return PsychSkin.default .. PsychSkin.postfix()
+	end
+	local custom = name .. PsychSkin.postfix()
+	if paths.hasSheetAtlas(custom) then return custom end
+	return name
+end
+
+function PsychSkin.wanted(state, texture)
+	local name = texture or (state and state.psychArrowSkin) or ""
+	if name == "" then return PsychSkin.postfix() ~= "" end
+	return true
+end
+
 function PsychSkin.resolve(state, base, texture)
-	if texture == "" then return base end
-	if type(texture) ~= "string" then return nil end
+	local key = texture or ""
+	if key == "" and PsychSkin.postfix() == "" then return base end
+	if texture ~= nil and type(texture) ~= "string" then return nil end
 	state.psychNoteSkins = state.psychNoteSkins or {}
 	local variants = state.psychNoteSkins[base]
 	if not variants then
 		variants = {}
 		state.psychNoteSkins[base] = variants
 	end
-	if variants[texture] ~= nil then return variants[texture] or nil end
-	local atlas = paths.hasSheetAtlas(texture) and paths.getAtlas(texture)
+	if variants[key] ~= nil then return variants[key] or nil end
+	local name = PsychSkin.nameFor(state, key)
+	local atlas = paths.hasSheetAtlas(name) and paths.getAtlas(name)
 	if not atlas then
-		variants[texture] = false
-		return nil
+		variants[key] = key ~= "" and false or nil
+		return key == "" and base or nil
 	end
-	local skin = setmetatable({psychTexture = texture}, {__index = base})
+	local skin = setmetatable({psychTexture = name}, {__index = base})
 	local notes, sustains, ends, receptors = {}, {}, {}, {}
 	for i, color in ipairs(colors) do
 		local suffix = "-note" .. (i - 1)
@@ -54,7 +82,7 @@ function PsychSkin.resolve(state, base, texture)
 	skin.sustains = entry(base.sustains, sustains, atlas)
 	skin.sustainends = entry(base.sustainends, ends, atlas)
 	skin.receptors = entry(base.receptors, receptors, atlas)
-	variants[texture] = skin
+	variants[key] = skin
 	return skin
 end
 

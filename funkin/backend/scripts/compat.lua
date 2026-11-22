@@ -1,5 +1,11 @@
 -- Explicit, scoped Lua convenience APIs. This does not execute Haxe or translate
 -- whole Psych scripts; native scripts choose which callbacks to forward.
+local Reflection = require "funkin.backend.scripts.psych.reflection"
+
+-- The engine runs on LuaJIT (Lua 5.1): no table.pack/table.unpack.
+local unpack = unpack or table.unpack
+local function pack(...) return {n = select("#", ...), ...} end
+
 local Compat = {}
 Compat.__index = Compat
 
@@ -55,30 +61,26 @@ function Compat:_register(tag, object)
 	return object
 end
 
+local Resolve
+local function resolver()
+	if Resolve == nil then Resolve = require "funkin.backend.scripts.psych.resolve" end
+	return Resolve
+end
+
 function Compat:_root(name)
+	if self.script._psych then return resolver().root(self, name) end
 	local object = self:_owner(name).objects[name]
 	if object ~= nil then return object end
 	if name == "camGame" then return self.state.camGame or game.camera end
-	if self.script._psych then
-		if name == "iconP1" or name == "icon-bf" then return self.state.healthBar and self.state.healthBar.iconP1 end
-		if name == "iconP2" or name == "icon-dad" then return self.state.healthBar and self.state.healthBar.iconP2 end
-		if name == "timeBar" or name == "timeTxt" or name == "timeBarBG" then
-			local hud = self.state.psychTimeHud or {}
-			self.state.psychTimeHud = hud
-			hud[name] = hud[name] or {visible = false}
-			return hud[name]
-		end
-	end
 	return self.state[name]
 end
 
-local psychStateFields = {songMisses = "misses", songScore = "score"}
+function Compat:_class(name)
+	if not self.psychClasses then return nil end
+	return self.psychClasses[name]
+end
 
 function Compat:_resolve(path)
-	if self.script._psych then
-		path = psychStateFields[path] or path
-		path = path:gsub("^icon%-bf([%.%[])", "iconP1%1"):gsub("^icon%-dad([%.%[])", "iconP2%1")
-	end
 	self:_active()
 	local parts = tokens(path)
 	if #parts == 1 then
@@ -96,6 +98,43 @@ function Compat:_resolve(path)
 	end
 	if object == nil then fail("missing property in " .. path) end
 	return object, parts[#parts], object[parts[#parts]]
+end
+
+function Compat:_groupMember(group, index)
+	local value = resolver().member(self, group)
+	if value == nil then
+		resolver().warn("Group or array " .. tostring(group) .. " does not exist")
+		return nil
+	end
+	local position = (tonumber(index) or 0) + 1
+	local member
+	if value.members then member = value.members[position]
+	elseif type(value) == "table" then member = value[position] end
+	if member == nil then
+		resolver().warn("Object #" .. tostring(index) .. " from group " .. tostring(group) .. " does not exist")
+	end
+	return member
+end
+
+function Compat:_getFromGroup(group, index, property, allowMaps)
+	self:_active()
+	local member = self:_groupMember(group, index)
+	if member == nil then return nil end
+	if type(property) == "number" then return member[property + 1] end
+	return Reflection.get(member, property)
+end
+
+function Compat:_setFromGroup(group, index, property, value, allowMaps, allowInstances)
+	self:_active()
+	value = Reflection.coerce(value)
+	if allowInstances then value = Reflection.parseInstances(self, value) end
+	local member = self:_groupMember(group, index)
+	if member == nil then return value end
+	if type(property) == "number" then
+		member[property + 1] = value
+		return value
+	end
+	return Reflection.set(member, property, value)
 end
 
 function Compat:_object(tag)
@@ -204,6 +243,32 @@ function Compat:update(dt)
 	-- Sounds belong to the global SoundManager; it updates them once per frame.
 end
 
+function Compat:psychWarn(message, deprecated)
+	Reflection.trace(self.script, message, deprecated == true)
+end
+
+function Compat:_dispatch(name, ...)
+	if self.script._psych then return self:psychDispatch(name, ...) end
+	return self:_callback(name, ...)
+end
+
+function Compat:psychDispatch(name, ...)
+	local arguments = pack(...)
+	local scripts = self.state.scripts and self.state.scripts.scripts
+	local delivered = false
+	if scripts then
+		for index = 1, #scripts do
+			local entry = scripts[index]
+			if entry ~= nil and entry._psych ~= nil and not entry.closed
+				and rawget(entry.variables, name) ~= nil then
+				if entry == self.script then delivered = true end
+				entry:call(name, unpack(arguments, 1, arguments.n))
+			end
+		end
+	end
+	if not delivered then return self:_callback(name, ...) end
+end
+
 function Compat:_cancelTween(tag)
 	local tween = self.tweens[tag]
 	if tween then tween:destroy(); self.tweens[tag] = nil end
@@ -211,7 +276,7 @@ end
 
 function Compat:_tween(tag, path, value, duration, ease)
 	local object, key = self:_resolve(path)
-	return self:_tweenObject(tag, object, key, value, duration, ease)
+	return self:_tweenObject(tag, object, key, value, duration, ease, path)
 end
 
 local psychEases = {}
@@ -221,7 +286,7 @@ for name in pairs(require "loxel.util.tween.ease") do
 	end
 end
 
-function Compat:_tweenObject(tag, object, key, value, duration, ease)
+function Compat:_tweenObject(tag, object, key, value, duration, ease, described)
 	self:_active()
 	local anonymous = self.script._psych and tag == nil
 	if self.script._psych then
@@ -242,12 +307,12 @@ function Compat:_tweenObject(tag, object, key, value, duration, ease)
 		ease = ease, onComplete = function()
 			if self.tweens[tag] == tween then
 				self.tweens[tag] = nil
-				if not anonymous then self:_callback("onTweenCompleted", tag) end
+				if not anonymous then self:_dispatch("onTweenCompleted", tag, tween.compatPath) end
 			end
 		end
 	})
 	self.tweens[tag] = tween
-	tween.compatTag = tag
+	tween.compatTag, tween.compatPath = tag, described or path
 	return tween
 end
 
@@ -288,18 +353,25 @@ function Compat.new(state, script, psych)
 	if script._compatibility and not script._compatibility.disposed then fail("script already has a compatibility context") end
 	local self = setmetatable({state = state, script = script, objects = {}, added = {}, textures = {},
 		timers = {}, tweens = {}, sounds = {}, installed = {}, previous = {}, nextSound = 0,
-		timer = TimerManager(), tween = Tween(), callbackNames = {}, calling = {}}, Compat)
+		timer = TimerManager(), tween = Tween(), callbackNames = {}, calling = {},
+		retryCallbacks = psych == true, psychClasses = {}, anonymousTweens = {}}, Compat)
 	if psych then
 		state.psychObjectOwners = state.psychObjectOwners or {}
 		self.objectOwners = state.psychObjectOwners
 	end
 	for name, callback in pairs(callbacks) do self.callbackNames[name] = callback end
 	local api = {}
-	api.getProperty = function(path) local _, _, value = self:_resolve(path); return value end
-	api.setProperty = function(path, value)
+	api.getProperty = function(path, allowMaps)
+		if psych then return resolver().get(self, path, allowMaps) end
+		local _, _, value = self:_resolve(path)
+		return value
+	end
+	api.setProperty = function(path, value, allowMaps, allowInstances)
+		if psych then return resolver().set(self, path, value, allowMaps, allowInstances) end
 		local object, key, old = self:_resolve(path)
 		if old == nil then fail("missing property: " .. path) end
-		object[key] = value; return true
+		object[key] = value
+		return true
 	end
 	local function groupPath(group, index, property)
 		positive(index, "group index", true)
@@ -307,8 +379,14 @@ function Compat.new(state, script, psych)
 		local object = self:_object(group)
 		return group .. (object.members and ".members" or "") .. "[" .. index .. "]." .. tostring(property)
 	end
-	api.getPropertyFromGroup = function(group, index, property) return api.getProperty(groupPath(group, index, property)) end
-	api.setPropertyFromGroup = function(group, index, property, value) return api.setProperty(groupPath(group, index, property), value) end
+	api.getPropertyFromGroup = function(group, index, property, allowMaps)
+		if psych then return self:_getFromGroup(group, index, property, allowMaps) end
+		return api.getProperty(groupPath(group, index, property))
+	end
+	api.setPropertyFromGroup = function(group, index, property, value, allowMaps, allowInstances)
+		if psych then return self:_setFromGroup(group, index, property, value, allowMaps, allowInstances) end
+		return api.setProperty(groupPath(group, index, property), value)
+	end
 	api.makeLuaSprite = function(tag, image, x, y) return self:_sprite(tag, image, x, y, false) end
 	api.makeAnimatedLuaSprite = function(tag, image, x, y) return self:_sprite(tag, image, x, y, true) end
 	api.makeGraphic = function(tag, width, height, color)
@@ -528,10 +606,34 @@ function Compat.new(state, script, psych)
 	api.runHaxeFunction = function() fail("runHaxeFunction is unsupported; use native Lua engine APIs") end
 	require("funkin.backend.scripts.compat-controls").install(self, api, psych)
 	if psych then
+		api.psychEase = function(name)
+			local key = type(name) == "string" and name:lower():match("^%s*(.-)%s*$") or ""
+			return psychEases[key] or "linear"
+		end
 		require("funkin.backend.scripts.psych.shaders").install(self, api)
 		require("funkin.backend.scripts.psych.substate").install(self, api)
 		require("funkin.backend.scripts.psych.cutscene").install(self, api)
+		require("funkin.backend.scripts.psych.text").install(self, api)
+		require("funkin.backend.scripts.psych.classes").install(self, api)
+		require("funkin.backend.scripts.psych.tweens").install(self, api)
+		require("funkin.backend.scripts.psych.extras").install(self, api)
 		self.loadHScript = require("funkin.backend.scripts.psych").install(self, api)
+	end
+	if psych then
+		local Reflection = require("funkin.backend.scripts.psych.reflection")
+		for name, fn in pairs(api) do
+			if type(fn) == "function" and not name:match("^psych") then
+				local operation = fn
+				api[name] = function(...)
+					local results = pack(pcall(operation, ...))
+					if results[1] then return unpack(results, 2, results.n) end
+					local message = tostring(results[2])
+					if not message:find("[Lua compatibility]", 1, true) then error(results[2], 0) end
+					Reflection.warn(message:gsub("^%[Lua compatibility%] ", ""))
+					return false
+				end
+			end
+		end
 	end
 	for name, fn in pairs(api) do
 		self.previous[name] = rawget(script.variables, name)

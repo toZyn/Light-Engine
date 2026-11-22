@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-22
+
+Full Psych Engine 1.0.4 Lua API surface coverage for detected mods, plus the HUD
+objects that Psych scripts read and write directly.
+
+### Added
+- Cover all 223 Lua callbacks that Psych Engine 1.0.4 registers, including
+  reflection, instance, group, tween, text, shader, substate and cutscene APIs.
+- Map `scoreTxt` and `botplayTxt` to the native PlayState text objects, with a
+  Psych stand-in built for states that have no score text of their own.
+- Implement `updateScoreText` with the Psych score/rating format, including the
+  instakill variant.
+- Add Psych property aliases for sprites, characters, animation controllers and
+  text objects (`curCharacter`, `frameWidth`, `curAnimName`, `text`,
+  `borderSize`, `fieldWidth` and related fields).
+- Add `Reflection.trace` and `Compat:psychWarn` so deprecated Psych calls report
+  through `luaDebugMode` and `luaDeprecatedWarnings` instead of failing.
+
+### Changed
+- Psych-only scripts now warn and continue when a call is invalid, matching
+  Psych's `luaTrace` behavior, instead of aborting the script.
+- `getPropertyFromClass`/`setPropertyFromClass` resolve arbitrary
+  `PlayState.SONG` fields and return the written value instead of erroring on
+  unknown classes.
+- Note skin suffixes from client preferences are applied when notes and strums
+  are created.
+
+### Fixed
+- Stop calling Lua 5.2+ standard library functions (`table.pack`,
+  `table.unpack`) on the LuaJIT runtime. The engine's `table` metatable returns a
+  fallback function for any missing key, so these calls silently produced a
+  function or a boolean instead of failing; `cameraFlash` and `cameraFade`
+  returned `true` instead of their real result and multi-value returns were
+  truncated.
+- Stop `Reflection.get`/`Reflection.set` from bypassing the alias table, which
+  left aliased fields returning `nil`.
+- Resolve deprecated Psych sprite helpers and `objectsOverlap`/`getPixelColor`
+  against state members as well as script variables.
+- Restore `luaSpriteExists`, `getTextFont` and `getTextSize` results for objects
+  created through the Psych constructors.
+- Guard `startCountdown` when a state does not implement it.
+- Reproduce Psych's callback retry behavior so a failed Psych callback is not
+  permanently disabled after its first error.
+
+### Compatibility
+- Psych Engine 1.0.4 compatibility remains partial; HUD coverage is limited to
+  the time bar, score text and botplay text.
+- Validation used a Lua harness with LÖVE stubs, configured with LuaJIT
+  standard library semantics (`table.pack`/`table.unpack` and `math.type`
+  removed, matching the runtime), plus the existing native suites. A new
+  `luajit-stdlib` suite fails the build if a 5.2+ standard library call is
+  reintroduced.
+  A full compiled Psych differential run and physical Android/Mali-G57
+  validation remain pending.
+
 ## [0.6.0] - 2026-11-22
 
 ### Added

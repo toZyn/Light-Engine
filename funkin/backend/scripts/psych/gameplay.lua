@@ -23,37 +23,60 @@ local characterFields = {x = true, y = true, alpha = true, visible = true, angle
 
 function Gameplay.install(compat, api)
 	local state = compat.state
-	api.getPropertyFromClass = function(class, field)
-		compat:_active()
-		if isGameOverClass(class) and gameOverFields[field] then
+	local function known(class, field)
+		if isGameOverClass(class) then
 			local options = state.psychGameOver
-			return options and options[field] or GameOverSubstate[field]
-		elseif class == "backend.ClientPrefs" or class == "ClientPrefs" then
-			local name = field:gsub("^data%.", "")
+			local value = options and options[field]
+			if value ~= nil then return value end
+			if gameOverFields[field] then return GameOverSubstate and GameOverSubstate[field] end
+			return nil
+		end
+		if class == "backend.ClientPrefs" or class == "ClientPrefs" then
+			local name = tostring(field):gsub("^data%.", "")
 			local preference = preferences[name]
 			if preference then return ClientPrefs.data[preference] end
 			if name == "windowMove" then return false end
-		elseif class == "openfl.Lib" then
-			local axis = field:match("^application%.window%.([xy])$")
-			if axis then
-				if love.system.getDevice() == "Mobile" then return 0 end
-				local x, y = love.window.getPosition()
-				return axis == "x" and x or y
-			end
-		elseif class == "backend.Conductor" or class == "Conductor" then
+			return nil
+		end
+		if class == "Main" or class == "funkin.Main" then
+			if field == "fpsVar" then return game.statsCounter end
+			return nil
+		end
+		if class == "openfl.Lib" or class == "Lib" then
+			local axis = tostring(field):match("^application%.window%.([xy])$")
+			if not axis then return nil end
+			if love.system.getDevice() == "Mobile" then return 0 end
+			local x, y = love.window.getPosition()
+			return axis == "x" and x or y
+		end
+		if class == "backend.Conductor" or class == "Conductor" then
 			if field == "songPosition" then return api.getSongPosition() end
 			if field == "bpm" then return api.getSongBpm() end
 			if state.conductor then
 				if field == "crochet" then return state.conductor.crotchet end
 				if field == "stepCrochet" then return state.conductor.stepCrotchet end
 			end
-		elseif isPlayStateClass(class) then
-			if field == "SONG.arrowSkin" then return state.psychArrowSkin or "" end
-			if field == "SONG.disableNoteRGB" then return state.psychDisableNoteRGB == true end
+			return nil
+		end
+		if isPlayStateClass(class) then
+			local songKey = tostring(field):match("^SONG%.(.+)$")
+			if songKey then
+				if songKey == "arrowSkin" then return state.psychArrowSkin or "" end
+				if songKey == "disableNoteRGB" then return state.psychDisableNoteRGB == true end
+				local chart = state.SONG or (PlayState and PlayState.SONG)
+				if chart ~= nil then return chart[songKey] end
+				return nil
+			end
 			if field == "isStoryMode" then return PlayState.storyMode end
 			if field == "songName" then return PlayState.SONG and PlayState.SONG.song end
+			return nil
 		end
-		error("Psych class property unavailable: " .. tostring(class) .. "." .. tostring(field), 2)
+		return nil
+	end
+
+	api.getPropertyFromClass = function(class, field)
+		compat:_active()
+		return known(class, field)
 	end
 
 	api.setPropertyFromClass = function(class, field, value)
@@ -71,12 +94,18 @@ function Gameplay.install(compat, api)
 			state.psychGameOver[field] = value
 			return true
 		end
-		error("Psych class property unavailable for writing: " .. tostring(class) .. "." .. tostring(field), 2)
+		if isPlayStateClass(class) and field:sub(1, 4) == "SONG" then
+			local key = field:match("^SONG%.(.+)$")
+			local chart = state.SONG or (PlayState and PlayState.SONG)
+			if key and chart then chart[key] = value; return true end
+		end
+		return value
 	end
 
 	api.startCountdown = function()
 		compat:_active()
 		if state.startedCountdown or state.psychStartingCountdown then return false end
+		if type(state.startCountdown) ~= "function" then return false end
 		state.psychStartingCountdown = true
 		local ok, failure = pcall(state.startCountdown, state)
 		state.psychStartingCountdown = false

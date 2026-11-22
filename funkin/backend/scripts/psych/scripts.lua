@@ -11,16 +11,19 @@ end
 
 function Scripts.install(compat, api)
 	local script = compat.script
-	local registry = script.psychRegistry
-	if not registry then return end
+	local function registry()
+		return script.psychRegistry or {}
+	end
 	local function find(name, extension)
 		name = cleanName(name):gsub("%." .. extension .. "$", "")
-		local target = registry[name .. "." .. extension] or registry["scripts/" .. name .. "." .. extension]
+		local loaded = registry()
+		local target = loaded[name .. "." .. extension] or loaded["scripts/" .. name .. "." .. extension]
 		if target and not target.closed then return target end
 	end
 
 	local function add(name, extension)
 		compat:_active()
+		if type(script.psychLoadScript) ~= "function" then return false end
 		name = cleanName(name):gsub("%." .. extension .. "$", "") .. "." .. extension
 		local target, fresh = script.psychLoadScript(name)
 		if not target and not name:find("/", 1, true) then

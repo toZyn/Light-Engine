@@ -1,8 +1,11 @@
 local Queries = {}
+local Resolve = require "funkin.backend.scripts.psych.resolve"
 
 local function resolve(compat, path)
-	local ok, object = pcall(compat._object, compat, path)
-	if ok then return object end
+	local object = Resolve.get(compat, path)
+	if object ~= nil then return object end
+	local ok, value = pcall(compat._object, compat, path)
+	if ok then return value end
 end
 
 local function overlap(first, second)

@@ -18,6 +18,7 @@ function Media.install(compat, api)
 	local state = compat.state
 	api.FlxColor = color
 	api.getColorFromName, api.getColorFromString, api.getColorFromHex = color, color, color
+	api.psychColorFromString = color
 
 	local function character(name)
 		name = tostring(name or "dad"):lower()

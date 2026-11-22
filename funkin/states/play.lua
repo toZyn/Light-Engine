@@ -500,13 +500,13 @@ function PlayState:enterScene()
 		{"player", self.boyfriend, playerVocals, ClientPrefs.data.botplayMode, true},
 		{"enemy",  self.dad,       enemyVocals,  true},
 	}
+	local psychSkin = psych and require("funkin.backend.scripts.psych.note-skin")
 	for _, nf in ipairs(config) do
 		SceneJob.checkpoint("Notes: " .. nf[1],0.7)
 		local field, notes = nf[1] .. "Notefield", PlayState.SONG.notes[nf[1]]
 		self[field] = Notefield(0, y, keys, skin, nf[2], nf[3], speed)
 		local notefield = self[field]
-		if psych and (self.psychArrowSkin or self.psychDisableNoteRGB) then
-			local psychSkin = require("funkin.backend.scripts.psych.note-skin")
+		if psychSkin and (self.psychArrowSkin or self.psychDisableNoteRGB or psychSkin.postfix() ~= "") then
 			local variant = psychSkin.resolve(self, notefield.skin, self.psychArrowSkin) or notefield.skin
 			if self.psychDisableNoteRGB then variant = psychSkin.withoutRgb(self, variant) end
 			if variant ~= notefield.skin then notefield:setSkin({data = variant}) end
