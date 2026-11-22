@@ -7,42 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Psych API batch 1
-
-- Expose Lua control queries, gamepad queries, string tools, random helpers,
-  file operations, script enumeration and spatial queries.
-- Keep gamepad press/release edges through the engine frame and track devices
-  separately. Resolve Lua control names through the configured bindings.
-- Compare 138 contract vectors against Haxe execution of Psych 1.0.4 callback
-  bodies. Record 11 implemented and 20 distinct entries in the API inventory.
-- Retain differences for random stream ownership, controller mapping, path
-  resolution and spatial queries. Android input/storage and Mali pixel
-  readback have not been verified on hardware.
+## [0.6.0] - 2026-11-22
 
 ### Added
+- Extend Psych Lua input, utility, file, gameplay counter and rating APIs.
+- Initialize Psych script globals and stage base coordinates before script execution.
+- Support note texture overrides, chart arrow skins and section timing callbacks.
+- Add directional navigation and confirmation controls to the Android pause menu.
+- Add synthetic regression fixtures and Haxe source-reference tests.
 
-- Add directional and confirm buttons to the Android pause menu.
-- Support Psych note texture changes, chart arrow skins, custom-note health
-  and miss behavior, score counters, and section timing callbacks.
-
-### Performance
-
-- Submit each sustain body as a single mesh strip and clip geometry to the
-  visible lane span. Keep authored note density and modifiers.
+### Changed
+- Draw sustain bodies with clipped mesh strips to reduce rendering submissions.
+- Apply Psych rating thresholds, full-combo labels, miss penalties and combo resets.
+- Publish scoring and rating globals in the corresponding callback sequence.
 
 ### Fixed
+- Preserve independent touch identifiers and gamepad input edges.
+- Resolve mixed-case song directories and accept anonymous and numeric tween tags.
+- Recover empty title introductions and missing or incomplete menu-character data.
+- Read Psych menu-character image fields alongside native sprite fields.
+- Log menu-data recovery that extends Psych behavior with a deduplicated message.
+- Handle Psych callback cancellation constants in native event dispatch.
 
-- Resolve mixed-case Psych song directories, expose timing globals, and
-  accept anonymous tweens and Lua numeric tween arguments.
-- Clear released touch identifiers before recycling slots so concurrent
-  Android touches retain independent input state.
-- Preserve Psych stage layer order, authored camera zoom and character
-  offsets. Keep forced camera coordinates until the chart releases them.
-- Apply Psych screen-shake parameters in duration, intensity order. Resolve
-  camera names and easing strings using the Psych fallback rules.
-- Honor Psych's countdown skip and share tagged stage objects across scripts.
-- Preserve OGV video aspect ratio and playback options. If a mod supplies
-  only MP4, log a diagnostic and continue running its script.
+### Compatibility
+- Psych Engine 1.0.4 compatibility remains partial; some APIs and behavior differ.
+- Reference tests use isolated Haxe source and a C++ allocation probe. A full compiled
+  Psych differential run and physical Android/Mali-G57 validation remain pending.
 
 ## [0.5.0] - 2026-11-21
 
@@ -813,21 +803,3 @@ outside the Lua recovery boundary. See docs/engine-stability.md.
 - Storage initialization on desktop platforms
 - DialogueBox crash when dialogue.txt is missing
 - Directory creation with proper permissions on Windows/Linux
-
-### Core menu asset loading
-- Merge base and mod intro text without discarding literal separators or selecting an empty list.
-- Read Psych menu-character image fields and retain native sprite fields.
-- Recover missing or incomplete menu-character data from base BF data.
-
-### Psych counter and global initialization
-- Insert score, miss, hit, rating and gameplay globals before Lua source execution.
-- Initialize totalPlayed and totalNotesHit before script loading.
-- Retain zero strum defaults through onCreatePost and capture positions at countdownStarted.
-- Add Haxe declaration fixtures and native script lifecycle checks.
-
-### Psych constructor globals and rating lifecycle
-- Populate constructor globals before Lua source execution, including stage base coordinates and Psych callback constants.
-- Preserve stage coordinates separately from character sprite offsets.
-- Synchronize scoring counters before rating callbacks and rating globals after calculation.
-- Apply Psych rating thresholds, full-combo labels, miss penalties and combo reset rules.
-- Add original Haxe constructor/rating references and callback order tests.
