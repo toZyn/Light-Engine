@@ -35,6 +35,12 @@ objects that Psych scripts read and write directly.
   are created.
 
 ### Fixed
+- Stop calling Lua 5.2+ standard library functions (`table.pack`,
+  `table.unpack`) on the LuaJIT runtime. The engine's `table` metatable returns a
+  fallback function for any missing key, so these calls silently produced a
+  function or a boolean instead of failing; `cameraFlash` and `cameraFade`
+  returned `true` instead of their real result and multi-value returns were
+  truncated.
 - Stop `Reflection.get`/`Reflection.set` from bypassing the alias table, which
   left aliased fields returning `nil`.
 - Resolve deprecated Psych sprite helpers and `objectsOverlap`/`getPixelColor`
@@ -48,7 +54,11 @@ objects that Psych scripts read and write directly.
 ### Compatibility
 - Psych Engine 1.0.4 compatibility remains partial; HUD coverage is limited to
   the time bar, score text and botplay text.
-- Validation used a Lua harness with LÖVE stubs plus the existing native suites.
+- Validation used a Lua harness with LÖVE stubs, configured with LuaJIT
+  standard library semantics (`table.pack`/`table.unpack` and `math.type`
+  removed, matching the runtime), plus the existing native suites. A new
+  `luajit-stdlib` suite fails the build if a 5.2+ standard library call is
+  reintroduced.
   A full compiled Psych differential run and physical Android/Mali-G57
   validation remain pending.
 

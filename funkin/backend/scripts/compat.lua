@@ -2,6 +2,10 @@
 -- whole Psych scripts; native scripts choose which callbacks to forward.
 local Reflection = require "funkin.backend.scripts.psych.reflection"
 
+-- The engine runs on LuaJIT (Lua 5.1): no table.pack/table.unpack.
+local unpack = unpack or table.unpack
+local function pack(...) return {n = select("#", ...), ...} end
+
 local Compat = {}
 Compat.__index = Compat
 
@@ -249,7 +253,7 @@ function Compat:_dispatch(name, ...)
 end
 
 function Compat:psychDispatch(name, ...)
-	local arguments = table.pack(...)
+	local arguments = pack(...)
 	local scripts = self.state.scripts and self.state.scripts.scripts
 	local delivered = false
 	if scripts then
@@ -258,7 +262,7 @@ function Compat:psychDispatch(name, ...)
 			if entry ~= nil and entry._psych ~= nil and not entry.closed
 				and rawget(entry.variables, name) ~= nil then
 				if entry == self.script then delivered = true end
-				entry:call(name, table.unpack(arguments, 1, arguments.n))
+				entry:call(name, unpack(arguments, 1, arguments.n))
 			end
 		end
 	end
@@ -621,8 +625,8 @@ function Compat.new(state, script, psych)
 			if type(fn) == "function" and not name:match("^psych") then
 				local operation = fn
 				api[name] = function(...)
-					local results = table.pack(pcall(operation, ...))
-					if results[1] then return table.unpack(results, 2, results.n) end
+					local results = pack(pcall(operation, ...))
+					if results[1] then return unpack(results, 2, results.n) end
 					local message = tostring(results[2])
 					if not message:find("[Lua compatibility]", 1, true) then error(results[2], 0) end
 					Reflection.warn(message:gsub("^%[Lua compatibility%] ", ""))

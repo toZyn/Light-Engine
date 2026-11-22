@@ -3,8 +3,10 @@ local Classes = {}
 local Resolve = require "funkin.backend.scripts.psych.resolve"
 local Reflection = require "funkin.backend.scripts.psych.reflection"
 
+-- LuaJIT/Lua 5.1 has no table.unpack.
+local unpack = unpack or table.unpack
 local function unpack4(...)
-	return table.unpack({...})
+	return unpack({...}, 1, select("#", ...))
 end
 
 function Classes.install(compat, api)
@@ -39,7 +41,7 @@ function Classes.install(compat, api)
 		local key = parts[#parts]
 		if owner == nil or type(key) == "table" then return nil end
 		local method = Reflection.get(owner, key)
-		if type(method) == "function" then return method(owner, unpack4(table.unpack(list))) end
+		if type(method) == "function" then return method(owner, unpack4(unpack(list, 1, #list))) end
 		return nil
 	end
 	compat.psychCall = call
@@ -130,7 +132,7 @@ function Classes.install(compat, api)
 			parent = state
 		end
 		if name ~= "" then return call(parent, name, arguments(values)) end
-		if type(parent) == "function" then return parent(unpack4(table.unpack(arguments(values)))) end
+		if type(parent) == "function" then return parent(unpack4(unpack(arguments(values)))) end
 		return nil
 	end
 	api.callMethodFromClass = function(className, path, values)
@@ -153,7 +155,7 @@ function Classes.install(compat, api)
 			warn("createInstance: Failed to create " .. key .. ", arguments are possibly wrong.")
 			return false
 		end
-		local ok, created = pcall(constructor, unpack4(table.unpack(arguments(values))))
+		local ok, created = pcall(constructor, unpack4(unpack(arguments(values))))
 		if not ok or created == nil then
 			warn("createInstance: Failed to create " .. key .. ", arguments are possibly wrong.")
 			return false

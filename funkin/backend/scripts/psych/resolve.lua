@@ -2,6 +2,9 @@ local Reflection = require "funkin.backend.scripts.psych.reflection"
 local Aliases = require "funkin.backend.scripts.psych.aliases"
 local Hud = require "funkin.backend.scripts.psych.hud"
 
+-- LuaJIT/Lua 5.1 has no table.unpack.
+local unpack = unpack or table.unpack
+
 local Resolve = {warn = Reflection.warn}
 
 local function playstate(state, key)
@@ -83,9 +86,9 @@ function Resolve.get(compat, path, allowMaps)
 	local variables = compat.state.psychVariables
 	if (first == "this" or first == "instance" or first == "game") and variables[parts[2]] ~= nil then
 		object = variables[parts[2]]
-		return Reflection.readPath(object, {table.unpack(parts, 3)})
+		return Reflection.readPath(object, {unpack(parts, 3, #parts)})
 	end
-	return Reflection.readPath(object, {table.unpack(parts, 2)})
+	return Reflection.readPath(object, {unpack(parts, 2, #parts)})
 end
 
 function Resolve.set(compat, path, value, allowMaps, allowInstances)
@@ -111,7 +114,7 @@ function Resolve.set(compat, path, value, allowMaps, allowInstances)
 	end
 	local object = Resolve.root(compat, first)
 	if object == nil then return value end
-	return Reflection.writePath(object, {table.unpack(parts, 2)}, value)
+	return Reflection.writePath(object, {unpack(parts, 2, #parts)}, value)
 end
 
 function Resolve.member(compat, path)

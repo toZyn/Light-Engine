@@ -21,7 +21,7 @@ The runtime still uses the existing compatibility setting and mod detection. API
 
 The implementation was checked with 36 native LÖVE 11.5 suites, 106 constructor-global comparisons, 48 rating cases, 67 utility cases, 58 input cases, 13 file cases and nine native-field checks, plus a Bool assertion. Synthetic fixtures are stored under tests/; third-party reference excerpts retain their licenses and attribution.
 
-The 0.7.0 API surface was additionally exercised through a Lua harness that boots the engine with LÖVE stubs: every registered callback was checked for presence, and scripted scenarios covered reflection, instances, groups, tweens, timers, text, HUD, save data and note-skin selection.
+The 0.7.0 API surface was additionally exercised through a Lua harness that boots the engine with LÖVE stubs using LuaJIT standard library semantics: every registered callback was checked for presence, and scripted scenarios covered reflection, instances, groups, tweens, timers, text, HUD, save data and note-skin selection.
 
 These checks execute isolated Psych Haxe source and a C++ zeroed-allocation probe. They do not run a complete compiled Psych executable. Complete-mod playback, physical Android touch, external storage behavior and Mali-G57 rendering have not been validated for this release.
 
