@@ -3,7 +3,9 @@ local preferences = {
 	downScroll = "downScroll", middleScroll = "middleScroll", ghostTapping = "ghostTap",
 	noteSplashes = "noteSplash", flashing = "flashingLights", lowQuality = "lowQuality"
 }
-local stateFields = {health = "health", songScore = "score", songMisses = "misses", songHits = "songHits", combo = "combo"}
+local stateFields = {health = "health", songScore = "score", songMisses = "misses", songHits = "songHits", combo = "combo", ratingName='ratingName', ratingPercent='ratingPercent', ratingFC='ratingFC',
+ totalPlayed='totalPlayed', totalNotesHit='totalNotesHit', BF_X='BF_X', BF_Y='BF_Y', DAD_X='DAD_X', DAD_Y='DAD_Y',
+ GF_X='GF_X', GF_Y='GF_Y', ratingsData='ratingsData', ratingStuff='ratingStuff'}
 local aliases = {boyfriend = "boyfriend", dad = "dad", gf = "gf"}
 local gameOverFields = {
 	characterName = "characterName", deathSoundName = "deathSoundName",
@@ -82,6 +84,13 @@ function Gameplay.install(compat, api)
 		return state.startedCountdown == true
 	end
 
+ for _, entry in ipairs({{'Percent','ratingPercent','rating'},{'Name','ratingName','ratingName'},{'FC','ratingFC','ratingFC'}}) do
+  local field, global = entry[2], entry[3]
+  api['setRating' .. entry[1]] = function(value)
+   state[field] = value
+   if state.scripts then state.scripts:set(global,value) end
+  end
+ end
 	api.getHealth = function() return state.health end
 	api.setHealth = function(health) api.setProperty("health", health) end
 	api.addHealth = function(amount) api.setHealth(api.getHealth() + amount) end

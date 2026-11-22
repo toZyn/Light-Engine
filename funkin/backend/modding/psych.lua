@@ -79,6 +79,11 @@ end
 function Psych.loadScripts(state, handler, song, chart)
 	local root = Psych.root()
 	if not root then return end
+	local globals = require 'funkin.backend.scripts.psych.globals'
+	globals.prepare(state, chart)
+	state.psychLoadedSongPath = song
+	local _, chartPath = Psych.chart(song, PlayState.songDifficulty)
+	state.psychChartPath = chartPath
 	local loaded, loading = {}, {}
 	local conductor = state.conductor
 	local bpm = chart.bpm or (conductor and conductor.bpm) or 100
@@ -90,21 +95,7 @@ function Psych.loadScripts(state, handler, song, chart)
 		local script = Script(root .. file, true, false, true, function(instance)
 			instance.psychRegistry = loaded
 			instance.psychLoadScript = load
-			instance.psychValues = {
-				songName = chart.song or song, songPath = song, difficultyName = PlayState.songDifficulty,
-				bpm = bpm, curBpm = conductor and conductor.bpm or bpm,
-				crochet = 60000 / bpm, stepCrochet = 15000 / bpm,
-				songLength = (game.sound.music and game.sound.music.duration or 0) * 1000,
-				curStage = chart.stage or "stage", curStep = 0, curBeat = 0, curSection = 0,
-				altAnim = false, gfSection = false, mustHitSection = false,
-				isStoryMode = PlayState.storyMode, screenWidth = game.width, screenHeight = game.height,
-				downscroll = ClientPrefs.data.downScroll, middlescroll = ClientPrefs.data.middleScroll,
-				lowQuality = ClientPrefs.data.lowQuality, flashingLights = ClientPrefs.data.flashingLights,
-				Function_Continue = Script.Event_Continue, Function_Stop = Script.Event_Cancel
-			}
-			for key, value in pairs(require('funkin.backend.scripts.psych.globals').initial(state, chart)) do
-				instance.psychValues[key] = value
-			end
+			instance.psychValues = globals.initial(state, chart, root .. file)
 			for key, value in pairs(instance.psychValues) do instance:set(key, value) end
 			instance._psych = require("funkin.backend.scripts.compat").new(state, instance, true)
 		end, file:match("%.hx$") and loadHScript or nil)

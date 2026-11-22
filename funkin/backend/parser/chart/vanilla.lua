@@ -190,6 +190,7 @@ function vanilla.parse(data, events, meta, diff, options)
 	Parser.pset(chart, "skin", rawSkin)
 	Parser.pset(chart, "arrowSkin", data.arrowSkin)
 	Parser.pset(chart, "disableNoteRGB", data.disableNoteRGB)
+	Parser.pset(chart, "needsVoices", data.needsVoices)
 
 	Parser.pset(chart, "player1", data.player1)
 	Parser.pset(chart, "player2", data.player2)

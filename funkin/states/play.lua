@@ -50,6 +50,7 @@ end
 function PlayState.loadSong(song, diff)
 	diff = diff or PlayState.defaultDifficulty
 	PlayState.songDifficulty = diff
+	PlayState.psychLoadedSongName = song
 
 	local chart, err = Parser.getChart(song, diff, {strict = true})
 	if not chart then
@@ -1752,26 +1753,37 @@ function PlayState:goodNoteHit(note, time)
 
 		if self.playerNotefield == notefield then
 			self.health = math.clamp(self.health + (note.hitHealth or 0.023), 0, 2)
-			self.score = self.score + rating.score
+			if not (self.stage.psych and self.cpuControlled) then
+				self.score = self.score + rating.score
+			end
 			if rating.resetCombo and self.gf then
 				local drop = self.gf:getDropAnim(self.combo)
 				if drop then self.gf:playAnim(drop, true, nil, true) end
 			end
 
-			self.combo = (rating.resetCombo and math.min(self.combo, 0) - 1 or
-				math.max(self.combo, 0) + 1)
+			if self.stage.psych then self.combo = math.min(self.combo + 1, 9999)
+			else self.combo = (rating.resetCombo and math.min(self.combo, 0) - 1 or math.max(self.combo, 0) + 1) end
 
 			if self.gf and self.gf:hasAnim("combo" .. self.combo) then
 				self.gf:playAnim("combo" .. self.combo, false, nil, true)
 				self.gf.lastHit = notefield.time * 1000
 			end
 
-			self.songHits = self.songHits + 1
+			if self.stage.psych then
+				self.totalNotesHit = self.totalNotesHit + rating.mod
+				if not self.cpuControlled and not note.ratingDisabled then
+					self.songHits = self.songHits + 1
+					self.totalPlayed = self.totalPlayed + 1
+				end
+			else self.songHits = self.songHits + 1 end
 			if self.information then
 				self.information:hit(rating.mod, time - note.time, notefield.bot)
 				self.information.peakCombo = math.max(self.information.peakCombo, self.combo)
 			end
-			self:recalculateRating(rating.name)
+			if self.stage.psych and (self.cpuControlled or note.ratingDisabled) then
+				if not note.ratingDisabled then self[rating.name .. 's'] = self[rating.name .. 's'] + 1 end
+				self:popUpScore(rating.name)
+			else self:recalculateRating(rating.name) end
 
 			local hitSoundVolume = ClientPrefs.data.hitSound
 			if hitSoundVolume > 0 then
@@ -1839,13 +1851,16 @@ function PlayState:miss(note, dir)
 
 		if notefield == self.playerNotefield then
 			self.health = math.clamp(self.health - (ghostMiss and 0.04 or note.missHealth or 0.0475), 0, 2)
-			self.score, self.misses = self.score - 100, self.misses + 1
+			self.score = self.score - (self.stage.psych and 10 or 100)
+			if not (self.stage.psych and self.endingSong) then self.misses = self.misses + 1 end
+			if self.stage.psych then self.combo = 0 end
+			if self.stage.psych then self.totalPlayed = self.totalPlayed + 1 end
 			if not ghostMiss then
 				if self.gf and not event.cancelledSadGF then
 					local drop = self.gf:getDropAnim(self.combo)
 					if drop then self.gf:playAnim(drop, true, nil, true) end
 				end
-				self.combo = math.min(self.combo, 0) - 1
+				if not self.stage.psych then self.combo = math.min(self.combo, 0) - 1 end
 				self:popUpScore()
 			end
 			self:recalculateRating(nil, true)
@@ -1862,7 +1877,9 @@ function PlayState:recalculateRating(rating, missed)
 		self[field] = (self[field] or 0) + 1
 		self:popUpScore(rating)
 	end
-	if self.scripts and self.scripts:call("onRecalculateRating") == Script.Event_Cancel then return end
+	if self.stage and self.stage.psych then
+		require('funkin.backend.scripts.psych.rating').recalculate(self)
+	elseif self.scripts and self.scripts:call("onRecalculateRating") == Script.Event_Cancel then return end
 	if self.scripts and self.scripts:call("preUpdateScore", missed == true) == Script.Event_Cancel then return end
 	if self.processingNoteHits then
 		self.ratingNeedsRecalc = true

@@ -77,6 +77,7 @@ end
 function FreeplayState:openSong(song)
 	PlayState.storyMode = false
 	PlayState.META = song.meta
+	PlayState.psychDifficultyList = song.meta.psychDifficultyList or {'Easy','Normal','Hard'}
 	local diff = song.diffs[FreeplayState.curDifficulty] or "normal"
 	if game.keys.pressed.SHIFT then
 		local ok, err = PlayState.loadSong(song.songName, diff)
@@ -218,6 +219,7 @@ function FreeplayState:loadSongs()
 				meta.difficulties = weekDiffs
 			end
 		end
+		meta.psychDifficultyList = weekDiffs or {'Easy','Normal','Hard'}
 		table.insert(data, meta)
 	end
 

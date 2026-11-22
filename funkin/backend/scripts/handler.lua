@@ -19,13 +19,10 @@ local function syncGlobals(script, state, name)
 	script:set("mustHitSection", section and section.mustHitSection or false)
 	script:set("altAnim", section and section.altAnim or false)
 	script:set("gfSection", section and section.gfSection or false)
-	script:set("score", state.score or 0)
-	script:set("hits", state.songHits or 0)
-	script:set("misses", state.misses or 0)
-	script:set("combo", state.combo or 0)
 	script:set("playbackRate", state.playback or 1)
-	script:set("botPlay", state.playerNotefield and state.playerNotefield.bot or false)
+	script:set("botPlay", state.cpuControlled == true)
 	script:set("inGameOver", state.isDead == true)
+
 	if name == "countdownStarted" then
 		for label, group in pairs({Player = "playerStrums", Opponent = "opponentStrums"}) do
 			local get = script._psych.installed.getPropertyFromGroup
@@ -140,7 +137,7 @@ function ScriptsHandler:call(func, ...)
 	if not self.scripts then return retValue end
 	for _, script in ipairs(self.scripts) do
 		local retScript = call(script, func, ...)
-		if retScript == Script.Event_Cancel then
+		if retScript == Script.Event_Cancel or (script._psych and retScript == '##PSYCHLUA_FUNCTIONSTOP') then
 			retValue = Script.Event_Cancel
 		end
 	end
@@ -172,7 +169,8 @@ function ScriptsHandler:event(func, event)
 		if not script._psych then
 			script:call(func, event)
 		elseif func == "onGameOver" then
-			if script:call("onGameOver") == Script.Event_Cancel then event:cancel(false) end
+			local result = script:call('onGameOver')
+			if result == Script.Event_Cancel or result == '##PSYCHLUA_FUNCTIONSTOP' then event:cancel(false) end
 		elseif func == "onNoteHit" then
 			local bridge, note = script._psych, event.note
 			local name = note.parent == bridge.state.playerNotefield and "goodNoteHitPre" or "opponentNoteHitPre"
@@ -183,7 +181,7 @@ function ScriptsHandler:event(func, event)
 				else
 					result = script:call(name, bridge.psychNoteIndex(note), note.direction, note.type or "", false)
 				end
-				if result == Script.Event_Cancel then event:cancel(false) end
+				if result == Script.Event_Cancel or result == '##PSYCHLUA_FUNCTIONSTOP' then event:cancel(false) end
 			end
 		end
 		if event.cancelled and not event.__continueCalls then break end

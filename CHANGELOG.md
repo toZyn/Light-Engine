@@ -824,3 +824,10 @@ outside the Lua recovery boundary. See docs/engine-stability.md.
 - Initialize totalPlayed and totalNotesHit before script loading.
 - Retain zero strum defaults through onCreatePost and capture positions at countdownStarted.
 - Add Haxe declaration fixtures and native script lifecycle checks.
+
+### Psych constructor globals and rating lifecycle
+- Populate constructor globals before Lua source execution, including stage base coordinates and Psych callback constants.
+- Preserve stage coordinates separately from character sprite offsets.
+- Synchronize scoring counters before rating callbacks and rating globals after calculation.
+- Apply Psych rating thresholds, full-combo labels, miss penalties and combo reset rules.
+- Add original Haxe constructor/rating references and callback order tests.
