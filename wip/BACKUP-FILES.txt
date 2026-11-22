@@ -1140,6 +1140,7 @@ funkin/backend/scripts/psych/note-skin.lua
 funkin/backend/scripts/psych/notes.lua
 funkin/backend/scripts/psych/primitives.lua
 funkin/backend/scripts/psych/queries.lua
+funkin/backend/scripts/psych/rating.lua
 funkin/backend/scripts/psych/runtime.lua
 funkin/backend/scripts/psych/scripts.lua
 funkin/backend/scripts/psych/shaders.lua
@@ -1352,8 +1353,10 @@ tests/engine/syntax.lua
 tests/engine/timer-lifecycle.lua
 tests/fixtures/android-manifest.axml
 tests/fixtures/psych-1.0.4/files.json
+tests/fixtures/psych-1.0.4/globals.json
 tests/fixtures/psych-1.0.4/initialization.json
 tests/fixtures/psych-1.0.4/input.json
+tests/fixtures/psych-1.0.4/rating.json
 tests/fixtures/psych-1.0.4/utilities.json
 tests/reference/psych104/FlxColor.hx
 tests/reference/psych104/FlxG.hx
@@ -1367,8 +1370,10 @@ tests/reference/psych104/README.md
 tests/reference/psych104/Random.hx
 tests/reference/psych104/Reference.hx
 tests/reference/psych104/ReferenceFiles.hx
+tests/reference/psych104/ReferenceGlobals.hx
 tests/reference/psych104/ReferenceInitialization.hx
 tests/reference/psych104/ReferenceInput.hx
+tests/reference/psych104/ReferenceRating.hx
 tests/reference/psych104/generate.py
 tests/reference/psych104/verify_cpp_defaults.py
 tests/test_addon_archive.py
@@ -1400,8 +1405,13 @@ tools/stamp_release_version.py
 wip/BACKUP-FILES.txt
 wip/CLEANUP.md
 wip/DECISIONS.md
+wip/HISTORY.md
 wip/Psych-1.0.4-Light-API-audit.md
 wip/Psych-core-and-globals-audit.md
 wip/Psych-corpus-usage.md
+wip/Psych-reference-workflow-proposal.md
 wip/RULES.md
 wip/STATUS.md
+wip/VERIFICATION-a304cf5.json
+wip/VERIFICATION-lot1.json
+wip/recovery-original-b3b68ac.bundle

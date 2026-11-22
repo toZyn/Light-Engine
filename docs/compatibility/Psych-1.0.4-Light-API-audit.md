@@ -1,6 +1,6 @@
 # Psych Engine 1.0.4 / Light Engine — API inventory
 
-Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`. Current work: `wip/psych-compat`, based on published counter/global commit `60cb9bc`. The original static inventory started at `567588a`; changes and verification limits below supersede that baseline.
+Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`. Current work: `wip/psych-compat`, based on published continuation commit `a304cf5`. The original static inventory started at `567588a`; changes and verification limits below supersede that baseline.
 
 ## Interpretation and scope
 
@@ -196,9 +196,9 @@ Lua registration names: **223**. Total rows: **731**.
 | setPropertyFromClass | Lua/reflexion | distinta | funkin/backend/scripts/psych/gameplay.lua:57 | Expuesta con resolucion limitada de rutas, clases y propiedades; no equivale a la reflexion de Psych. Psych source/psychlua/ReflectionFunctions.hx:52 |
 | setPropertyFromGroup | Lua/reflexion | distinta | funkin/backend/scripts/psych/notes.lua:119 | Expuesta. La equivalencia semantica completa no se certifica en esta auditoria estatica. Psych source/psychlua/ReflectionFunctions.hx:105 |
 | setPropertyLuaSprite | Lua/reflexion | ausente | funkin/backend/scripts/psych/gameplay.lua:22 | Sin registro en los instaladores Lua revisados; referencia indica el instalador candidato, no una implementacion. Psych source/psychlua/DeprecatedFunctions.hx:125 |
-| setRatingFC | Lua/puntuacion | ausente | funkin/backend/scripts/psych/gameplay.lua:22 | Sin registro en los instaladores Lua revisados; referencia indica el instalador candidato, no una implementacion. Psych source/psychlua/FunkinLua.hx:855 |
-| setRatingName | Lua/puntuacion | ausente | funkin/backend/scripts/psych/gameplay.lua:22 | Sin registro en los instaladores Lua revisados; referencia indica el instalador candidato, no una implementacion. Psych source/psychlua/FunkinLua.hx:851 |
-| setRatingPercent | Lua/puntuacion | ausente | funkin/backend/scripts/psych/gameplay.lua:22 | Sin registro en los instaladores Lua revisados; referencia indica el instalador candidato, no una implementacion. Psych source/psychlua/FunkinLua.hx:847 |
+| setRatingFC | Lua/puntuacion | distinta | funkin/backend/scripts/psych/gameplay.lua:87 | Valid typed values and nil return tested; missing/wrong-type argument coercion versus linc_luajit remains unverified. |
+| setRatingName | Lua/puntuacion | distinta | funkin/backend/scripts/psych/gameplay.lua:87 | Valid typed values and nil return tested; missing/wrong-type argument coercion versus linc_luajit remains unverified. |
+| setRatingPercent | Lua/puntuacion | distinta | funkin/backend/scripts/psych/gameplay.lua:87 | Valid typed values and nil return tested; missing/wrong-type argument coercion versus linc_luajit remains unverified. |
 | setScore | Lua/puntuacion | distinta | funkin/backend/scripts/psych/gameplay.lua:95 | Generada por bucle en funkin/backend/scripts/psych/gameplay.lua:95. Expuesta. La equivalencia semantica completa no se certifica en esta auditoria estatica. Psych source/psychlua/FunkinLua.hx:684 |
 | setScrollFactor | Lua/ciclo_y_utilidades | distinta | funkin/backend/scripts/compat.lua:367 | Expuesta. La equivalencia semantica completa no se certifica en esta auditoria estatica. Psych source/psychlua/FunkinLua.hx:1014 |
 | setShaderBool | Lua/shaders | distinta | funkin/backend/scripts/psych/shaders.lua:165 | Expuesta. La equivalencia semantica completa no se certifica en esta auditoria estatica. Psych source/psychlua/ShaderFunctions.hx:151 |
@@ -546,100 +546,100 @@ Lua registration names: **223**. Total rows: **731**.
 | StrumNote.sustainReduce | propiedad/StrumNote | ausente | funkin/backend/scripts/psych/notes.lua:52 | Propiedad filtrada por proxy; revisar getters/setters de la referencia. isSustainNote devuelve false: una cinta representa la sostenida completa. Psych source/objects/StrumNote.hx:15 |
 | StrumNote.texture | propiedad/StrumNote | ausente | funkin/backend/scripts/psych/notes.lua:52 | Propiedad filtrada por proxy; revisar getters/setters de la referencia. isSustainNote devuelve false: una cinta representa la sostenida completa. Psych source/objects/StrumNote.hx:18 |
 | StrumNote.useRGBShader | propiedad/StrumNote | ausente | funkin/backend/scripts/psych/notes.lua:52 | Propiedad filtrada por proxy; revisar getters/setters de la referencia. isSustainNote devuelve false: una cinta representa la sostenida completa. Psych source/objects/StrumNote.hx:27 |
-| Function_Continue | Lua/global | distinta | funkin/backend/modding/psych.lua:103 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| Function_Stop | Lua/global | distinta | funkin/backend/modding/psych.lua:103 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| Function_StopAll | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| Function_StopHScript | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| Function_StopLua | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| Function_Continue | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| Function_Stop | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| Function_StopAll | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| Function_StopHScript | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| Function_StopLua | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | altAnim | Lua/global | distinta | funkin/backend/scripts/handler.lua:20 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | botPlay | Lua/global | distinta | funkin/backend/scripts/handler.lua:27 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| boyfriendName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| boyfriendName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | bpm | Lua/global | distinta | funkin/backend/scripts/handler.lua:6 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| buildTarget | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| cameraZoomOnBeat | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| chartPath | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| combo | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| buildTarget | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| cameraZoomOnBeat | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| chartPath | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| combo | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | crochet | Lua/global | distinta | funkin/backend/scripts/handler.lua:10 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curBeat | Lua/global | distinta | funkin/backend/scripts/handler.lua:15 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curBpm | Lua/global | distinta | funkin/backend/scripts/handler.lua:7 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| curDecBeat | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| curDecStep | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| curDecBeat | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| curDecStep | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | curSection | Lua/global | distinta | funkin/backend/scripts/handler.lua:18 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curStage | Lua/global | distinta | funkin/backend/modding/psych.lua:98 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | curStep | Lua/global | distinta | funkin/backend/scripts/handler.lua:14 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| currentModDirectory | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| dadName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| deaths | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultBoyfriendX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultBoyfriendY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultGirlfriendX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultGirlfriendY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultOpponentStrumX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| defaultOpponentStrumY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| defaultOpponentX | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultOpponentY | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| defaultPlayerStrumX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| defaultPlayerStrumY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| difficulty | Lua/global | distinta | funkin/backend/modding/psych.lua:145 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| difficultyName | Lua/global | distinta | funkin/backend/modding/psych.lua:94 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| difficultyNameTranslation | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| difficultyPath | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| currentModDirectory | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| dadName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| deaths | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultBoyfriendX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultBoyfriendY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultGirlfriendX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultGirlfriendY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultOpponentStrumX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| defaultOpponentStrumY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| defaultOpponentX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultOpponentY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| defaultPlayerStrumX | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| defaultPlayerStrumY | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| difficulty | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| difficultyName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| difficultyNameTranslation | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| difficultyPath | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | downscroll | Lua/global | distinta | funkin/backend/modding/psych.lua:101 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| flashingLights | Lua/global | distinta | funkin/backend/modding/psych.lua:102 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| framerate | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| gfName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| flashingLights | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| framerate | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| gfName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | gfSection | Lua/global | distinta | funkin/backend/scripts/handler.lua:21 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| ghostTapping | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| guitarHeroSustains | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| hasVocals | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| healthBarAlpha | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| healthGainMult | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| healthLossMult | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| hideHud | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| hits | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| ghostTapping | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| guitarHeroSustains | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| hasVocals | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| healthBarAlpha | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| healthGainMult | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| healthLossMult | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| hideHud | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| hits | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | inGameOver | Lua/global | distinta | funkin/backend/scripts/handler.lua:28 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| instakillOnMiss | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| instakillOnMiss | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
 | isStoryMode | Lua/global | distinta | funkin/backend/modding/psych.lua:100 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| loadedSongName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| loadedSongPath | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| loadedSongName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| loadedSongPath | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | lowQuality | Lua/global | distinta | funkin/backend/modding/psych.lua:102 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| luaDebugMode | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| luaDeprecatedWarnings | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| luaDebugMode | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| luaDeprecatedWarnings | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | middlescroll | Lua/global | distinta | funkin/backend/modding/psych.lua:101 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| misses | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| modFolder | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| misses | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| modFolder | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | mustHitSection | Lua/global | distinta | funkin/backend/scripts/handler.lua:19 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| noResetButton | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| noteOffset | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| noteSkin | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| noteSkinPostfix | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| noResetButton | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| noteOffset | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| noteSkin | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| noteSkinPostfix | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | playbackRate | Lua/global | distinta | funkin/backend/scripts/handler.lua:26 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| practice | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| rating | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| ratingFC | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| ratingName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| score | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| scoreZoom | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| practice | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| rating | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| ratingFC | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| ratingName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| score | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| scoreZoom | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | screenHeight | Lua/global | distinta | funkin/backend/modding/psych.lua:100 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | screenWidth | Lua/global | distinta | funkin/backend/modding/psych.lua:100 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| scriptName | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| scrollSpeed | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| seenCutscene | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| shadersEnabled | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| scriptName | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| scrollSpeed | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| seenCutscene | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| shadersEnabled | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | songLength | Lua/global | distinta | funkin/backend/scripts/handler.lua:13 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | songName | Lua/global | distinta | funkin/backend/modding/psych.lua:94 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
 | songPath | Lua/global | distinta | funkin/backend/modding/psych.lua:94 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| splashAlpha | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| splashSkin | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| splashSkinPostfix | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| splashAlpha | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| splashSkin | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| splashSkinPostfix | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | startedCountdown | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
 | stepCrochet | Lua/global | distinta | funkin/backend/scripts/handler.lua:11 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| timeBarType | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| totalNotesHit | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| totalPlayed | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:11 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
-| version | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
-| week | Lua/global | distinta | funkin/backend/modding/psych.lua:10 | Inicializacion/sincronizacion localizada; valores y frecuencia deben compararse. |
-| weekRaw | Lua/global | ausente | funkin/backend/modding/psych.lua:93 | Sin inicializacion de global equivalente localizada. |
+| timeBarType | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| totalNotesHit | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| totalPlayed | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor initialization added; see counter/global batch for tested values and remaining lifecycle differences. |
+| version | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| week | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
+| weekRaw | Lua/global | distinta | funkin/backend/scripts/psych/globals.lua:55 | Constructor exposure compared in the 106-key Haxe profile; lifecycle, alternate settings/localization and full native-game parity not certified. |
 | eventEarlyTrigger | callback | distinta | funkin/backend/scripts/handler.lua:158 | Hay despacho o mapeo. No certifica firma, retornos, orden ni cantidad de llamadas; incluye los eventos sostenidos representados como cinta. |
 | goodNoteHit | callback | distinta | funkin/backend/scripts/handler.lua:93 | Hay despacho o mapeo. No certifica firma, retornos, orden ni cantidad de llamadas; incluye los eventos sostenidos representados como cinta. |
 | goodNoteHitPre | callback | distinta | funkin/backend/scripts/handler.lua:178 | Hay despacho o mapeo. No certifica firma, retornos, orden ni cantidad de llamadas; incluye los eventos sostenidos representados como cinta. |
@@ -1050,20 +1050,29 @@ Input/utility batch review changed 31 rows: 11 demonstrated contracts and 20 unr
 |---|---|---|
 | Intro text | Base entries followed by current-mod entries, trimmed and deduplicated; literal `--`; empty combined input returns blank intro with one `[Light extension]` warning | Native synthetic fixture; global mods and Psych executable remain unverified |
 | Menu character JSON | Mod-first resolution; Psych `image` and native `sprite`; incomplete data filled from base BF, with one `[Light extension]` warning per path | Native missing/invalid/incomplete JSON and warning-deduplication fixtures; not strict Psych recovery parity |
-| Score/miss/hit/combo counters | Zero before script source execution and onCreate | Nine original declarations; native Lua getter/lifecycle checks. Full scoring/callback behavior remains distinct |
-| ratingPercent / ratingName / ratingFC | Native C++ target: 0 / `?` / null before rating recalculation | Haxe C++ generation verifies field types; compiled C++ zeroed-allocation probe; full hxcpp/Psych execution not performed |
-| totalPlayed / totalNotesHit | Zero before script loading | Initialization verified; accumulation/rating lifecycle remain distinct |
+| Score/miss/hit/combo counters | Zero before script source; Psych miss penalty -10, combo reset 0; CPU/ratingDisabled handling wired | Constructor, rating and native regression checks; complete compiled gameplay/callback timing not certified |
+| ratingPercent / ratingName / ratingFC | Native initial 0 / `?` / null; Psych threshold and FC algorithms; stopped hooks preserve overrides; globals published around rating callbacks | 48 original Haxe method cases plus native hook/setter checks; full hxcpp/Psych not executed |
+| totalPlayed / totalNotesHit | Zero before script loading; Psych hit/miss accumulation wired; rating hooks receive synchronized counters | Isolated rating algorithm/order and callback integration tested; full compiled gameplay remains unverified |
 | scrollSpeed | Initial chart.speed | Constructor tested; event update lifecycle unverified |
 | Default strum globals | All 16 names zero in FunkinLua constructor; positions assigned by PlayState.startCountdown after arrow generation and before onCountdownStarted | Psych source and native initialization fixtures; actual rendered positions unverified |
-| Gameplay globals | Constructor inserts curDecBeat/Step, health multipliers, playback, bot/practice/instakill/sustain flags | Nondefault settings and complete lifecycle remain unverified |
+| Constructor globals | 106 source set-call keys are populated, including Function_* strings, settings, difficulty metadata and base character coordinates | Default Linux/English profile compared to original Haxe constructor; additional profiles remain unverified |
 
 The previous interpreter inference that native ratingPercent starts null was incorrect and is removed. `verify_cpp_defaults.py` generates actual Haxe C++, checks Float/Int/Bool/String types and compiles a synthetic zeroed-allocation probe with g++. It supplies a metadata-only haxelib shim for code generation; no hxcpp runtime or compiled Psych game is represented by that shim. The runtime zeroing premise is source-checked in hxcpp v4.3.2 Object.h and Immix.cpp; README records the source links and limitations.
 
-Current executed checks: five native suites (global initialization, menu asset fallbacks, menu regressions, gameplay flow, syntax); 138 callback reference cases; nine-field C++ probe plus Bool. Earlier 36-suite execution predates the native-default/warning corrections and is historical evidence, not a rerun of those changes. Physical Android, Mali-G57, touch and full mod runs remain unverified.
+Published HEAD a304cf5893d8897102e6d88af024482eec75af97 was checked in a detached worktree: 36 suites passed, 0 failed; 67 utility + 58 input + 13 file + 9 C++ fields = 147 reference checks, plus one Bool assertion. Five suites referred to the previous selective correction run; 138 excluded the nine C++ fields. The earlier nine interpreter declarations are no longer used as native-default evidence. See wip/VERIFICATION-a304cf5.json for per-suite results. Physical Android, Mali-G57, touch and full mod runs remain unverified.
 
 ## Compiled Psych feasibility
 
 A Linux reference build is feasible after installing the runtime/dependencies and materializing the pinned source/assets. It is not currently runnable: the downloaded haxelib binary fails to load libneko.so.2. The executable named neko on PATH is an unrelated streaming server, not the Haxe Neko VM. No working lime or full hxcpp installation was found. Project.xml requires Flixel 5.6.1, flixel-addons 3.2.2, tjson 1.4.0, linc_luajit, hscript-iris 1.1.3, hxvlc 2.0.1, flxanimate, plus Lime/OpenFL dependencies; their full installation/build has not been completed. Direct source download timed out in this environment. Android additionally needs its cross-compilation toolchain, which has not been validated. These are observed setup/network blockers, not a claim that Psych cannot compile.
+
+## Current lot 1 additions and limits
+
+- Globals module now centralizes all constructor set-call keys. Haxe comparison covers 106 keys; base coordinates come from parsed stage data before Lua source execution (not rendered sprite positions or character offsets). Constructor default strums are justified by Psych source/psychlua/FunkinLua.hx:163–167; generated-arrow coordinates replace them in source/states/PlayState.hx:972–980.
+- Rating algorithm follows the original RecalculateRating/fullComboFunction, with score/miss/hit/combo publication before onRecalculateRating, rating publication after it, and score callbacks even when calculation is stopped. Tests cover threshold boundaries, clamping, totalPlayed=0, FC/SDCB/Clear and stop handling.
+- Exposed setRatingPercent/setRatingName/setRatingFC update state and globals without recalculating. Valid typed values are tested. Missing/wrong-type Lua-to-Haxe coercion is not certified; these API rows remain distinct for that concrete gap.
+- Remaining lot-1 verification gaps: full compiled Psych, translations, hidden-week indexing, all custom difficulty metadata, every Function_Stop* control-flow variant, script reload/global mutation profiles, complete note-hit callback ordering and rendering behavior. These are not marked resolved. HUD remains untouched.
+- Proposed manual, branch-restricted CI is documented in wip/Psych-reference-workflow-proposal.md. It is not installed or executed; native reference instrumentation is specified but activation remains pending user approval.
+- Exact original b3b68ac recovery and the published commit mapping are documented in wip/HISTORY.md; the WIP bundle preserves the original object.
 
 ## Non-Psych APIs — pending, no new implementation
 
