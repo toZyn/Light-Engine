@@ -1,3 +1,5 @@
+// Adapted reference excerpts from Psych Engine 1.0.4 (ShadowMario and contributors), Apache-2.0.
+// Modified: isolated callback/declaration harness with synthetic providers; see LICENSE-Psych.txt and README.md.
 using StringTools;
 enum Stick { LEFT_ANALOG_STICK; RIGHT_ANALOG_STICK; }
 class ReferenceInput {

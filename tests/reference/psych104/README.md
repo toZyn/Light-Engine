@@ -7,7 +7,7 @@ at Psych commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`. Random contains
 The accompanying license files apply to these excerpts.
 
 Run `python tests/reference/psych104/generate.py --haxe /path/to/haxe` with
-Haxe 4.3.7 to regenerate the three JSON fixtures. Native tests execute the same
+Haxe 4.3.7 to regenerate the four JSON fixtures. Native tests execute the same
 calls through Light's installed Lua API and compare results and errors.
 
 The harness supplies keyboard, controller, controls, Paths and trace providers.
@@ -27,3 +27,5 @@ The batch does not test physical Android input, Android external-storage
 permissions, Windows controller IDs, or Mali GPU pixel readback. Geometry queries
 are integration tests, without an executing Flixel collision reference; their
 inventory entries remain `distinta` with their differences recorded.
+
+ReferenceInitialization contains unchanged PlayState field declarations in a synthetic wrapper. Reference, ReferenceInput and ReferenceFiles adapt callback registration and replace engine services with synthetic providers. Legal provenance headers identify these modifications. Psych 1.0.4 includes LICENSE (Apache-2.0) and no NOTICE file at its repository root. No mod scripts or mod assets are used by this harness.
