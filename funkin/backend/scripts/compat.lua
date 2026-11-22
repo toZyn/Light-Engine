@@ -233,14 +233,13 @@ function Compat:_tweenObject(tag, object, key, value, duration, ease)
 	end
 	ease = ease or "linear"
 	if type(ease) ~= "string" or not Ease[ease] then fail("unsupported easing: " .. tostring(ease)) end
-	if anonymous then return self.tween:tween(object, {[key] = value}, duration, {ease = ease}) end
-	self:_cancelTween(tag)
+	if anonymous then tag = {} else self:_cancelTween(tag) end
 	local tween
 	tween = self.tween:tween(object, {[key] = value}, duration, {
 		ease = ease, onComplete = function()
 			if self.tweens[tag] == tween then
 				self.tweens[tag] = nil
-				self:_callback("onTweenCompleted", tag)
+				if not anonymous then self:_callback("onTweenCompleted", tag) end
 			end
 		end
 	})
