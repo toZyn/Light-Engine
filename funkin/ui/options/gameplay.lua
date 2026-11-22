@@ -14,6 +14,7 @@ local data = {
 	end},
 	{"engineCompatibility", "Compatibility with other Engines", "boolean", function()
 		ClientPrefs.data.engineCompatibility = not ClientPrefs.data.engineCompatibility
+		require("funkin.backend.modding.psych").clearDetection()
 		Parser.clearCache(false)
 	end},
 	{"backgroundDim", "Background dim", "number", function(add)

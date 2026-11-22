@@ -6,12 +6,27 @@ Enable **Gameplay → Compatibility with other Engines**, put an unpacked mod in
 find Psych charts, audio, events, weeks, and character definitions. Restart the
 song after changing the setting during gameplay.
 
-The compatibility setting also loads Lua files from `scripts/`, the active
-song's `data/<song>/` directory, and referenced files in `stages/`,
-`custom_events/`, and `custom_notetypes/`. They run with the scoped Lua
-helpers described below. Callbacks and properties that rely on Psych-specific
-objects may need changes. Haxe, HScript, and mod APIs outside this bridge require
-a separate port.
+Light Engine detects Psych layouts from root-level week definitions or
+`data/<song>/<song>[-difficulty].json` charts. Enabling the option does not
+activate every mod's foreign script callbacks. Detection is refreshed when mods
+are reloaded or the option changes.
+
+For detected mods, Light Engine loads `.lua` and HScript `.hx` from `scripts/`,
+`data/<song>/`, and referenced files in `stages/`, `custom_events/`, and
+`custom_notetypes/`. Lua scripts can also use `runHaxeCode` and
+`runHaxeFunction`. The interpreter is hscript-iris 1.1.3 compiled to Lua and
+loaded on demand. The game does not ship a Haxe compiler or a second engine.
+
+The host bindings currently include camera effects, `FlxG.camera`, basic
+`FlxSprite` and `FlxText` construction, sprite ownership and ordering, timing,
+shared script variables, and a subset of the Lua helper API below. Native Psych
+source mods, external Haxe libraries, arbitrary HaxeFlixel classes, and
+unimplemented Psych-specific fields need further adaptation.
+
+To rebuild the interpreter, use Haxe 4.3.7 and run
+`python3 tools/build_psych_hscript.py /path/to/hscript-iris`. The builder verifies
+the upstream revision, uses only the checked-in Iris source from that revision,
+and generates the Lua module shipped with Light Engine.
 
 # Opt-in Lua compatibility
 
@@ -116,7 +131,11 @@ An event-specific native script can instead forward from `event(event)` to defau
 
 ## Supported boundary and example
 
-This is an opt-in Lua bridge, not a complete Psych runtime. It does not execute Haxe, translate arbitrary foreign scripts, create a Haxe class registry, reproduce Psych note/UI fields, load videos, or wrap shaders. `runHaxeCode` and `runHaxeFunction` raise explicit unsupported-operation diagnostics. Use native Lua APIs for features outside the documented table. Unknown foreign functions remain unavailable rather than pretending to succeed.
+The native Lua bridge exposes the helpers described here. Its direct opt-in
+factory leaves `runHaxeCode` and `runHaxeFunction` unavailable. Those functions
+are installed automatically for scripts loaded through Psych mod detection.
+Check the Psych Engine section above for the HScript host bindings and current
+limits.
 
 Copy `examples/compat-mod/data/scripts/compat-demo.lua` into your native mod's `data/scripts/` directory to see a HUD graphic, beat callbacks, a looping timer and scoped tween cleanup during normal gameplay. The example uses generated graphics and requires no new image/audio assets.
 

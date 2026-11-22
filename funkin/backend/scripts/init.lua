@@ -131,7 +131,7 @@ Script.messages = Signal()
 Script.Event_Continue = 1
 Script.Event_Cancel = 2
 
-function Script:new(path, notFoundMsg, noLink, fullPath, configure)
+function Script:new(path, notFoundMsg, noLink, fullPath, configure, loader)
 	self.path = path
 	self.variables = {}
 	self.notFoundMsg = notFoundMsg ~= false
@@ -147,7 +147,10 @@ function Script:new(path, notFoundMsg, noLink, fullPath, configure)
 
 		local chunk, loadError
 		if fullPath then
-			if love.filesystem.getInfo(p, "file") then chunk, loadError = love.filesystem.load(p) end
+			if love.filesystem.getInfo(p, "file") then
+				if loader then chunk, loadError = loader(p, self)
+				else chunk, loadError = love.filesystem.load(p) end
+			end
 		else
 			chunk, loadError = paths.getLua(p)
 		end
@@ -204,6 +207,10 @@ end
 function Script:set(var, value)
 	if self.closed then return end
 	rawset(self.variables, var, value)
+	if self.hscriptBind and (var == "bpm" or var == "crotchet" or var == "stepCrotchet"
+		or var == "curStep" or var == "curBeat" or var == "curMeasure") then
+		self.hscriptBind(var, value)
+	end
 end
 
 function Script:linkObject(link)
@@ -257,10 +264,18 @@ function Script:linkObject(link)
 	setmetatable(self.variables, new)
 end
 
+function Script:hasCallback(name)
+	return not self.closed and (type(rawget(self.variables, name)) == "function"
+		or self.hscriptHas and self.hscriptHas(name))
+end
+
 function Script:call(func, ...)
 	if self.closed then return true end
 
 	local f = rawget(self.variables, func)
+	if not f and self.hscriptHas and self.hscriptHas(func) then
+		f = function(...) return self.hscriptCall(func, ...) end
+	end
 	if f and type(f) == "function" then
 		if self.__failedfunc[func] then return end
 		local s, err = xpcall(f, captureError, ...)
@@ -289,6 +304,7 @@ function Script:close()
 	if self.chunk then setfenv(self.chunk, closedEnv) end
 	self.variables = nil
 	self.chunk = nil
+	self.hscriptCall, self.hscriptHas, self.hscriptBind = nil, nil, nil
 	self.__failedfunc = {}
 
 	if not self.closed then

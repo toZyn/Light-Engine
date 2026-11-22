@@ -68,8 +68,9 @@ check('Psych layout resolves only for the active mod with compatibility enabled'
  local dir = root .. 'data/hello'
  love = {filesystem = {
   getDirectoryItems = function(path)
-   assert(path == dir)
-   return {'hello.json', 'hello-hard.json', 'events.json'}
+   if path == root .. 'data' then return {'hello'} end
+   if path == dir or path == dir .. '/' then return {'hello.json', 'hello-hard.json', 'events.json'} end
+   return {}
   end,
   getInfo = function(path)
    if path == dir .. '/hello.json' or path == dir .. '/hello-hard.json' then return {type = 'file'} end
@@ -84,7 +85,7 @@ check('Psych layout resolves only for the active mod with compatibility enabled'
  local variants = Psych.difficulties('hello')
  local alias = Psych.alias('songs/hello/events.json')
  love, Mods, ClientPrefs = savedLove, savedMods, savedPrefs
- assert(disabled == nil and key == 'data/hello/hello' and file == dir .. '/hello.json')
+ assert(disabled == nil and native == nil and key == 'data/hello/hello' and file == dir .. '/hello.json')
  assert(table.concat(variants, ',') == 'Normal,hard' and alias == 'data/hello/events.json')
 end)
 check('difficulty colors support mod opt-out and overrides',function()
@@ -256,10 +257,32 @@ if originalLove then
 function onCreate()
  assert(type(makeLuaSprite) == "function")
  created = true
+ haxeNumber = runHaxeCode('function addTo(value:Int) { return value + base; } return addTo(2);', {base=40})
+ haxeNext = runHaxeFunction('addTo', {3})
+ haxeImportBlocked = not pcall(runHaxeCode, 'import sys.FileSystem; return FileSystem.exists(".");')
+ haxeBudgetStopped = not pcall(runHaxeCode, 'while (true) {}')
 end
 function onEvent(name, a, b)
  lastEvent = name .. ":" .. a .. ":" .. b
 end
+]]))
+  assert(love.filesystem.write(dir .. '/effect.hx', [[
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.text.FlxText;
+var tile:FlxSprite;
+function onCreate() {
+ tile = new FlxSprite(24, 16).makeGraphic(10, 12, 0xFF00FF);
+ game.add(tile);
+ var label = new FlxText(10, 20, 128, "HScript", 24);
+ game.add(label);
+ FlxG.camera.zoom = 1.25;
+}
+function onEvent(name:String, a:String, b:String) {
+ FlxG.camera.zoom = name == "Test" ? 1.5 : 1;
+ tile.x += 8;
+ setVar("compatBeat", curBeat);
+}
 ]]))
   Mods.root, Mods.currentMod = 'fixture-mods', 'psych'
   ClientPrefs.data.engineCompatibility = true
@@ -269,14 +292,25 @@ end
    assert(chart.notes.player[1].t == 250)
    local event = chart.events[#chart.events]
    assert(event.t == 300 and event.e == 'Test')
-   local scripts = ScriptsHandler()
-   require('funkin.backend.modding.psych').loadScripts(State(), scripts, song, chart)
-   assert(#scripts.scripts == 1 and scripts.scripts[1]._psych)
+   local scripts, state = ScriptsHandler(), State()
+   require('funkin.backend.modding.psych').loadScripts(state, scripts, song, chart)
+   assert(#scripts.scripts == 2 and scripts.scripts[1]._psych and scripts.scripts[2]._psych)
+   local zoom = game.camera.zoom
+   local members = #state.members
    scripts:call('create')
+   assert(#state.members == members + 2)
+   assert(state.members[members + 1].x == 24 and state.members[members + 2].content == 'HScript')
+   assert(game.camera.zoom == 1.25)
+   scripts:set('curBeat', 18)
    scripts:call('onEvent', event)
+   assert(game.camera.zoom == 1.5 and state.members[members + 1].x == 32)
+   game.camera.zoom = zoom
    local vars = scripts.scripts[1].variables
    assert(vars.created and vars.lastEvent == 'Test:one:two')
+   assert(vars.haxeNumber == 42 and vars.haxeNext == 43 and vars.haxeBudgetStopped and vars.haxeImportBlocked)
+   assert(state.psychVariables.compatBeat == 18)
    scripts:close()
+   assert(#state.members == members)
   end, debug.traceback)
   Mods.root, Mods.currentMod = root, name
   ClientPrefs.data.engineCompatibility = enabled

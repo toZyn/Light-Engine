@@ -1,8 +1,36 @@
 local Psych = {}
+local detected = {}
+
+function Psych.clearDetection()
+	detected = {}
+end
+
+local function detect(root)
+	local fs = love.filesystem
+	for _, week in ipairs(fs.getDirectoryItems(root .. "weeks")) do
+		if week:match("%.json$") and fs.getInfo(root .. "weeks/" .. week, "file") then
+			return true
+		end
+	end
+
+	for _, song in ipairs(fs.getDirectoryItems(root .. "data")) do
+		local dir = root .. "data/" .. song .. "/"
+		for _, file in ipairs(fs.getDirectoryItems(dir)) do
+			local prefix = file:sub(1, #song + 1)
+			if (file == song .. ".json" or (prefix == song .. "-" and file:match("%.json$")))
+				and fs.getInfo(dir .. file, "file") then
+				return true
+			end
+		end
+	end
+	return false
+end
 
 function Psych.root()
 	if not (ClientPrefs and ClientPrefs.data.engineCompatibility and Mods and Mods.currentMod) then return end
-	return Mods.root .. "/" .. Mods.currentMod .. "/"
+	local root = Mods.root .. "/" .. Mods.currentMod .. "/"
+	if detected[root] == nil then detected[root] = detect(root) end
+	if detected[root] then return root end
 end
 
 function Psych.alias(key)
@@ -20,6 +48,12 @@ function Psych.alias(key)
 	return key:match("^data/(characters/.+)$") or key:match("^data/(stages/.+)$")
 end
 
+local function loadHScript(path, script)
+	local source, err = love.filesystem.read(path)
+	if not source then return nil, err end
+	return function() script.hscriptCall, script.hscriptHas = script._psych.loadHScript(source) end
+end
+
 function Psych.loadScripts(state, handler, song, chart)
 	local root = Psych.root()
 	if not root then return end
@@ -29,20 +63,21 @@ function Psych.loadScripts(state, handler, song, chart)
 		loaded[file] = true
 		if not love.filesystem.getInfo(root .. file, "file") then return end
 		local script = Script(root .. file, true, false, true, function(instance)
-			instance._psych = require("funkin.backend.scripts.compat").new(state, instance)
+			instance._psych = require("funkin.backend.scripts.compat").new(state, instance, true)
 			instance:set("Function_Continue", Script.Event_Continue)
 			instance:set("Function_Stop", Script.Event_Cancel)
-		end)
+		end, file:match("%.hx$") and loadHScript or nil)
 		if not script.closed then handler:add(script) end
 	end
 	for _, dir in ipairs({"scripts", "data/" .. song}) do
 		for _, name in ipairs(love.filesystem.getDirectoryItems(root .. dir)) do
-			if name:match("%.lua$") then load(dir .. "/" .. name) end
+			if name:match("%.lua$") or name:match("%.hx$") then load(dir .. "/" .. name) end
 		end
 	end
 	local function loadNamed(dir, name)
 		if type(name) == "string" and name ~= "" and not name:find("[/\\%z]") then
 			load(dir .. "/" .. name .. ".lua")
+			load(dir .. "/" .. name .. ".hx")
 		end
 	end
 	loadNamed("stages", chart.stage)

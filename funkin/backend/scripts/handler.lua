@@ -14,7 +14,11 @@ local function call(script, name, ...)
 		local note = ...
 		local callback = name == "postNoteMiss" and "noteMiss"
 			or note.parent == bridge.state.playerNotefield and "goodNoteHit" or "opponentNoteHit"
-		if type(rawget(script.variables, callback)) ~= "function" then return end
+		if not script:hasCallback(callback) then return end
+		if script.hscriptCall then
+			local proxy = require("funkin.backend.scripts.psych").note(note, bridge.state.playerNotefield)
+			return script:call(callback, proxy)
+		end
 		local index = table.find(note.parent.activeNotes, note)
 		return script:call(callback, index and index - 1 or -1, note.direction, note.type or "", false)
 	end

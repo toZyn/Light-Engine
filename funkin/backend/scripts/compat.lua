@@ -225,7 +225,7 @@ function Compat:_playSound(key, volume, tag, music, looped)
 	return tag
 end
 
-function Compat.new(state, script)
+function Compat.new(state, script, psych)
 	if not state or not state.add or not state.remove or not state.members then fail("state must be a native Group/State") end
 	if not script or script.closed or not script.variables or not script.set or not script.call then fail("script must be an open native Script") end
 	if script._compatibility and not script._compatibility.disposed then fail("script already has a compatibility context") end
@@ -458,6 +458,7 @@ function Compat.new(state, script)
 	api.runHaxeCode = function() fail("runHaxeCode is unsupported; use native Lua engine APIs") end
 	api.runHaxeFunction = function() fail("runHaxeFunction is unsupported; use native Lua engine APIs") end
 	require("funkin.backend.scripts.compat-controls").install(self, api)
+	if psych then self.loadHScript = require("funkin.backend.scripts.psych").install(self, api) end
 	for name, fn in pairs(api) do
 		self.previous[name] = rawget(script.variables, name)
 		self.installed[name] = fn; script:set(name, fn)
