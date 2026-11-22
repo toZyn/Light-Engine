@@ -224,7 +224,10 @@ function MenuList:update(dt)
 
 	self:handleTouch(dt)
 
-	if not self.isMobile then
+	if self.isMobile and self.virtualNavigation and not self.lock then
+		if controls:pressed("ui_up") then self:changeSelection(-1) end
+		if controls:pressed("ui_down") then self:changeSelection(1) end
+	elseif not self.isMobile then
 		for i, throttle in pairs(self.throttles) do
 			if throttle:check() and not self.lock and #self.members > 1 then
 				self:changeSelection(i)
@@ -239,7 +242,7 @@ function MenuList:update(dt)
 		if obj.active and hoverFunc then hoverFunc(self, obj, dt) end
 	end
 
-	if not self.isMobile and not self.lock and controls:pressed("accept") and self.selectCallback
+	if (not self.isMobile or self.virtualNavigation) and not self.lock and controls:pressed("accept") and self.selectCallback
 		and #self.members > 0 then
 		self:activateSelection()
 	end

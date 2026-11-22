@@ -5,6 +5,33 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Add directional and confirm buttons to the Android pause menu.
+- Support Psych note texture changes, chart arrow skins, custom-note health
+  and miss behavior, score counters, and section timing callbacks.
+
+### Performance
+
+- Submit each sustain body as a single mesh strip and clip geometry to the
+  visible lane span. Keep authored note density and modifiers.
+
+### Fixed
+
+- Resolve mixed-case Psych song directories, expose timing globals, and
+  accept anonymous tweens and Lua numeric tween arguments.
+- Clear released touch identifiers before recycling slots so concurrent
+  Android touches retain independent input state.
+- Preserve Psych stage layer order, authored camera zoom and character
+  offsets. Keep forced camera coordinates until the chart releases them.
+- Apply Psych screen-shake parameters in duration, intensity order. Resolve
+  camera names and easing strings using the Psych fallback rules.
+- Honor Psych's countdown skip and share tagged stage objects across scripts.
+- Preserve OGV video aspect ratio and playback options. If a mod supplies
+  only MP4, log a diagnostic and continue running its script.
+
 ## [0.5.0] - 2026-11-21
 
 ### Added

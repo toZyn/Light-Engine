@@ -93,3 +93,70 @@ check("a second finger opens pause options on the first tap", function()
 	assert(not pause.blockInput and not list.lock)
 	pause:close()
 end)
+
+check("recycled Android finger IDs keep independent input slots", function()
+	local touch = game.touch
+	touch.onPressed("old", 100, 100)
+	touch.onReleased("old", 100, 100)
+	touch.reset()
+	touch.onPressed("current", 200, 200)
+	touch.onPressed("old", 300, 300)
+	assert(touch.idMap.current ~= touch.idMap.old)
+	touch.onReleased("old", 300, 300)
+	assert(touch.getTouch(touch.idMap.current).pressed)
+	touch.onReleased("current", 200, 200)
+	touch.reset()
+	assert(touch.idMap.current == nil and touch.idMap.old == nil)
+end)
+
+check("single-finger pause input supports direct and virtual selection", function()
+	local getDevice = love.system.getDevice
+	love.system.getDevice = function() return "Mobile" end
+	local pause = PauseSubstate()
+	pause:enter()
+	love.system.getDevice = getDevice
+	pause:update(.25)
+
+	local function tap(x, y)
+		local w, h = love.graphics.getDimensions()
+		local scale = math.min(w / game.width, h / game.height)
+		x = x * scale + math.floor((w - game.width * scale) / 2)
+		y = y * scale + math.floor((h - game.height * scale) / 2)
+		game.touchpressed("finger", x, y, 0, 0, 1, love.timer.getTime())
+		game.touchreleased("finger", x, y, 0, 0, 1, love.timer.getTime())
+		for name, key, code, repeatPress, time in love.event.poll() do
+			if name == "keypressed" then love.keypressed(key, code, repeatPress, time)
+			elseif name == "keyreleased" then love.keyreleased(key, code, repeatPress) end
+		end
+		controls:update()
+		Throttle:update(.25)
+		pause:update(.25)
+		game.touch.reset()
+		controls:update()
+		Throttle:update(.25)
+	end
+
+	local target = pause.menuList.members[#pause.menuList.members - 1]
+	assert(tostring(target) == "Options")
+	local x, y, w, h, sx, sy = target:_getBoundary()
+	tap(x + w * sx / 2, y + h * sy / 2)
+	assert(pause.optionsUI and pause.blockInput)
+	pause:remove(pause.optionsUI)
+	pause:update(.25)
+	local keys = {}
+	for _, button in ipairs(pause.buttons.members) do keys[button.key] = button end
+	local function press(key)
+		local pad = assert(keys[key])
+		tap(pad.x + pad.width / 2, pad.y + pad.height / 2)
+	end
+
+	pause.menuList:setSelection(1, true)
+	press("down")
+	assert(pause.menuList.curSelected == 2)
+	press("up")
+	assert(pause.menuList.curSelected == 1)
+	press("return")
+	assert(pause._closed)
+	pause:remove(pause.buttons)
+	pause:destroy()
+end)

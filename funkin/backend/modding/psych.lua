@@ -16,8 +16,9 @@ local function detect(root)
 	for _, song in ipairs(fs.getDirectoryItems(root .. "data")) do
 		local dir = root .. "data/" .. song .. "/"
 		for _, file in ipairs(fs.getDirectoryItems(dir)) do
-			local prefix = file:sub(1, #song + 1)
-			if (file == song .. ".json" or (prefix == song .. "-" and file:match("%.json$")))
+			local slug = song:lower()
+			local prefix = file:sub(1, #slug + 1)
+			if (file == slug .. ".json" or (prefix == slug .. "-" and file:match("%.json$")))
 				and fs.getInfo(dir .. file, "file") then
 				return true
 			end
@@ -33,6 +34,15 @@ function Psych.root()
 	if detected[root] then return root end
 end
 
+local function songDirectory(root, song)
+	local dir = root .. "data/"
+	if love.filesystem.getInfo(dir .. song, "directory") then return song end
+	for _, name in ipairs(love.filesystem.getDirectoryItems(dir)) do
+		if name:lower() == song then return name end
+	end
+	return song
+end
+
 function Psych.alias(key)
 	if key == "data/weekList.txt" then return "weeks/weekList.txt" end
 	if key == "data/weeks/weeks" then return "weeks" end
@@ -43,8 +53,20 @@ function Psych.alias(key)
 	if character then return "images/menucharacters/" .. character end
 	local banner = key:match("^images/menus/storymenu/weeks/(.+)$")
 	if banner then return "images/storymenu/" .. banner end
-	local events = key:match("^songs/(.+/events%.json)$")
-	if events then return "data/" .. events end
+	local slug, resource = key:match("^songs/([^/]+)/(.+)$")
+	if slug and resource ~= "events.json" then
+		local root = Psych.root()
+		if root then
+			for _, name in ipairs(love.filesystem.getDirectoryItems(root .. "songs")) do
+				if name:lower() == slug then return "songs/" .. name .. "/" .. resource end
+			end
+		end
+	end
+	local song = key:match("^songs/(.+)/events%.json$")
+	if song then
+		local root = Psych.root()
+		return "data/" .. (root and songDirectory(root, song) or song) .. "/events.json"
+	end
 	return key:match("^data/(characters/.+)$") or key:match("^data/(stages/.+)$")
 end
 
@@ -58,6 +80,8 @@ function Psych.loadScripts(state, handler, song, chart)
 	local root = Psych.root()
 	if not root then return end
 	local loaded, loading = {}, {}
+	local conductor = state.conductor
+	local bpm = chart.bpm or (conductor and conductor.bpm) or 100
 	local function load(file)
 		local current = loaded[file]
 		if current and not current.closed then return current, false end
@@ -67,7 +91,12 @@ function Psych.loadScripts(state, handler, song, chart)
 			instance.psychRegistry = loaded
 			instance.psychLoadScript = load
 			instance.psychValues = {
-				songName = chart.song or song, difficultyName = PlayState.songDifficulty,
+				songName = chart.song or song, songPath = song, difficultyName = PlayState.songDifficulty,
+				bpm = bpm, curBpm = conductor and conductor.bpm or bpm,
+				crochet = 60000 / bpm, stepCrochet = 15000 / bpm,
+				songLength = (game.sound.music and game.sound.music.duration or 0) * 1000,
+				curStage = chart.stage or "stage", curStep = 0, curBeat = 0, curSection = 0,
+				altAnim = false, gfSection = false, mustHitSection = false,
 				isStoryMode = PlayState.storyMode, screenWidth = game.width, screenHeight = game.height,
 				downscroll = ClientPrefs.data.downScroll, middlescroll = ClientPrefs.data.middleScroll,
 				lowQuality = ClientPrefs.data.lowQuality, flashingLights = ClientPrefs.data.flashingLights,
@@ -82,7 +111,7 @@ function Psych.loadScripts(state, handler, song, chart)
 		handler:add(script)
 		return script, true
 	end
-	for _, dir in ipairs({"scripts", "data/" .. song}) do
+	for _, dir in ipairs({"scripts", "data/" .. songDirectory(root, song)}) do
 		for _, name in ipairs(love.filesystem.getDirectoryItems(root .. dir)) do
 			if name:match("%.lua$") or name:match("%.hx$") then load(dir .. "/" .. name) end
 		end
@@ -117,7 +146,7 @@ function Psych.chart(song, difficulty)
 	local root = Psych.root()
 	if not root then return end
 	local suffix = difficulty ~= "" and difficulty ~= "normal" and "-" .. difficulty or ""
-	local key = "data/" .. song .. "/" .. song .. suffix
+	local key = "data/" .. songDirectory(root, song) .. "/" .. song .. suffix
 	local file = root .. key .. ".json"
 	if love.filesystem.getInfo(file, "file") then return key, file end
 	if suffix == "" then
@@ -131,7 +160,7 @@ function Psych.difficulties(song)
 	local result = {}
 	local root = Psych.root()
 	if not root then return result end
-	local dir = root .. "data/" .. song
+	local dir = root .. "data/" .. songDirectory(root, song)
 	for _, file in ipairs(love.filesystem.getDirectoryItems(dir)) do
 		local name = file:match("^(.+)%.json$")
 		if name == song or name == song .. "-normal" then

@@ -9,6 +9,32 @@ end
 Note.defaultSustainSegments = 3 -- also resets on PlayState.create
 
 local susMesh, susVerts
+local bodyMesh, bodyVertices, bodyCapacity = nil, {}, 0
+
+local function appendBodyStrip(first, count, vertices)
+	for i = 1, count do
+		local dest = bodyVertices[first + i - 1]
+		if not dest then
+			dest = table.new(9, 0)
+			bodyVertices[first + i - 1] = dest
+		end
+		local source = vertices[i]
+		for component = 1, 9 do dest[component] = source[component] end
+	end
+	return first + count
+end
+
+local function drawBodyStrip(count, texture)
+	if count > bodyCapacity then
+		if bodyMesh then bodyMesh:release() end
+		bodyCapacity = math.max(32, bodyCapacity * 2, count)
+		bodyMesh = love.graphics.newMesh(ActorSprite.vertexFormat, bodyCapacity, "strip", "stream")
+	end
+	bodyMesh:setTexture(texture)
+	bodyMesh:setVertices(bodyVertices, 1, count)
+	bodyMesh:setDrawRange(1, count)
+	love.graphics.draw(bodyMesh)
+end
 function Note.init()
 	if susMesh then return end
 	susMesh = love.graphics.newMesh(ActorSprite.vertexFormat, 16, "strip")
@@ -73,6 +99,7 @@ end
 
 function Note:loadSkinData(skinData, name, direction, noRgb)
 	direction = direction + 1
+	noRgb = noRgb or skinData.psychDisableRgb
 	if not self.__shaderAnimations then
 		self.__shaderAnimations = table.new(0, 4)
 	else
@@ -80,9 +107,17 @@ function Note:loadSkinData(skinData, name, direction, noRgb)
 	end
 
 	local data = skinData[name]
+	data = data.byDirection and data.byDirection[direction] or data
+	if self._skinAtlas or data.atlas then
+		table.clear(self.animation.animations)
+		self.animation.curAnim, self.animation.name = nil, nil
+		self._skinAtlas = data.atlas
+	end
 	local anims, tex = data.animations, "skins/" .. skinData.skin .. "/" .. data.sprite
 	if anims then
-		if data.isPixel then
+		if data.atlas then
+			self:setFrames(data.atlas)
+		elseif data.isPixel then
 			self:loadTexture(paths.getImage(tex), true, data.frameWidth, data.frameHeight)
 		else
 			self:setFrames(paths.getSparrowAtlas(tex))
@@ -128,6 +163,12 @@ function Note:loadSkinData(skinData, name, direction, noRgb)
 	end
 end
 
+local function loadSustainSkin(sprite, skin, kind, animation, direction)
+	Note.loadSkinData(sprite, skin, kind, direction)
+	local name = animation .. "-note" .. direction
+	Note.play(sprite, sprite.animation:has(name) and name or animation, true, nil, nil, true)
+end
+
 function Note:setSkin(skin)
 	if skin == self.skin then return end
 	local name, col = skin.skin, self.direction
@@ -136,12 +177,12 @@ function Note:setSkin(skin)
 	self:loadSkinData(skin, "notes", col, true)
 
 	if self.sustain then
-		Note.loadSkinData(self.sustain, skin, "sustains", col)
-		Note.loadSkinData(self.sustainEnd, skin, "sustainends", col)
+		loadSustainSkin(self.sustain, skin, "sustains", "hold", col)
+		loadSustainSkin(self.sustainEnd, skin, "sustainends", "end", col)
 	end
 	if col then self:setDirection(col) end
 
-	self:play("note")
+	self:play("note", true)
 end
 
 function Note:setDirection(direction)
@@ -149,7 +190,7 @@ function Note:setDirection(direction)
 	self.direction, self.data = direction, direction
 
 	local data = self.skin.notes
-	if not data.disableRgb then
+	if not data.disableRgb and not self.skin.psychDisableRgb then
 		local color = data.colors[direction + 1]
 		self.__shaderAnimations.default = color and makeRGB(color) or nil
 	end
@@ -169,13 +210,8 @@ function Note:createSustain()
 	self.sustain, self.sustainEnd = sustain, sustainEnd
 
 	local skin, col = self.skin, self.direction
-	Note.loadSkinData(sustain, skin, "sustains", col)
-	Note.loadSkinData(sustainEnd, skin, "sustainends", col)
-
-	local toPlay = "hold-note" .. self.direction
-	Note.play(sustain, sustain.__animations[toPlay] and toPlay or "hold", nil, nil, nil, true)
-	toPlay = "end-note" .. self.direction
-	Note.play(sustainEnd, sustainEnd.__animations[toPlay] and toPlay or "end", nil, nil, nil, true)
+	loadSustainSkin(sustain, skin, "sustains", "hold", col)
+	loadSustainSkin(sustainEnd, skin, "sustainends", "end", col)
 
 	sustain.z, sustain.offset.z, sustain.origin.z, sustain.__render = 0, 0, 0, __NIL__
 	sustainEnd.z, sustainEnd.offset.z, sustainEnd.origin.z, sustainEnd.__render = 0, 0, 0, __NIL__
@@ -307,6 +343,7 @@ function Note:__render(camera)
 			self.pressed and 0 or self.lastPress and Note.toPos(self.lastPress - target, speed) or math.max(pos, -drawSize / 2 + drawSizeOffset - ny),
 			drawSize / 2 + drawSizeOffset - ny
 
+		minbound = math.max(minbound, -drawSize / 2 + drawSizeOffset - ny)
 		local segments = self.sustainSegments
 		local vertLens = math.min(2 + segments * 2, 16)
 
@@ -355,7 +392,7 @@ function Note:__render(camera)
 
 					vert, vx, vy, vz = susVerts[vi], toScreen(vx + gx, vy + gy, vz + gz, fov)
 
-					aa = -math.atan((pvx - vx) / (pvy - vy))
+					aa = (pvx == vx and pvy == vy) and 0 or -math.atan((pvx - vx) / (pvy - vy))
 					as, ac, pvx, pvy = math.fastsin(aa) * vz, math.fastcos(aa) * vz, vx, vy
 
 					vi, vert[1], vert[2], vert[3], vert[4], vert[5], vert[6], vert[7], vert[8], vert[9] = vi + 1,
@@ -407,6 +444,7 @@ function Note:__render(camera)
 				)
 				local pvx, pvy = toScreen(vx + gx, vy + gy, vz + gz, fov)
 				local uvfh, fhs, uvyh, vi, enduv, vert, aa, as, ac = uvh, uvh / segments, uvy + uvh, 1
+				local nextBodyVertex = 1
 				if gotVerts then
 					vert, vi, suspos, uvfh = susVerts[gotVerts], 3, suspos - fh, uvfh - fhs
 					susVerts[2][1], susVerts[2][2], susVerts[2][3], susVerts[2][4], susVerts[2][5],
@@ -434,7 +472,7 @@ function Note:__render(camera)
 
 					vert, vx, vy, vz = susVerts[vi], toScreen(vx + gx, vy + gy, vz + gz, fov)
 
-					aa = -math.atan((pvx - vx) / (pvy - vy))
+					aa = (pvx == vx and pvy == vy) and 0 or -math.atan((pvx - vx) / (pvy - vy))
 					as, ac, pvx, pvy = math.fastsin(aa) * vz, math.fastcos(aa) * vz, vx, vy
 
 					vi, vert[1], vert[2], vert[3], vert[4], vert[5], vert[6], vert[7], vert[8], vert[9] = vi + 1,
@@ -446,7 +484,7 @@ function Note:__render(camera)
 
 					suspos, uvfh = suspos - fh, uvfh - fhs
 					if enduv or vi > vertLens then
-						susMesh:setDrawRange(1, vi - 1); susMesh:setVertices(susVerts); love.graphics.draw(susMesh)
+						nextBodyVertex = appendBodyStrip(nextBodyVertex, vi - 1, susVerts)
 
 						if enduv then
 							break
@@ -466,6 +504,7 @@ function Note:__render(camera)
 						suspos, uvfh, enduv = minbound, uvfh - ((suspos - minbound) / ssy / th / segments), true
 					end
 				end
+				drawBodyStrip(nextBodyVertex - 1, tex)
 			end
 		end
 

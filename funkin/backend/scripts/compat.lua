@@ -43,8 +43,20 @@ function Compat:_active()
 	if self.disposed then fail("context is disposed") end
 end
 
+function Compat:_owner(tag)
+	return self.objectOwners and self.objectOwners[tag] or self
+end
+
+function Compat:_register(tag, object)
+	local owner = self:_owner(tag)
+	if owner.objects[tag] then owner:_remove(tag, true) end
+	self.objects[tag] = object
+	if self.objectOwners then self.objectOwners[tag] = self end
+	return object
+end
+
 function Compat:_root(name)
-	local object = self.objects[name]
+	local object = self:_owner(name).objects[name]
 	if object ~= nil then return object end
 	if name == "camGame" then return self.state.camGame or game.camera end
 	if self.script._psych then
@@ -60,8 +72,11 @@ function Compat:_root(name)
 	return self.state[name]
 end
 
+local psychStateFields = {songMisses = "misses", songScore = "score"}
+
 function Compat:_resolve(path)
 	if self.script._psych then
+		path = psychStateFields[path] or path
 		path = path:gsub("^icon%-bf([%.%[])", "iconP1%1"):gsub("^icon%-dad([%.%[])", "iconP2%1")
 	end
 	self:_active()
@@ -70,7 +85,8 @@ function Compat:_resolve(path)
 		if self.script._psych and parts[1] == "defaultCamZoom" then
 			return self.state, "camZoom", self.state.camZoom
 		end
-		local target = self.objects[parts[1]] ~= nil and self.objects or self.state
+		local objects = self:_owner(parts[1]).objects
+		local target = objects[parts[1]] ~= nil and objects or self.state
 		return target, parts[1], self:_root(parts[1])
 	end
 	local object = self:_root(parts[1])
@@ -96,12 +112,15 @@ function Compat:_owned(tag)
 end
 
 function Compat:_remove(tag, destroy)
+	local owner = self:_owner(tag)
+	if owner ~= self then return owner:_remove(tag, destroy) end
 	local object = self:_owned(tag)
 	if self.added[tag] then self.state:remove(object); self.added[tag] = nil end
 	if destroy then
 		object:destroy()
 		if self.textures[tag] then self.textures[tag]:release(); self.textures[tag] = nil end
 		self.objects[tag] = nil
+		if self.objectOwners and self.objectOwners[tag] == self then self.objectOwners[tag] = nil end
 	end
 	return object
 end
@@ -109,7 +128,6 @@ end
 function Compat:_sprite(tag, image, x, y, animated)
 	self:_active()
 	if type(tag) ~= "string" or not tag:match("^[%a_][%w_]*$") then fail("sprite tag must be an identifier") end
-	if self.objects[tag] then self:_remove(tag, true) end
 	local asset
 	if image and image ~= "" then
 		asset = animated and paths.getAtlas(image) or paths.getImage(image)
@@ -119,8 +137,7 @@ function Compat:_sprite(tag, image, x, y, animated)
 	if asset then
 		if animated then object:setFrames(asset) else object:loadTexture(asset) end
 	end
-	self.objects[tag] = object
-	return object
+	return self:_register(tag, object)
 end
 
 function Compat:_callback(name, ...)
@@ -197,21 +214,35 @@ function Compat:_tween(tag, path, value, duration, ease)
 	return self:_tweenObject(tag, object, key, value, duration, ease)
 end
 
+local psychEases = {}
+for name in pairs(require "loxel.util.tween.ease") do
+	if name == "linear" or name:match("In$") or name:match("Out$") then
+		psychEases[name:lower()] = name
+	end
+end
+
 function Compat:_tweenObject(tag, object, key, value, duration, ease)
 	self:_active()
-	if self.script._psych then duration = tonumber(duration) end
+	local anonymous = self.script._psych and tag == nil
+	if self.script._psych then
+		duration, value = tonumber(duration), tonumber(value)
+		if type(tag) == "number" then tag = tostring(tag) end
+	end
 	positive(duration, "tween duration")
-	if type(tag) ~= "string" or tag == "" then fail("tween tag must be a nonempty string") end
+	if not anonymous and (type(tag) ~= "string" or tag == "") then fail("tween tag must be a nonempty string") end
 	if type(object[key]) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
+	if self.script._psych and type(ease) == "string" then
+		ease = psychEases[ease:lower():match("^%s*(.-)%s*$")] or "linear"
+	end
 	ease = ease or "linear"
 	if type(ease) ~= "string" or not Ease[ease] then fail("unsupported easing: " .. tostring(ease)) end
-	self:_cancelTween(tag)
+	if anonymous then tag = {} else self:_cancelTween(tag) end
 	local tween
 	tween = self.tween:tween(object, {[key] = value}, duration, {
 		ease = ease, onComplete = function()
 			if self.tweens[tag] == tween then
 				self.tweens[tag] = nil
-				self:_callback("onTweenCompleted", tag)
+				if not anonymous then self:_callback("onTweenCompleted", tag) end
 			end
 		end
 	})
@@ -258,6 +289,10 @@ function Compat.new(state, script, psych)
 	local self = setmetatable({state = state, script = script, objects = {}, added = {}, textures = {},
 		timers = {}, tweens = {}, sounds = {}, installed = {}, previous = {}, nextSound = 0,
 		timer = TimerManager(), tween = Tween(), callbackNames = {}, calling = {}}, Compat)
+	if psych then
+		state.psychObjectOwners = state.psychObjectOwners or {}
+		self.objectOwners = state.psychObjectOwners
+	end
 	for name, callback in pairs(callbacks) do self.callbackNames[name] = callback end
 	local api = {}
 	api.getProperty = function(path) local _, _, value = self:_resolve(path); return value end
@@ -277,7 +312,8 @@ function Compat.new(state, script, psych)
 	api.makeLuaSprite = function(tag, image, x, y) return self:_sprite(tag, image, x, y, false) end
 	api.makeAnimatedLuaSprite = function(tag, image, x, y) return self:_sprite(tag, image, x, y, true) end
 	api.makeGraphic = function(tag, width, height, color)
-		local sprite = self:_owned(tag)
+		local owner = self:_owner(tag)
+		local sprite = owner:_owned(tag)
 		positive(width, "graphic width"); positive(height, "graphic height")
 		if width % 1 ~= 0 or height % 1 ~= 0 then fail("graphic dimensions must be integers") end
 		local hex = tostring(color or "FFFFFF"):gsub("^#", ""):gsub("^0[xX]", "")
@@ -285,18 +321,23 @@ function Compat.new(state, script, psych)
 		local data = love.image.newImageData(width, height)
 		data:mapPixel(function() return 1, 1, 1, 1 end)
 		local texture = love.graphics.newImage(data); data:release()
-		if self.textures[tag] then self.textures[tag]:release() end
-		self.textures[tag] = texture
+		if owner.textures[tag] then owner.textures[tag]:release() end
+		owner.textures[tag] = texture
 		sprite.frames = nil; sprite.animation.curAnim = nil
 		sprite:loadTexture(texture); sprite.color = Color.fromHEX(tonumber(hex, 16))
 		sprite.scale:set(1, 1); sprite:updateHitbox()
 		return sprite
 	end
 	api.addLuaSprite = function(tag, front)
-		local sprite = self:_owned(tag)
-		if self.added[tag] then self.state:remove(sprite) end
-		if front then self.state:add(sprite) else self.state:insert(1, sprite) end
-		self.added[tag] = true; return sprite
+		local owner = self:_owner(tag)
+		local sprite = owner:_owned(tag)
+		if owner.added[tag] then
+			if psych then return sprite end
+			self.state:remove(sprite)
+		end
+		local stageIndex = psych and self.state.stage and self.state:indexOf(self.state.stage)
+		if front then self.state:add(sprite) else self.state:insert(stageIndex or 1, sprite) end
+		owner.added[tag] = true; return sprite
 	end
 	api.removeLuaSprite = function(tag, destroy) return self:_remove(tag, destroy ~= false) end
 	api.getObjectOrder = function(tag)
@@ -305,9 +346,10 @@ function Compat.new(state, script, psych)
 		return -1
 	end
 	api.setObjectOrder = function(tag, index)
-		local sprite = self:_owned(tag)
+		local owner = self:_owner(tag)
+		local sprite = owner:_owned(tag)
 		positive(index, "object order", true)
-		if index % 1 ~= 0 or index >= #self.state.members or not self.added[tag] then fail("object order is outside the state") end
+		if index % 1 ~= 0 or index >= #self.state.members or not owner.added[tag] then fail("object order is outside the state") end
 		self.state:remove(sprite); self.state:insert(index + 1, sprite)
 	end
 	api.setObjectCamera = function(tag, camera)
@@ -397,8 +439,8 @@ function Compat.new(state, script, psych)
 	end
 	api.setSoundVolume = function(tag, volume) self:_active(); if self.sounds[tag] then self.sounds[tag].volume = volume end end
 	api.getSoundVolume = function(tag) self:_active(); return self.sounds[tag] and self.sounds[tag].volume end
-	api.luaSpriteExists = function(tag) self:_active(); return self.objects[tag] ~= nil and self.objects[tag]:is(Sprite) end
-	api.luaTextExists = function(tag) self:_active(); return self.objects[tag] ~= nil and self.objects[tag]:is(Text) end
+	api.luaSpriteExists = function(tag) self:_active(); local obj = self:_owner(tag).objects[tag]; return obj ~= nil and obj:is(Sprite) end
+	api.luaTextExists = function(tag) self:_active(); local obj = self:_owner(tag).objects[tag]; return obj ~= nil and obj:is(Text) end
 	api.makeLuaText = function(tag, text, width, x, y)
 		self:_active()
 		if type(tag) ~= "string" or not tag:match("^[%a_][%w_]*$") then fail("text tag must be an identifier") end
@@ -479,12 +521,12 @@ function Compat.new(state, script, psych)
 	api.triggerEvent = function(name, v1, v2)
 		self:_active()
 		if self.state.pushEvent then
-			self.state:pushEvent(tostring(name), {v1, v2})
+			self.state:pushEvent(tostring(name), {v1, v2}, psych)
 		end
 	end
 	api.runHaxeCode = function() fail("runHaxeCode is unsupported; use native Lua engine APIs") end
 	api.runHaxeFunction = function() fail("runHaxeFunction is unsupported; use native Lua engine APIs") end
-	require("funkin.backend.scripts.compat-controls").install(self, api)
+	require("funkin.backend.scripts.compat-controls").install(self, api, psych)
 	if psych then
 		require("funkin.backend.scripts.psych.shaders").install(self, api)
 		require("funkin.backend.scripts.psych.substate").install(self, api)

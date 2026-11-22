@@ -135,7 +135,7 @@ function Character:new(x, y, char, isPlayer, deferScript)
 		end
 	end
 
-	if self.isPlayer ~= self.flipX then
+	if type ~= "Psych" and self.isPlayer ~= self.flipX then
 		self.__reverseDraw = true
 		self.anim:rename("singLEFT", "singRIGHT")
 		self.anim:rename("singLEFTmiss", "singRIGHTmiss")

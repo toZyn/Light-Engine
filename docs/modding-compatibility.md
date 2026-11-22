@@ -22,8 +22,12 @@ loaded on demand. The game does not ship a Haxe compiler or a second engine.
 - HScript sprites, text, groups, cameras, points, math, atlas animations, timers,
   numeric tweens, and easing functions use native Light Engine objects.
 - Note and receptor groups use zero-based indices. Note spawn and hit hooks,
-  receptor tweens, countdown callbacks, camera focus, keyboard hooks, score
-  callbacks, and early chart events are available.
+  receptor tweens, countdown and section callbacks, camera focus, keyboard hooks,
+  score counters, and early chart events are available.
+- Psych Sparrow note atlases can be assigned through `PlayState.SONG.arrowSkin`
+  at creation or through the per-note `texture` property. Body and tail frames
+  change with the note head. Custom-note health, miss behavior and girlfriend
+  animation can be set on the live note.
 - Compatible OpenFL-style fragment and vertex shaders can run on sprites or
   in a camera filter chain. Camera buffers are allocated only when intermediate
   passes are needed and released when the chain is detached.
