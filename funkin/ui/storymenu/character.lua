@@ -20,14 +20,10 @@ function StoryCharacter:changeCharacter(char)
 	switch(self.character, {
 		[''] = function() self.visible = false end,
 		default = function()
-			local path = 'data/weeks/characters/' .. self.character
-			if not paths.exists(paths.getPath(path .. '.json'), "file") then
-				path = 'data/weeks/characters/bf'
-			end
-
-			local charFile = paths.getJSON(path)
-			self:setFrames(paths.getSparrowAtlas(
-				'menus/storymenu/characters/' .. charFile.sprite))
+			local charFile, directory, fallback = require('funkin.backend.menuassets').character(self.character)
+			self.color = fallback and {0, 0, 0} or {1, 1, 1}
+			self.alpha = fallback and 0.6 or 1
+			self:setFrames(paths.getSparrowAtlas(directory .. charFile.sprite))
 			self.animation:reset()
 			self.animation:addByPrefix('idle', charFile.idle_anim, 24)
 

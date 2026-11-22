@@ -63,18 +63,21 @@ function love.joystickadded(joystick)
 end
 
 function love.joystickremoved(joystick)
+	game.gamepads.onRemoved(joystick)
 	if funkin and funkin.onDeviceRemoved then
 		funkin.onDeviceRemoved(joystick)
 	end
 end
 
 function love.gamepadpressed(joystick, button, ...)
+	game.gamepads.onPressed(joystick, button)
 	if controls and controls.onGamepadPress then
 		controls:onGamepadPress(joystick, button, ...)
 	end
 end
 
 function love.gamepadreleased(joystick, button, ...)
+	game.gamepads.onReleased(joystick, button)
 	if controls and controls.onGamepadRelease then
 		controls:onGamepadRelease(joystick, button, ...)
 	end

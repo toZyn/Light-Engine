@@ -5,6 +5,35 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.6.0] - 2026-11-22
+
+### Added
+- Extend Psych Lua input, utility, file, gameplay counter and rating APIs.
+- Initialize Psych script globals and stage base coordinates before script execution.
+- Support note texture overrides, chart arrow skins and section timing callbacks.
+- Add directional navigation and confirmation controls to the Android pause menu.
+- Add synthetic regression fixtures and Haxe source-reference tests.
+
+### Changed
+- Draw sustain bodies with clipped mesh strips to reduce rendering submissions.
+- Apply Psych rating thresholds, full-combo labels, miss penalties and combo resets.
+- Publish scoring and rating globals in the corresponding callback sequence.
+
+### Fixed
+- Preserve independent touch identifiers and gamepad input edges.
+- Resolve mixed-case song directories and accept anonymous and numeric tween tags.
+- Recover empty title introductions and missing or incomplete menu-character data.
+- Read Psych menu-character image fields alongside native sprite fields.
+- Log menu-data recovery that extends Psych behavior with a deduplicated message.
+- Handle Psych callback cancellation constants in native event dispatch.
+
+### Compatibility
+- Psych Engine 1.0.4 compatibility remains partial; some APIs and behavior differ.
+- Reference tests use isolated Haxe source and a C++ allocation probe. A full compiled
+  Psych differential run and physical Android/Mali-G57 validation remain pending.
+
 ## [0.5.0] - 2026-11-21
 
 ### Added

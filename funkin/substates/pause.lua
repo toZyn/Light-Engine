@@ -97,7 +97,23 @@ function PauseSubstate:enter()
 	self._openingFrame = true
 
 	if love.system.getDevice() == "Mobile" then
-		self.buttons = util.createButtons("b")
+		self.menuList.virtualNavigation = true
+		self.diffList.virtualNavigation = true
+		local width, backWidth = 80, 126
+		self.buttons = util.createButtons("udab", width)
+		local members = self.buttons.members
+		local back = table.remove(members)
+		table.insert(members, 1, back)
+		local right = game.width - ClientPrefs.data.margin
+		back:setPosition(right - backWidth, game.height - backWidth)
+		back.width, back.height = backWidth, backWidth
+		for _, button in ipairs(members) do
+			if button.key == "up" or button.key == "down" then
+				button:setPosition(right - width, game.height - backWidth - width * (button.key == "up" and 2 or 1))
+			elseif button.key == "return" then
+				button.x = right - backWidth - width
+			end
+		end
 		self:add(self.buttons)
 
 		if self.parent and self.parent.pauseButton then

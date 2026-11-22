@@ -1,0 +1,1 @@
+class FlxMath { public static inline var MAX_VALUE_INT:Int=2147483647; }

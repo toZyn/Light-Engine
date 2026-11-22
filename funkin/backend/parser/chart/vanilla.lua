@@ -66,8 +66,8 @@ local function appendPsychEvents(rawEvents, events, seen)
 end
 
 local function getStuff(data, eventData, inlineEvents, bpm, psych, consume)
-	local dad, bf, events, timeChanges, sectionChanges =
-		{}, {}, {}, {}, {}
+	local dad, bf, events, timeChanges, sectionChanges, sections =
+		{}, {}, {}, {}, {}, {}
 
 	local time, steps, total, add, focus, lastFocus = 0, 0, 0
 	table.insert(timeChanges, Parser.newTimeChange(0, bpm))
@@ -82,6 +82,10 @@ local function getStuff(data, eventData, inlineEvents, bpm, psych, consume)
 	end
 
 	for i, s in ipairs(data) do
+		sections[#sections + 1] = {
+			step = steps, mustHitSection = s.mustHitSection == true,
+			altAnim = s.altAnim == true, gfSection = s.gfSection == true
+		}
 		if s.sectionNotes then
 			for noteIndex, n in ipairs(s.sectionNotes) do
 				local kind = n[4]
@@ -143,7 +147,7 @@ local function getStuff(data, eventData, inlineEvents, bpm, psych, consume)
 
 	if #timeChanges > 1 then table.sort(timeChanges, Parser.sortByTime) end
 
-	return {enemy = dad, player = bf}, events, timeChanges
+	return {enemy = dad, player = bf}, events, timeChanges, sections
 end
 
 function vanilla.parse(data, events, meta, diff, options)
@@ -184,6 +188,9 @@ function vanilla.parse(data, events, meta, diff, options)
 	local rawSkin = type(data.skin) == "table" and (data.skin.skin or data.skin.name) or data.skin
 	Parser.pset(chart, "stage", data.stage)
 	Parser.pset(chart, "skin", rawSkin)
+	Parser.pset(chart, "arrowSkin", data.arrowSkin)
+	Parser.pset(chart, "disableNoteRGB", data.disableNoteRGB)
+	Parser.pset(chart, "needsVoices", data.needsVoices)
 
 	Parser.pset(chart, "player1", data.player1)
 	Parser.pset(chart, "player2", data.player2)
@@ -240,7 +247,7 @@ function vanilla.parse(data, events, meta, diff, options)
 	end
 
 	if rawNotes then
-		chart.notes, chart.events, chart.timeChanges =
+		chart.notes, chart.events, chart.timeChanges, chart.sections =
 			getStuff(rawNotes, events, data.events, chart.bpm,
 				data.format and data.format:startsWith("psych"), consume)
 	end

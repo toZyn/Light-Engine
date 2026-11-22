@@ -269,6 +269,9 @@ void main() {
    '{"song":{"song":"compat-layout-fixture","bpm":100,"speed":1,"notes":[{"mustHitSection":true,"sectionNotes":[[250,0,0]]}]}}'))
   assert(love.filesystem.write(dir .. '/events.json', '{"events":[[300,[["Test","one","two"]]]]}'))
   assert(love.filesystem.write(dir .. '/dialogue.json', '{"dialogue":[{"text":"Hola, café"}]}'))
+  assert(love.filesystem.createDirectory('fixture-mods/psych/videos'))
+  assert(love.filesystem.write('fixture-mods/psych/videos/mp4-only.mp4', 'fixture'))
+  assert(love.filesystem.write('fixture-mods/psych/videos/corrupt.ogv', 'fixture'))
   assert(love.filesystem.createDirectory('fixture-mods/psych/extra'))
   assert(love.filesystem.write('fixture-mods/psych/extra/helper.lua', [[
 function onCreate() loads = (loads or 0) + 1 end
@@ -325,6 +328,7 @@ end
 ]]))
   assert(love.filesystem.write(dir .. '/effect.hx', [[
 import flixel.FlxG;
+import states.PlayState;
 import flixel.FlxSprite;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.text.FlxText;
@@ -358,6 +362,10 @@ function onCreate() {
  second.setFloat("amount", 0.5);
  game.camOther.setFilters([new ShaderFilter(first), new ShaderFilter(second)]);
  game.health = 1.2;
+ PlayState.SONG.arrowSkin = "note-style";
+ addMisses(2);
+ setVar("hscriptArrowSkin", PlayState.SONG.arrowSkin);
+ setVar("hscriptMisses", getMisses());
  var timer = new FlxTimer();
  timer.start(0.1, function(t) { setVar("timerLoops", t.elapsedLoops); }, 2);
 }
@@ -401,6 +409,7 @@ function onEvent(name:String, a:String, b:String) {
    local customCam = state.members[members + 1].cameras[1]
    assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
    assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3)
+   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2)
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
    local x = player.receptors[1].x
@@ -475,6 +484,17 @@ function onEvent(name:String, a:String, b:String) {
    state.psychCutscene:update(0)
    controls:update()
    assert(not state.psychCutscene)
+   assert(not vars.startVideo('mp4-only'))
+   assert(not vars.startVideo('corrupt'))
+   assert(not state.videoCutscene and not state.psychCutscene)
+   assert(vars.startVideo('ughCutscene', false, true, true, false))
+   local video = state.videoCutscene
+   assert(video.video and video.looped and not video.video:isPlaying())
+   assert(not state.psychCutscene)
+   video:play()
+   assert(video.video:isPlaying())
+   video.onComplete()
+   assert(not state.videoCutscene and not state.psychCutscene)
    assert(vars.startVideo('ughCutscene'))
    assert(state.psychCutscene.video)
    scripts:close()

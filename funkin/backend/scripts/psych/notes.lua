@@ -1,24 +1,49 @@
 local Notes = {}
+local PsychSkin = require "funkin.backend.scripts.psych.note-skin"
 local receptorFields = {x = true, y = true, angle = true, alpha = true, visible = true, direction = true}
 local noteFields = {
 	noteType = "type", noteData = "direction", ignoreNote = "ignoreNote", noAnimation = "noAnimation",
-	wasGoodHit = "wasGoodHit", tooLate = "tooLate", alpha = "alpha", visible = "visible"
+	wasGoodHit = "wasGoodHit", tooLate = "tooLate", alpha = "alpha", visible = "visible",
+	gfNote = "gf", hitHealth = "hitHealth", missHealth = "missHealth",
+	hitCausesMiss = "hitCausesMiss", noMissAnimation = "noMissAnimation"
 }
-local editable = {ignoreNote = true, noAnimation = true, alpha = true, visible = true}
+local editable = {
+	ignoreNote = true, noAnimation = true, alpha = true, visible = true, gfNote = true,
+	hitHealth = true, missHealth = true, hitCausesMiss = true, noMissAnimation = true
+}
+local defaults = {hitHealth = 0.023, missHealth = 0.0475, hitCausesMiss = false, noMissAnimation = false, gfNote = false}
 
-function Notes.note(note, playerField)
+function Notes.note(note, playerField, state)
 	return setmetatable({}, {
 		__index = function(_, key)
+			if key == "texture" then return note.skin.psychTexture or (state and state.psychArrowSkin) or "" end
 			if key == "strumTime" then return note.time * 1000 end
 			if key == "sustainLength" then return (note.sustainTime or 0) * 1000 end
 			if key == "mustPress" then return note.parent == playerField end
 			if key == "isSustainNote" then return false end
 			if key == "noteType" then return note.type or "" end
 			local native = noteFields[key]
-			if native then return note[native] end
+			if native then
+				local value = note[native]
+				if value ~= nil then return value end
+				return defaults[key]
+			end
 		end,
 		__newindex = function(_, key, value)
+			if key == "texture" and state then
+				local base = note.parent and note.parent.skin or note.skin
+				local skin = PsychSkin.resolve(state, base, value)
+				if skin then
+					if value ~= "" then skin = PsychSkin.withoutRgb(state, skin) end
+					note:setSkin(skin)
+				end
+				return
+			end
 			assert(editable[key], "Psych note property unavailable for writing: " .. tostring(key))
+			if key == "ignoreNote" then note.psychIgnoreNote = true end
+			if key == "hitHealth" or key == "missHealth" then
+				value = assert(tonumber(value), "Psych note health must be numeric")
+			end
 			note[noteFields[key]] = value
 		end
 	})
@@ -81,7 +106,7 @@ function Notes.install(compat, api)
 		if index >= size then field, position = second, index - size + 1 end
 		if group ~= "notes" then return receptor(field, position) end
 		local note = field and field.activeNotes[position]
-		if note then return Notes.note(note, state.playerNotefield) end
+		if note then return Notes.note(note, state.playerNotefield, state) end
 	end
 
 	local groups = {notes = true, strumLineNotes = true, playerStrums = true, opponentStrums = true}

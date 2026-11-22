@@ -240,6 +240,8 @@ function StoryMenuState:selectWeek()
 		local toState = LoadState(PlayState.deferred(true, songTable, diff))
 		PlayState.storyWeek = leWeek.name
 		PlayState.storyWeekFile = leWeek.file
+		PlayState.psychWeekIndex = self.weekList.curSelected - 1
+		PlayState.psychDifficultyList = leWeek.difficulties or {'Easy','Normal','Hard'}
 
 		if not self.selectedWeek then
 			util.playSfx(paths.getSound('confirmMenu'))
