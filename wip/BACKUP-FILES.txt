@@ -1370,6 +1370,7 @@ tests/reference/psych104/ReferenceFiles.hx
 tests/reference/psych104/ReferenceInitialization.hx
 tests/reference/psych104/ReferenceInput.hx
 tests/reference/psych104/generate.py
+tests/reference/psych104/verify_cpp_defaults.py
 tests/test_addon_archive.py
 tests/test_create_mod.py
 tests/test_engine_runner.py
@@ -1396,11 +1397,11 @@ tools/run_engine_tests.py
 tools/scene_editor.html
 tools/scene_manifest.py
 tools/stamp_release_version.py
+wip/BACKUP-FILES.txt
 wip/CLEANUP.md
 wip/DECISIONS.md
-wip/STATUS.md
-wip/RULES.md
-wip/Psych-core-and-globals-audit.md
 wip/Psych-1.0.4-Light-API-audit.md
+wip/Psych-core-and-globals-audit.md
 wip/Psych-corpus-usage.md
-wip/BACKUP-FILES.txt
+wip/RULES.md
+wip/STATUS.md

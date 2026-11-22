@@ -3,7 +3,7 @@
 - loadScript, resizeWindow and ending are not registered Psych 1.0.4 functions. No implementation or alias is authorized. Strict Psych calls fail when the mod has not defined the function.
 - ClientPrefs.windowMove is not a Psych field. Keep this outside the Psych compatibility inventory; the existing Light special case needs a separate decision.
 - No HUD work until explicit user confirmation.
-- Core incomplete-data recovery is a Light extension, not Psych behavior; emit a diagnostic when the extension is used.
+- Core incomplete-data recovery is a Light extension, not Psych behavior; one diagnostic per recovery path is now emitted.
 
 # Fixed scope
 

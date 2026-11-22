@@ -1,31 +1,26 @@
 # Core and globals audit
 
-## Core menu asset batch — 2026-11-22
+## Current core menu and counter/global verification
 
-| Surface | Light location | Verified behavior | Difference from Psych 1.0.4 |
-|---|---|---|---|
-| Title intro text | funkin/backend/menuassets.lua:3; funkin/states/title.lua:92 | Base entries then current mod entries, trimmed and deduplicated; literal `--` delimiter; empty mod retains base entries | Only current mod and base, not all global mod directories. Both sources empty returns two empty strings instead of failing selection. |
-| Week menu character | funkin/backend/menuassets.lua:31; funkin/ui/storymenu/character.lua:23 | Mod first then base path; Psych `image` uses `menucharacters/`; native `sprite` retains native directory | Missing/invalid fields recover from base BF. Psych MenuCharacter does not validate incomplete JSON and can fail after parsing; this recovery is explicitly requested Light behavior. |
-
-Source comparison: Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`: `TitleState.getIntroTextShit`, `Mods.mergeAllTextsNamed`, `CoolUtil.listFromString`, `MenuCharacter.changeCharacter`.
-The uploaded three ZIPs contain neither introText.txt nor menu-character JSON. The exact offending input is not available; empty intro text and missing sprite/image are reproduced fixtures, not an attribution to a specific mod file.
-Validation: native LÖVE 11.5 `menu-asset-fallbacks` (2 checks), `menu-regressions`, `syntax` pass. Full compiled Psych differential execution and Android touch/render verification have not been performed.
-
-## Counter/global initialization batch — 2026-11-22
-
-`funkin/backend/scripts/psych/globals.lua` initializes state before script loading and inserts constructor globals before executing Lua source. `handler.lua` no longer reads strum positions during onCreate/onCreatePost; positions are captured at countdownStarted.
-
-| Rows affected | Initialization result | Remaining difference |
+| Surface | Current behavior | Verification / remaining gap |
 |---|---|---|
-| score, misses, hits, combo; PlayState.songScore/songMisses/songHits/combo | Zero at script source execution and onCreate; native getProperty aliases tested | Full mutation/callback timing and scoring differential execution remain unverified. |
-| rating, ratingName, ratingFC; PlayState.ratingPercent/ratingName/ratingFC | Original declarations compiled with Haxe interpreter: null, `?`, null | Native C++ defaults and complete RecalculateRating lifecycle are not verified; do not treat these rows as resolved. |
-| totalPlayed, totalNotesHit; corresponding PlayState fields | Zero before source execution | Hit/miss accumulation still differs; not resolved. |
-| scrollSpeed | Initial value comes from chart.speed | Event-driven updates not verified. |
-| defaultPlayerStrumX/Y0–3, defaultOpponentStrumX/Y0–3 | Loop creates all 16 names with zero before source execution; no onCreatePost overwrite | Actual countdown positions and late-loaded-script differential execution remain unverified. |
-| curDecBeat, curDecStep, healthGainMult, healthLossMult, playbackRate, inGameOver, botPlay, practice, instakillOnMiss, guitarHeroSustains | Constructor values now inserted | Nondefault gameplay settings and native reference execution remain unverified. |
+| Intro text | Base entries followed by current-mod entries, trimmed and deduplicated; literal `--`; empty combined input returns blank intro with one `[Light extension]` warning | Native synthetic fixture; global mods and Psych executable remain unverified |
+| Menu character JSON | Mod-first resolution; Psych `image` and native `sprite`; incomplete data filled from base BF, with one `[Light extension]` warning per path | Native missing/invalid/incomplete JSON and warning-deduplication fixtures; not strict Psych recovery parity |
+| Score/miss/hit/combo counters | Zero before script source execution and onCreate | Nine original declarations; native Lua getter/lifecycle checks. Full scoring/callback behavior remains distinct |
+| ratingPercent / ratingName / ratingFC | Native C++ target: 0 / `?` / null before rating recalculation | Haxe C++ generation verifies field types; compiled C++ zeroed-allocation probe; full hxcpp/Psych execution not performed |
+| totalPlayed / totalNotesHit | Zero before script loading | Initialization verified; accumulation/rating lifecycle remain distinct |
+| scrollSpeed | Initial chart.speed | Constructor tested; event update lifecycle unverified |
+| Default strum globals | All 16 names zero in FunkinLua constructor; positions assigned by PlayState.startCountdown after arrow generation and before onCountdownStarted | Psych source and native initialization fixtures; actual rendered positions unverified |
+| Gameplay globals | Constructor inserts curDecBeat/Step, health multipliers, playback, bot/practice/instakill/sustain flags | Nondefault settings and complete lifecycle remain unverified |
 
-Automated reference: `tests/reference/psych104/ReferenceInitialization.hx` contains nine unchanged field declarations from Psych 1.0.4 PlayState. `generate.py --check` executes this reference plus prior utility/input/file references. This is not a compiled Psych game executable. Native LÖVE checks cover script source initialization and handler onCreate/onCreatePost dispatch. The family remains open: full globals, character coordinates, rating lifecycle and requested compiled-engine differentials are pending.
+The previous interpreter inference that native ratingPercent starts null was incorrect and is removed. `verify_cpp_defaults.py` generates actual Haxe C++, checks Float/Int/Bool/String types and compiles a synthetic zeroed-allocation probe with g++. It supplies a metadata-only haxelib shim for code generation; no hxcpp runtime or compiled Psych game is represented by that shim. The runtime zeroing premise is source-checked in hxcpp v4.3.2 Object.h and Immix.cpp; README records the source links and limitations.
 
-## Non-Psych extension decision (not implemented in this batch)
+Current executed checks: five native suites (global initialization, menu asset fallbacks, menu regressions, gameplay flow, syntax); 138 callback reference cases; nine-field C++ probe plus Bool. Earlier 36-suite execution predates the native-default/warning corrections and is historical evidence, not a rerun of those changes. Physical Android, Mali-G57, touch and full mod runs remain unverified.
 
-`loadScript`, `resizeWindow`, and `ending` are not registered Psych 1.0.4 functions. Without a mod-defined function, a Lua call raises an attempt-to-call-nil error. `ClientPrefs.windowMove` is not a Psych ClientPrefs field; class reflection returns null/nil for this absent field. Proposed separate optional extension contract: namespaced `LightExtensions.loadScript/resizeWindow`, documented return/error contracts, no implicit aliasing of `ending` or unknown properties. Awaiting user decision; existing non-Psych behavior has not been changed.
+## Compiled Psych feasibility
+
+A Linux reference build is feasible after installing the runtime/dependencies and materializing the pinned source/assets. It is not currently runnable: the downloaded haxelib binary fails to load libneko.so.2. The executable named neko on PATH is an unrelated streaming server, not the Haxe Neko VM. No working lime or full hxcpp installation was found. Project.xml requires Flixel 5.6.1, flixel-addons 3.2.2, tjson 1.4.0, linc_luajit, hscript-iris 1.1.3, hxvlc 2.0.1, flxanimate, plus Lime/OpenFL dependencies; their full installation/build has not been completed. Direct source download timed out in this environment. Android additionally needs its cross-compilation toolchain, which has not been validated. These are observed setup/network blockers, not a claim that Psych cannot compile.
+
+## Non-Psych APIs — pending, no new implementation
+
+loadScript, resizeWindow and ending are not registered Psych 1.0.4 functions. With no mod-defined function, calling them raises an attempt-to-call-nil Lua error. They remain pending and were not implemented. ClientPrefs.windowMove is not a Psych field; reflection returns null/nil for a missing field. The existing Light special case is a separate unresolved difference. No extension contract has been activated for these APIs.

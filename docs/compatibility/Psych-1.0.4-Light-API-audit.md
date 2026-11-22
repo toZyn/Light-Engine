@@ -1,10 +1,10 @@
 # Psych Engine 1.0.4 / Light Engine — API inventory
 
-Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`. Light commit `567588a1620a0651eae8822fbddcd17f1d624aa7` (PR #22).
+Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`. Current work: `wip/psych-compat`, based on published counter/global commit `60cb9bc`. The original static inventory started at `567588a`; changes and verification limits below supersede that baseline.
 
 ## Interpretation and scope
 
-Static source audit, not a runtime certification. `implementada` requires demonstrated equivalent behavior; `distinta` means an exposed entry has a constrained model or unverified parity; `ausente` means no equivalent exposure was found in the audited installers. An absent entry points to a candidate installer and says so. The original audit made no engine changes. Batch 1 changes are recorded at the end of this document.
+Static source audit, not a runtime certification. `implementada` requires demonstrated equivalent behavior; `distinta` means an exposed entry has a constrained model or unverified parity; `ausente` means no equivalent exposure was found in the audited installers. An absent entry points to a candidate installer and says so. The inventory is maintained during implementation. Constructor and reference tests do not certify complete runtime parity.
 
 Lua registration inventory covers all 223 distinct literal registration names in Psych source/psychlua, including deprecated aliases and optional compile flags. HScript rows cover Psych preset bindings. Property rows cover declarations in PlayState, SwagSong, Note and StrumNote, plus initialized Lua globals and explicit group paths. Inherited framework properties, dynamically created mod variables, and arbitrary imported Haxe classes are not exhaustively enumerated; their full surface cannot be inferred from these engine declarations. This document therefore does not claim complete HaxeFlixel/OpenFL property coverage. Private/class fields are included where found; exposure remains route-dependent.
 
@@ -791,17 +791,58 @@ These are the generation loops in the audited Light revision. Their output names
 			return resource
 ```
 
-### funkin/backend/scripts/psych/gameplay.lua:84
+### funkin/backend/scripts/psych/input.lua:9
 
-`keyboardPressed`, `keyboardJustPressed`, `keyboardReleased`
+Current input generators produce keyboardJustPressed/Pressed/Released, keyJustPressed/Pressed/Released, gamepadJustPressed/Pressed/Released, anyGamepadJustPressed/Pressed/Released, gamepadAnalogX/Y.
 
 ```lua
-	for method, source in pairs({keyboardPressed = "pressed", keyboardJustPressed = "justPressed",
-		keyboardReleased = "justReleased"}) do
-		api[method] = function(key)
-			local keys = game.keys[source]
-			return keys and keys[tostring(key):upper()] == true or false
+local Input = {}
+local controlsMap = {
+	left = "note_left", down = "note_down", up = "note_up", right = "note_right",
+	accept = "accept", back = "back", pause = "pause", reset = "reset",
+	ui_left = "ui_left", ui_down = "ui_down", ui_up = "ui_up", ui_right = "ui_right"
+}
+
+function Input.install(compat, api)
+	for suffix, source in pairs({JustPressed = "justPressed", Pressed = "pressed", Released = "justReleased"}) do
+		api["keyboard" .. suffix] = function(name)
+			compat:_active()
+			if name == "ANY" or game.keys.keys[name] then return game.keys[source][name] == true end
+			return nil
 		end
+		api["key" .. suffix] = function(name)
+			compat:_active()
+			name = (name or ""):lower():match("^%s*(.-)%s*$")
+			local control = controlsMap[name] or (controls._controls[name] and name)
+			if not control then return false end
+			local method = source == "justPressed" and "pressed" or source == "pressed" and "down" or "released"
+			return controls[method](controls, control)
+		end
+		local gamepadName = suffix == "JustPressed" and "JustPressed" or suffix
+		api["gamepad" .. gamepadName] = function(id, name)
+			compat:_active()
+			local entry = game.gamepads.devices[tonumber(id)]
+			return entry ~= nil and entry[source][name] == true
+		end
+		api["anyGamepad" .. gamepadName] = function(name)
+			compat:_active()
+			for _, entry in pairs(game.gamepads.devices) do if entry[source][name] then return true end end
+			return false
+		end
+	end
+	for _, axis in ipairs({"X", "Y"}) do
+		api["gamepadAnalog" .. axis] = function(id, leftStick)
+			compat:_active()
+			local entry = game.gamepads.devices[tonumber(id)]
+			if not entry then return 0 end
+			local key = (leftStick == false and "right" or "left") .. axis:lower()
+			local value = entry.joystick:getGamepadAxis(key)
+			return math.abs(value) > 0.15 and value or 0
+		end
+	end
+end
+
+return Input
 ```
 
 ### funkin/backend/scripts/psych/gameplay.lua:95
@@ -937,7 +978,7 @@ Proposed changes:
 - `Glitch.lua:17/33`: addMisses belongs to Score/Misses/Hits setters, adders, counters, rating recalculation and score callbacks. The current revision generates this family in gameplay.lua; the older Android log does not identify its engine commit.
 - `Glitch.lua:5`: notes[].texture belongs to note atlas loading, animation state, head/body/tail skin selection and RGB. The current revision has a proxy setter; pixel formats, per-segment scripts and complete shader parity remain outside the demonstrated support.
 - `rgbNotes.lua:11`: PlayState.SONG.arrowSkin belongs to chart settings, note/receptor skin initialization, per-note overrides and RGB. The current setter is a selected class-property route, not general class reflection.
-- `blubalscript(5resist).lua:344`: file unavailable in the attached ZIPs. The variable and reason for nil are undetermined. Please attach that exact script; no variable is inferred from the traceback.
+- `blubalscript(5resist).lua:344`: `messUps` is assigned by `getProperty("songMisses")` at line 319, then compared to 5 at line 344. The separately attached script is available. Current native getter aliases songMisses to misses; zero initialization is tested before onCreate. Whole-song behavior is not tested.
 
 ## Verification limits
 
@@ -945,11 +986,11 @@ The original inventory was static. Batch 1 implementation and checks are recorde
 
 ## Exposure review notes
 
-- The 223 Lua rows include 143 exposed names and 80 names without an equivalent registration in the inspected Light installers. Exposure does not certify parameter, return, ownership, or lifecycle parity.
+- The 223 Lua registration rows retain per-entry implementation status. Exposure totals are not a compatibility result; parameter, return, ownership and lifecycle checks remain required.
 - API availability is conditional on Psych mod detection, the compatibility option, and successful script initialization.
 - `implementada` is deliberately not assigned solely from static registration. Entries marked `distinta` with unverified parity require behavioral review before claiming a semantic difference or equivalence.
 - Class and group property rows report their specific access route. A field consumed by a chart parser does not automatically become accessible through getPropertyFromClass.
-- No Blueballed source was available. Attach `blubalscript(5resist).lua`, including line 344, to resolve that error.
+- The separately attached Blueballed script was inspected: messUps receives songMisses at line 319 and is compared at line 344. The script itself is excluded from this repository.
 
 ## Batch 1 — input and Lua utilities
 
@@ -999,36 +1040,31 @@ At line 319, `messUps = getProperty('songMisses')`; line 344 compares `messUps >
 
 The attached script calls `keyJustPressed("space")`. Psych routes unrecognized control names to Controls.justPressed. The contract fixture checks that a missing space control returns false; it does not silently reinterpret space as accept.
 
-Unverified: physical Android touch, USB/Bluetooth gamepad mapping, Mali-G57 readback, Android external-storage permissions, and whole-mod execution on the new batch. Only this batch is authorized; later batches have not been started.
+Unverified: physical Android touch, USB/Bluetooth gamepad mapping, Mali-G57 readback, Android external-storage permissions, and whole-mod execution on the new batch. The counter/global family remains open. HUD requires explicit user confirmation.
 
-Current batch exposure: 171 of the 223 Lua registration names are exposed; 52 remain absent. Only the 31 changed rows were reviewed for this batch. There are 11 implemented rows in that set, and 20 remain distinct.
+Input/utility batch review changed 31 rows: 11 demonstrated contracts and 20 unresolved behavior differences. These are historical batch counts, not coverage of the complete API. The counter/global family remains open.
 
-## Core menu asset batch — 2026-11-22
+## Current core menu and counter/global verification
 
-| Surface | Light location | Verified behavior | Difference from Psych 1.0.4 |
-|---|---|---|---|
-| Title intro text | funkin/backend/menuassets.lua:3; funkin/states/title.lua:92 | Base entries then current mod entries, trimmed and deduplicated; literal `--` delimiter; empty mod retains base entries | Only current mod and base, not all global mod directories. Both sources empty returns two empty strings instead of failing selection. |
-| Week menu character | funkin/backend/menuassets.lua:31; funkin/ui/storymenu/character.lua:23 | Mod first then base path; Psych `image` uses `menucharacters/`; native `sprite` retains native directory | Missing/invalid fields recover from base BF. Psych MenuCharacter does not validate incomplete JSON and can fail after parsing; this recovery is explicitly requested Light behavior. |
-
-Source comparison: Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`: `TitleState.getIntroTextShit`, `Mods.mergeAllTextsNamed`, `CoolUtil.listFromString`, `MenuCharacter.changeCharacter`.
-The uploaded three ZIPs contain neither introText.txt nor menu-character JSON. The exact offending input is not available; empty intro text and missing sprite/image are reproduced fixtures, not an attribution to a specific mod file.
-Validation: native LÖVE 11.5 `menu-asset-fallbacks` (2 checks), `menu-regressions`, `syntax` pass. Full compiled Psych differential execution and Android touch/render verification have not been performed.
-
-## Counter/global initialization batch — 2026-11-22
-
-`funkin/backend/scripts/psych/globals.lua` initializes state before script loading and inserts constructor globals before executing Lua source. `handler.lua` no longer reads strum positions during onCreate/onCreatePost; positions are captured at countdownStarted.
-
-| Rows affected | Initialization result | Remaining difference |
+| Surface | Current behavior | Verification / remaining gap |
 |---|---|---|
-| score, misses, hits, combo; PlayState.songScore/songMisses/songHits/combo | Zero at script source execution and onCreate; native getProperty aliases tested | Full mutation/callback timing and scoring differential execution remain unverified. |
-| rating, ratingName, ratingFC; PlayState.ratingPercent/ratingName/ratingFC | Original declarations compiled with Haxe interpreter: null, `?`, null | Native C++ defaults and complete RecalculateRating lifecycle are not verified; do not treat these rows as resolved. |
-| totalPlayed, totalNotesHit; corresponding PlayState fields | Zero before source execution | Hit/miss accumulation still differs; not resolved. |
-| scrollSpeed | Initial value comes from chart.speed | Event-driven updates not verified. |
-| defaultPlayerStrumX/Y0–3, defaultOpponentStrumX/Y0–3 | Loop creates all 16 names with zero before source execution; no onCreatePost overwrite | Actual countdown positions and late-loaded-script differential execution remain unverified. |
-| curDecBeat, curDecStep, healthGainMult, healthLossMult, playbackRate, inGameOver, botPlay, practice, instakillOnMiss, guitarHeroSustains | Constructor values now inserted | Nondefault gameplay settings and native reference execution remain unverified. |
+| Intro text | Base entries followed by current-mod entries, trimmed and deduplicated; literal `--`; empty combined input returns blank intro with one `[Light extension]` warning | Native synthetic fixture; global mods and Psych executable remain unverified |
+| Menu character JSON | Mod-first resolution; Psych `image` and native `sprite`; incomplete data filled from base BF, with one `[Light extension]` warning per path | Native missing/invalid/incomplete JSON and warning-deduplication fixtures; not strict Psych recovery parity |
+| Score/miss/hit/combo counters | Zero before script source execution and onCreate | Nine original declarations; native Lua getter/lifecycle checks. Full scoring/callback behavior remains distinct |
+| ratingPercent / ratingName / ratingFC | Native C++ target: 0 / `?` / null before rating recalculation | Haxe C++ generation verifies field types; compiled C++ zeroed-allocation probe; full hxcpp/Psych execution not performed |
+| totalPlayed / totalNotesHit | Zero before script loading | Initialization verified; accumulation/rating lifecycle remain distinct |
+| scrollSpeed | Initial chart.speed | Constructor tested; event update lifecycle unverified |
+| Default strum globals | All 16 names zero in FunkinLua constructor; positions assigned by PlayState.startCountdown after arrow generation and before onCountdownStarted | Psych source and native initialization fixtures; actual rendered positions unverified |
+| Gameplay globals | Constructor inserts curDecBeat/Step, health multipliers, playback, bot/practice/instakill/sustain flags | Nondefault settings and complete lifecycle remain unverified |
 
-Automated reference: `tests/reference/psych104/ReferenceInitialization.hx` contains nine unchanged field declarations from Psych 1.0.4 PlayState. `generate.py --check` executes this reference plus prior utility/input/file references. This is not a compiled Psych game executable. Native LÖVE checks cover script source initialization and handler onCreate/onCreatePost dispatch. The family remains open: full globals, character coordinates, rating lifecycle and requested compiled-engine differentials are pending.
+The previous interpreter inference that native ratingPercent starts null was incorrect and is removed. `verify_cpp_defaults.py` generates actual Haxe C++, checks Float/Int/Bool/String types and compiles a synthetic zeroed-allocation probe with g++. It supplies a metadata-only haxelib shim for code generation; no hxcpp runtime or compiled Psych game is represented by that shim. The runtime zeroing premise is source-checked in hxcpp v4.3.2 Object.h and Immix.cpp; README records the source links and limitations.
 
-## Non-Psych extension decision (not implemented in this batch)
+Current executed checks: five native suites (global initialization, menu asset fallbacks, menu regressions, gameplay flow, syntax); 138 callback reference cases; nine-field C++ probe plus Bool. Earlier 36-suite execution predates the native-default/warning corrections and is historical evidence, not a rerun of those changes. Physical Android, Mali-G57, touch and full mod runs remain unverified.
 
-`loadScript`, `resizeWindow`, and `ending` are not registered Psych 1.0.4 functions. Without a mod-defined function, a Lua call raises an attempt-to-call-nil error. `ClientPrefs.windowMove` is not a Psych ClientPrefs field; class reflection returns null/nil for this absent field. Proposed separate optional extension contract: namespaced `LightExtensions.loadScript/resizeWindow`, documented return/error contracts, no implicit aliasing of `ending` or unknown properties. Awaiting user decision; existing non-Psych behavior has not been changed.
+## Compiled Psych feasibility
+
+A Linux reference build is feasible after installing the runtime/dependencies and materializing the pinned source/assets. It is not currently runnable: the downloaded haxelib binary fails to load libneko.so.2. The executable named neko on PATH is an unrelated streaming server, not the Haxe Neko VM. No working lime or full hxcpp installation was found. Project.xml requires Flixel 5.6.1, flixel-addons 3.2.2, tjson 1.4.0, linc_luajit, hscript-iris 1.1.3, hxvlc 2.0.1, flxanimate, plus Lime/OpenFL dependencies; their full installation/build has not been completed. Direct source download timed out in this environment. Android additionally needs its cross-compilation toolchain, which has not been validated. These are observed setup/network blockers, not a claim that Psych cannot compile.
+
+## Non-Psych APIs — pending, no new implementation
+
+loadScript, resizeWindow and ending are not registered Psych 1.0.4 functions. With no mod-defined function, calling them raises an attempt-to-call-nil Lua error. They remain pending and were not implemented. ClientPrefs.windowMove is not a Psych field; reflection returns null/nil for a missing field. The existing Light special case is a separate unresolved difference. No extension contract has been activated for these APIs.
