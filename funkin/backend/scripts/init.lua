@@ -284,7 +284,7 @@ function Script:call(func, ...)
 		f = function(...) return self.hscriptCall(func, ...) end
 	end
 	if f and type(f) == "function" then
-		if self.__failedfunc[func] then return end
+		if self.__failedfunc[func] and not (self._psych and self._psych.retryCallbacks) then return end
 		local s, err = xpcall(f, captureError, ...)
 		if s then
 			if err ~= nil then

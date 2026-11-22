@@ -133,7 +133,7 @@ function Notes.install(compat, api)
 		local name = "noteTween" .. property:sub(1, 1):upper() .. property:sub(2)
 		api[name] = function(tag, index, value, duration, ease)
 			local object = assert(member("strumLineNotes", index), "Psych receptor index out of range")
-			compat:_tweenObject(tag, object, property, value, duration, ease)
+			compat:_tweenObject(tag, object, property, value, duration, ease, "strumLineNotes." .. tostring(index) .. "." .. property)
 		end
 	end
 	compat.psychNoteIndex = function(note)

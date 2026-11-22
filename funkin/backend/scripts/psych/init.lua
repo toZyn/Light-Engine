@@ -1,4 +1,5 @@
 local HScript = {}
+local Reflection = require "funkin.backend.scripts.psych.reflection"
 local Gameplay = require "funkin.backend.scripts.psych.gameplay"
 local Notes = require "funkin.backend.scripts.psych.notes"
 local createRuntime
@@ -471,7 +472,7 @@ function HScript.install(compat, api)
 		compat:_active()
 		local state = compat.state
 		state.psychVariables = state.psychVariables or {}
-		state.psychVariables[key] = value
+		state.psychVariables[key] = Reflection.parseInstance(compat, value)
 		return value
 	end
 	api.getVar = function(key)

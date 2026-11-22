@@ -8,7 +8,7 @@ Light Engine 0.6.0 includes compatibility improvements for Psych Engine 1.0.4 mo
 - Constructor globals, PlayState score/miss/hit counters and stage base character coordinates.
 - Rating thresholds, full-combo labels, rating overrides and scoring callback synchronization.
 - Selected note/strum properties, texture changes, arrow skins, section callbacks, sprites, cameras, tweens and HScript bindings.
-- Missing menu asset recovery. Recovery beyond Psych behavior is identified by `[Light extension]` in the log.
+- Psych HUD contract: `timeBar`/`timeTxt`/`timeBarBG` map to a native time bar, and `scoreTxt`/`botplayTxt` map to native PlayState text (or a Psych stand-in when a state has none) so `updateScoreText` and `setProperty("scoreTxt.text", …)` work.- Missing menu asset recovery. Recovery beyond Psych behavior is identified by `[Light extension]` in the log.
 
 The runtime still uses the existing compatibility setting and mod detection. API availability depends on the detected layout and script initialization.
 
@@ -20,7 +20,7 @@ These checks execute isolated Psych Haxe source and a C++ zeroed-allocation prob
 
 ## Remaining differences
 
-- Complete HaxeFlixel/OpenFL class and reflection coverage, HUD objects, group layering and script lifecycle parity are not established.
+- Complete HaxeFlixel/OpenFL class and reflection coverage, group layering and script lifecycle parity are not established. The Psych HUD is limited to the time bar, score text and botplay text; other Psych HUD objects are not recreated.
 - Some argument coercion, custom difficulty metadata, translations and callback-stop variants remain unverified.
 - Video playback on this runtime requires supported native video assets; MP4 compatibility is not complete.
 - Random stream ownership, controller mapping, path resolution and spatial queries can differ from Psych.
