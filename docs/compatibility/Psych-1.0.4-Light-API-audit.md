@@ -1002,3 +1002,14 @@ The attached script calls `keyJustPressed("space")`. Psych routes unrecognized c
 Unverified: physical Android touch, USB/Bluetooth gamepad mapping, Mali-G57 readback, Android external-storage permissions, and whole-mod execution on the new batch. Only this batch is authorized; later batches have not been started.
 
 Current batch exposure: 171 of the 223 Lua registration names are exposed; 52 remain absent. Only the 31 changed rows were reviewed for this batch. There are 11 implemented rows in that set, and 20 remain distinct.
+
+## Core menu asset batch — 2026-11-22
+
+| Surface | Light location | Verified behavior | Difference from Psych 1.0.4 |
+|---|---|---|---|
+| Title intro text | funkin/backend/menuassets.lua:3; funkin/states/title.lua:92 | Base entries then current mod entries, trimmed and deduplicated; literal `--` delimiter; empty mod retains base entries | Only current mod and base, not all global mod directories. Both sources empty returns two empty strings instead of failing selection. |
+| Week menu character | funkin/backend/menuassets.lua:31; funkin/ui/storymenu/character.lua:23 | Mod first then base path; Psych `image` uses `menucharacters/`; native `sprite` retains native directory | Missing/invalid fields recover from base BF. Psych MenuCharacter does not validate incomplete JSON and can fail after parsing; this recovery is explicitly requested Light behavior. |
+
+Source comparison: Psych tag `1.0.4`, commit `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`: `TitleState.getIntroTextShit`, `Mods.mergeAllTextsNamed`, `CoolUtil.listFromString`, `MenuCharacter.changeCharacter`.
+The uploaded three ZIPs contain neither introText.txt nor menu-character JSON. The exact offending input is not available; empty intro text and missing sprite/image are reproduced fixtures, not an attribution to a specific mod file.
+Validation: native LÖVE 11.5 `menu-asset-fallbacks` (2 checks), `menu-regressions`, `syntax` pass. Full compiled Psych differential execution and Android touch/render verification have not been performed.

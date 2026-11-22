@@ -90,11 +90,9 @@ function TitleState:enter()
 end
 
 function TitleState:getIntroTextShit()
-	local fullText = paths.getText('introText')
-	local firstArray = fullText:split('\n')
-	local swagGoodArray = firstArray[love.math.random(1, #firstArray)]
-
-	return swagGoodArray:split('--')
+	local lines = require('funkin.backend.menuassets').introLines()
+	if #lines == 0 then return {'', ''} end
+	return lines[love.math.random(1, #lines)]
 end
 
 function TitleState:update(dt)

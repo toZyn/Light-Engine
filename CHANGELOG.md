@@ -813,3 +813,8 @@ outside the Lua recovery boundary. See docs/engine-stability.md.
 - Storage initialization on desktop platforms
 - DialogueBox crash when dialogue.txt is missing
 - Directory creation with proper permissions on Windows/Linux
+
+### Core menu asset loading
+- Merge base and mod intro text without discarding literal separators or selecting an empty list.
+- Read Psych menu-character image fields and retain native sprite fields.
+- Recover missing or incomplete menu-character data from base BF data.
