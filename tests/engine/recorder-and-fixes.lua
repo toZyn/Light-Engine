@@ -487,13 +487,22 @@ check("B3: Receptors and baton release cleanly across dual-key spam, holdTime ex
 	nf:destroy()
 
 	-- 4) VirtualPad:leave() releases active held touch key (e.g. during pause)
+	local previousControls = ClientPrefs.data.virtualControls
+	ClientPrefs.data.virtualControls = true
 	local vpad = VirtualPad("down", 0, 0, 100, 100)
 	vpad:enter()
-	VirtualPad.press("b3_touch", 50, 50, 1, 0)
-	assert(love.keyboard.isDown("down"), "Expected VirtualPad 'down' held after press")
+	local windowWidth, windowHeight = love.graphics.getDimensions()
+	local scale = math.min(windowWidth / game.width, windowHeight / game.height)
+	local x = (windowWidth - game.width * scale) / 2 + 50 * scale
+	local y = (windowHeight - game.height * scale) / 2 + 50 * scale
+	VirtualPad.press("b3_touch", x, y, 1, 0)
+	local pressed = love.keyboard.isDown("down")
 	vpad:leave()
-	assert(not love.keyboard.isDown("down"), "VirtualPad:leave() must clear held virtual key")
+	local released = not love.keyboard.isDown("down")
 	vpad:destroy()
+	ClientPrefs.data.virtualControls = previousControls
+	assert(pressed, "Expected VirtualPad 'down' held after press")
+	assert(released, "VirtualPad:leave() must clear held virtual key")
 
 	controls:unbindRelease(onRelProbe)
 	controls:reset({controls = table.clone(ClientPrefs.controls)})
@@ -568,13 +577,15 @@ check("B4: DialogueBox hitboxes, Camera world/screen projection, Mouse/Touch ove
 	local sc = math.min(winW / game.width, winH / game.height)
 	local sx = (winW - sc * game.width) / 2 + 640 * sc
 	local sy = (winH - sc * game.height) / 2 + 520 * sc
+	local previousControls = ClientPrefs.data.virtualControls
+	ClientPrefs.data.virtualControls = true
 	VirtualPad.press("b4_z", sx, sy, 1, 0)
 	VirtualPad.release("b4_z", sx, sy, 1, 0)
-	assert(topHits == 1 and bottomHits == 0,
-		"Top-most VirtualPad must receive touch ahead of underlying pad")
-
 	bottomPad:destroy()
 	topPad:destroy()
+	ClientPrefs.data.virtualControls = previousControls
+	assert(topHits == 1 and bottomHits == 0,
+		"Top-most VirtualPad must receive touch ahead of underlying pad")
 	pixDlg:closeDialogue()
 	normDlg:closeDialogue()
 	zCam:destroy()
