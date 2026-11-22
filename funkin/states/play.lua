@@ -881,6 +881,7 @@ function PlayState:hasActiveDialogue()
 end
 
 function PlayState:startCountdown()
+	if self._startingCountdownCallback then return end
 	if self.buttons and not table.find(self.members, self.buttons) then
 		self:add(self.buttons)
 	end
@@ -888,7 +889,9 @@ function PlayState:startCountdown()
 		self.pauseButton:promotePad()
 	end
 
+	self._startingCountdownCallback = true
 	local event = self.scripts:call("startCountdown")
+	self._startingCountdownCallback = nil
 	if event == Script.Event_Cancel then return end
 
 	self:setPlayback(ClientPrefs.data.playback)

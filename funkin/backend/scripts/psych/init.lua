@@ -268,10 +268,10 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras, setS
 				if field == "cameras" then
 					local targets = {}
 					for index = 0, value.length - 1 do
-						local name = cameras[value[index]]
-						assert(name, "Unknown HScript camera")
-						targets[#targets + 1] = assert(type(name) == "string" and compat:_root(name) or name,
-							"HScript camera unavailable")
+						local target = cameras[value[index]]
+						assert(target, "Unknown HScript camera")
+						if type(target) == "string" then target = compat:_root(target) end
+						targets[#targets + 1] = assert(target, "HScript camera unavailable")
 					end
 					sprite.cameras = targets
 					return
