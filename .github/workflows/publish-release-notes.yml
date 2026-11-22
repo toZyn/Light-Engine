@@ -1,0 +1,42 @@
+name: Update published release notes
+on:
+  push:
+    branches: [release/v0.6.0]
+    paths: [.github/workflows/publish-release-notes.yml]
+permissions:
+  contents: write
+jobs:
+  notes:
+    if: github.ref == 'refs/heads/release/v0.6.0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Update notes without changing release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/releases/tags/v0.6.0" > release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('release.json').read_text())
+          assert release['tag_name'] == 'v0.6.0' and not release['draft']
+          assert release['target_commitish'] == '88956dd24dc682418c31629f9200909bd1b2370a'
+          lines = Path('CHANGELOG.md').read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line.startswith('## [0.6.0]')) + 1
+          end = next((i for i in range(start, len(lines)) if lines[i].startswith('## [')), len(lines))
+          section = '\n'.join(lines[start:end]).strip()
+          assert '### Added' in section and 'compatibility remains partial' in section
+          previous = release.get('body') or ''
+          _, marker, downloads = previous.partition('## Downloads & Install')
+          notes = '## Light Engine 0.6.0\n\n' + section + '\n'
+          if marker:
+              notes += '\n' + marker + downloads
+          Path('notes.md').write_text(notes)
+          PY
+          gh release edit v0.6.0 --repo "$REPO" --notes-file notes.md
