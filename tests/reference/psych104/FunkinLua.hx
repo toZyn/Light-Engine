@@ -1,0 +1,1 @@
+class FunkinLua {public static function luaTrace(v:Dynamic,a:Bool=false,b:Bool=false,c:Dynamic=null) {}}

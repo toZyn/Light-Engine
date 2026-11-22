@@ -245,6 +245,7 @@ game = {
 	dt = 0,
 
 	keys = loxreq "input.keyboard",
+	gamepads = loxreq "input.gamepad",
 	mouse = loxreq "input.mouse",
 	touch = loxreq "input.touch",
 	display = Display,
@@ -414,6 +415,7 @@ function game.update(real_dt)
 
 	for _, o in ipairs(Flicker.instances) do o:update(dt) end
 	game.sound.update(dt)
+	game.gamepads.update()
 
 	if requestedState ~= nil then
 		dt, game.isSwitchingState = 0, true
@@ -434,6 +436,7 @@ function game.update(real_dt)
 	if dt ~= 0 then VirtualPad.updatePress() end
 
 	game.keys.reset()
+	game.gamepads.reset()
 	game.mouse.reset()
 	game.touch.reset()
 end

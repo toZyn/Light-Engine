@@ -81,13 +81,6 @@ function Gameplay.install(compat, api)
 		if not ok then error(failure, 2) end
 		return state.startedCountdown == true
 	end
-	for method, source in pairs({keyboardPressed = "pressed", keyboardJustPressed = "justPressed",
-		keyboardReleased = "justReleased"}) do
-		api[method] = function(key)
-			local keys = game.keys[source]
-			return keys and keys[tostring(key):upper()] == true or false
-		end
-	end
 
 	api.getHealth = function() return state.health end
 	api.setHealth = function(health) api.setProperty("health", health) end

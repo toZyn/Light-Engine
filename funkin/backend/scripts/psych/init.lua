@@ -380,6 +380,10 @@ function HScript.install(compat, api)
 	local session
 	local script = compat.script
 	Gameplay.install(compat, api)
+	require("funkin.backend.scripts.psych.input").install(compat, api)
+	require("funkin.backend.scripts.psych.utilities").install(compat, api)
+	require("funkin.backend.scripts.psych.files").install(compat, api)
+	require("funkin.backend.scripts.psych.queries").install(compat, api)
 	require("funkin.backend.scripts.psych.media").install(compat, api)
 	require("funkin.backend.scripts.psych.scripts").install(compat, api)
 	local installNoteGroups = Notes.install(compat, api)

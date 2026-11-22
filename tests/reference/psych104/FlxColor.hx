@@ -1,0 +1,1 @@
+class FlxColor {public static var RED:Int=0xFFFF0000;}

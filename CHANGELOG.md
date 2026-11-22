@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Psych API batch 1
+
+- Expose Lua control queries, gamepad queries, string tools, random helpers,
+  file operations, script enumeration and spatial queries.
+- Keep gamepad press/release edges through the engine frame and track devices
+  separately. Resolve Lua control names through the configured bindings.
+- Compare 138 contract vectors against Haxe execution of Psych 1.0.4 callback
+  bodies. Record 11 implemented and 20 distinct entries in the API inventory.
+- Retain differences for random stream ownership, controller mapping, path
+  resolution and spatial queries. Android input/storage and Mali pixel
+  readback have not been verified on hardware.
+
 ### Added
 
 - Add directional and confirm buttons to the Android pause menu.
