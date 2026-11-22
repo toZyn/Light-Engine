@@ -18,8 +18,10 @@ For detected mods, Light Engine loads `.lua` and HScript `.hx` from `scripts/`,
 loaded on demand. The game does not ship a Haxe compiler or a second engine.
 
 The host bindings currently include camera effects, `FlxG.camera`, basic
-`FlxSprite` and `FlxText` construction, sprite ownership and ordering, timing,
-shared script variables, and a subset of the Lua helper API below. Native Psych
+`FlxSprite` and `FlxText` construction, sprite ownership and ordering, atlas animations, scoped `FlxTimer`, and
+single-run numeric `FlxTween` with `FlxEase`. They also include timing,
+health and score, basic character access, shared script variables, and a
+subset of the Lua helper API below. Native Psych
 source mods, external Haxe libraries, arbitrary HaxeFlixel classes, and
 unimplemented Psych-specific fields need further adaptation.
 

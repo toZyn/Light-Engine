@@ -270,6 +270,9 @@ end
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
+import flixel.util.FlxTimer;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
 var tile:FlxSprite;
 function onCreate() {
  tile = new FlxSprite(24, 16).makeGraphic(10, 12, 0xFF00FF);
@@ -277,11 +280,17 @@ function onCreate() {
  var label = new FlxText(10, 20, 128, "HScript", 24);
  game.add(label);
  FlxG.camera.zoom = 1.25;
+ game.health = 1.2;
+ var timer = new FlxTimer();
+ timer.start(0.1, function(t) { setVar("timerLoops", t.elapsedLoops); }, 2);
 }
 function onEvent(name:String, a:String, b:String) {
  FlxG.camera.zoom = name == "Test" ? 1.5 : 1;
  tile.x += 8;
  setVar("compatBeat", curBeat);
+ FlxTween.tween(tile, {x: 56}, 0.25, {ease: FlxEase.linear, onComplete: function(t) {
+  setVar("tweenFinished", t.finished);
+ }});
 }
 ]]))
   Mods.root, Mods.currentMod = 'fixture-mods', 'psych'
@@ -295,6 +304,7 @@ function onEvent(name:String, a:String, b:String) {
    local scripts, state = ScriptsHandler(), State()
    require('funkin.backend.modding.psych').loadScripts(state, scripts, song, chart)
    assert(#scripts.scripts == 2 and scripts.scripts[1]._psych and scripts.scripts[2]._psych)
+   state.health = 1
    local zoom = game.camera.zoom
    local members = #state.members
    scripts:call('create')
@@ -308,7 +318,12 @@ function onEvent(name:String, a:String, b:String) {
    local vars = scripts.scripts[1].variables
    assert(vars.created and vars.lastEvent == 'Test:one:two')
    assert(vars.haxeNumber == 42 and vars.haxeNext == 43 and vars.haxeBudgetStopped and vars.haxeImportBlocked)
-   assert(state.psychVariables.compatBeat == 18)
+   assert(state.psychVariables.compatBeat == 18 and state.health == 1.2)
+   scripts:call('update', 0.125)
+   assert(state.psychVariables.timerLoops == 1 and state.members[members + 1].x == 44)
+   scripts:call('update', 0.125)
+   assert(state.psychVariables.timerLoops == 2 and state.members[members + 1].x == 56)
+   assert(state.psychVariables.tweenFinished)
    scripts:close()
    assert(#state.members == members)
   end, debug.traceback)

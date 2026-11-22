@@ -1,5 +1,11 @@
 local HScript = {}
+local Gameplay = require "funkin.backend.scripts.psych.gameplay"
 local createRuntime
+local haxeLibraries = {
+	FlxG = "flixel", FlxSprite = "flixel", FlxText = "flixel.text", FlxColor = "flixel.util",
+	FlxTimer = "flixel.util", FlxTween = "flixel.tweens", FlxEase = "flixel.tweens",
+	Paths = ""
+}
 
 local function runtime()
 	if createRuntime then return createRuntime end
@@ -58,6 +64,16 @@ local spriteMethods = {
 
 local function installSprites(interpreter, compat, api, gameProxy, cameras)
 	local metadata = setmetatable({}, {__mode = "k"})
+	local atlases = setmetatable({}, {__mode = "k"})
+	local assetPaths = {__name__ = "Paths", image = function(key) return key end}
+	function assetPaths.getSparrowAtlas(key)
+		local token = {}
+		atlases[token] = assert(paths.getAtlas(key), "Missing HScript atlas: " .. tostring(key))
+		return token
+	end
+	interpreter:bind("Paths", assetPaths)
+	interpreter:expose("backend.Paths", assetPaths)
+	interpreter:expose("Paths", assetPaths)
 	local serial = 0
 	local function construct(kind, arguments)
 		repeat
@@ -74,6 +90,16 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 		end
 		local proxy = {}
 		metadata[proxy] = tag
+		proxy.animation = {
+			addByPrefix = function(_, ...) return api.addAnimationByPrefix(tag, ...) end,
+			addByIndices = function(_, name, prefix, indices, postfix, fps, looped)
+				local frames = {}
+				for index = 0, indices.length - 1 do frames[index + 1] = indices[index] end
+				local sprite = compat:_owned(tag)
+				sprite.animation:addByIndices(name, prefix, frames, postfix or "", fps or 24, looped == true)
+			end,
+			play = function(_, ...) return api.playAnim(tag, ...) end
+		}
 		for method, native in pairs(spriteMethods) do
 			proxy[method] = function(_, ...)
 				compat:_owned(tag)[native](object, ...)
@@ -104,6 +130,10 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 				local sprite = compat:_owned(tag)
 				local native = spriteFields[field]
 				if native then sprite[native] = value; return end
+				if field == "frames" then
+					sprite:setFrames(assert(atlases[value], "Expected an HScript atlas"))
+					return
+				end
 				if field == "cameras" then
 					local targets = {}
 					for index = 0, value.length - 1 do
@@ -146,6 +176,7 @@ end
 function HScript.install(compat, api)
 	local session
 	local script = compat.script
+	Gameplay.install(compat, api)
 	local function getSession()
 		if session then return session end
 		session = runtime()(script.path)
@@ -162,6 +193,8 @@ function HScript.install(compat, api)
 		installSprites(session, compat, api, gameProxy, {
 			[camGame] = "camGame", [gameProxy.camHUD] = "camHUD", [gameProxy.camOther] = "camOther"
 		})
+		Gameplay.bind(session, compat, api, gameProxy)
+		require("funkin.backend.scripts.psych.motion").install(session, compat, api)
 		local colors = {
 			__name__ = "flixel.util.FlxColor",
 			BLACK = 0xFF000000, WHITE = 0xFFFFFFFF, RED = 0xFFFF0000,
@@ -228,8 +261,9 @@ function HScript.install(compat, api)
 		return session:invoke(name, args or {}, args and #args or 0)
 	end
 	api.addHaxeLibrary = function(name, package)
-		local libraries = {FlxG = "flixel", FlxSprite = "flixel", FlxText = "flixel.text", FlxColor = "flixel.util"}
-		if libraries[name] and (not package or package == "" or package == libraries[name]) then
+		local namespace = haxeLibraries[name]
+		if namespace and (not package or package == "" or package == namespace
+			or name == "Paths" and package == "backend") then
 			getSession()
 			return true
 		end
