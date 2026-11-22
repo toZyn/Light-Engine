@@ -13,13 +13,20 @@ function nativeStage.parse(data)
 	if data.opponent and not chars.dad then chars.dad = {position = data.opponent, cameraOffsets = data.camera_opponent} end
 	if data.girlfriend and not chars.gf then chars.gf = {position = data.girlfriend, cameraOffsets = data.camera_girlfriend} end
 	stage.characters = chars
+	stage.hideGirlfriend = data.hide_girlfriend == true
 	return stage
 end
 
 local StageParse = {}
 
 function StageParse.get(stage)
-	return paths.getJSON("data/stages/" .. stage)
+	local key = "data/stages/" .. stage
+	local root = require("funkin.backend.modding.psych").root()
+	local path = paths.getPath(key .. ".json")
+	if root and path == root .. "stages/" .. stage .. ".json" then
+		return paths.getJSON(key, {relaxedObjectSeparators = true})
+	end
+	return paths.getJSON(key)
 end
 
 function StageParse.getParser(data)

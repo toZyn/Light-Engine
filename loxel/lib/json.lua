@@ -531,7 +531,11 @@ end
 local function decode_item()
 	local top = statusTop
 	local ref = statusRef[top]
-	if statusAry[top] then
+	if statusOptions and statusOptions.relaxedObjectSeparators and not statusAry[top] and next_byte() == 125 then
+		statusPos = statusPos + 1
+		statusTop = top - 1
+		top = statusTop
+	elseif statusAry[top] then
 		ref[#ref+1] = decode()
 	else
 		expect_byte '^[ \t\r\n]*"'
@@ -541,7 +545,7 @@ local function decode_item()
 		statusField=key
 		ref[key] = decode()
 	end
-	if top == statusTop then
+	if top == statusTop and top > 0 then
 		repeat
 			local chr = next_byte()
 			statusPos = statusPos + 1
@@ -551,6 +555,10 @@ local function decode_item()
 			if statusAry[statusTop] then
 				if chr ~= 93 --[[ "]" ]] then decode_error "expected ']' or ','" end
 			else
+				if chr == 34 and statusOptions and statusOptions.relaxedObjectSeparators then
+					statusPos = statusPos - 1
+					return
+				end
 				if chr ~= 125 --[[ "}" ]] then decode_error "expected '}' or ','" end
 			end
 			statusTop = statusTop - 1

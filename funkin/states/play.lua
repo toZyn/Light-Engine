@@ -409,6 +409,7 @@ function PlayState:enterScene()
 
 	self.boyfriend, self.dad, self.gf =
 		self.stage.boyfriend, self.stage.dad, self.stage.gf
+	if self.gf and self.stage.data and self.stage.data.hideGirlfriend then self.gf.visible = false end
 
 	if self.boyfriend then self.scripts:add(self.boyfriend.script) end
 	if self.gf then self.scripts:add(self.gf.script) end

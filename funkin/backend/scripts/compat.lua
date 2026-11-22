@@ -47,13 +47,29 @@ function Compat:_root(name)
 	local object = self.objects[name]
 	if object ~= nil then return object end
 	if name == "camGame" then return self.state.camGame or game.camera end
+	if self.script._psych then
+		if name == "iconP1" or name == "icon-bf" then return self.state.healthBar and self.state.healthBar.iconP1 end
+		if name == "iconP2" or name == "icon-dad" then return self.state.healthBar and self.state.healthBar.iconP2 end
+		if name == "timeBar" or name == "timeTxt" or name == "timeBarBG" then
+			local hud = self.state.psychTimeHud or {}
+			self.state.psychTimeHud = hud
+			hud[name] = hud[name] or {visible = false}
+			return hud[name]
+		end
+	end
 	return self.state[name]
 end
 
 function Compat:_resolve(path)
+	if self.script._psych then
+		path = path:gsub("^icon%-bf([%.%[])", "iconP1%1"):gsub("^icon%-dad([%.%[])", "iconP2%1")
+	end
 	self:_active()
 	local parts = tokens(path)
 	if #parts == 1 then
+		if self.script._psych and parts[1] == "defaultCamZoom" then
+			return self.state, "camZoom", self.state.camZoom
+		end
 		local target = self.objects[parts[1]] ~= nil and self.objects or self.state
 		return target, parts[1], self:_root(parts[1])
 	end
@@ -183,6 +199,7 @@ end
 
 function Compat:_tweenObject(tag, object, key, value, duration, ease)
 	self:_active()
+	if self.script._psych then duration = tonumber(duration) end
 	positive(duration, "tween duration")
 	if type(tag) ~= "string" or tag == "" then fail("tween tag must be a nonempty string") end
 	if type(object[key]) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
@@ -306,6 +323,7 @@ function Compat.new(state, script, psych)
 		if updateHitbox ~= false then object:updateHitbox() end
 	end
 	api.setScrollFactor = function(tag, x, y) self:_object(tag).scrollFactor:set(x, y) end
+	if psych then api.setLuaSpriteScrollFactor = api.setScrollFactor end
 	api.updateHitbox = function(tag) self:_object(tag):updateHitbox() end
 	api.screenCenter = function(tag, axes) self:_object(tag):screenCenter(axes) end
 	api.addAnimationByPrefix = function(tag, name, prefix, fps, looped)
