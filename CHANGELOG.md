@@ -5,6 +5,33 @@ All notable changes to Light Engine will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-21
+
+### Added
+- Added opt-in Psych Engine mod detection under `mods/`, including support for
+  selected Lua and HScript APIs, custom events and substates, camera filters,
+  dialogue, and OGV cutscenes.
+- Added compatibility for legacy Psych stage JSON and alternate idle animations.
+  Verified both songs in the original Deathmatch mod with automated gameplay.
+
+### Fixed
+- Fixed mobile pause-menu selection and kept menu controls available when
+  gameplay hitboxes are disabled.
+- Improved dense-note rendering and preserved closely spaced notes during
+  gameplay.
+- Handled missing file-size metadata during Story Mode difficulty discovery.
+
+### Changed
+- Updated Zyn's X handle in the credits to `@itsZyn_lol`.
+
+### Compatibility
+- Psych Engine compatibility covers the APIs documented in the
+  [modding guide](docs/modding-compatibility.md). MP4 playback, individual
+  sustain-segment manipulation, and unimplemented HaxeFlixel or OpenFL APIs
+  remain outside the supported surface.
+
+Android version code: 220.
+
 ## [0.4.2] - 2026-11-15
 
 ### Added

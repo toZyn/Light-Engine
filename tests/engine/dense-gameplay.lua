@@ -133,3 +133,36 @@ check("dense render departures compact lane arrays without per-note shifts", fun
  print(string.format("RENDER DEPARTURES notes=%d elapsed=%.3fms",#notes,(love.timer.getTime()-before)*1000))
  field:destroy()
 end)
+
+check("dense automatic hits retain overdue and interleaved notes", function()
+	local field = Notefield(0, 0, 4, "default")
+	local overdue = field:addNote(Note(0, 0, 0, nil, field.skin))
+	local alreadyHit = field:addNote(Note(0.96, 1, 0, nil, field.skin))
+	alreadyHit.wasGoodHit = true
+	local current = field:addNote(Note(0.99, 2, 0, nil, field.skin))
+	local notes = field:getNotes(1, nil, true)
+	assert(#notes == 2 and notes[1] == overdue and notes[2] == current)
+	field:destroy()
+end)
+
+check("new notes enter the camera queue on the same frame", function()
+	local field = Notefield(game.width / 2, game.height / 2, 4, "default")
+	local camera = Camera()
+	local note = field:addNote(Note(0, 0, 0, nil, field.skin))
+	field:_prepareCameraDraw(camera, true)
+	local queue = field.lanes[1].__cameraRenderQueue[camera]
+	assert(queue and table.find(queue, note))
+	field:destroy()
+	camera:destroy()
+end)
+
+check("visible notes update once per frame", function()
+	local field = Notefield(0, 0, 4, "default")
+	local note = field:addNote(Note(0, 0, 0, nil, field.skin))
+	local updates = 0
+	note.update = function() updates = updates + 1 end
+	field:__prepareLane(0, field.lanes[1], 0)
+	field:update(1 / 60)
+	assert(updates == 1, "visible note updated " .. updates .. " times")
+	field:destroy()
+end)

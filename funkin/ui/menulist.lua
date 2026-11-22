@@ -163,24 +163,27 @@ end
 function MenuList:handleTouch(dt)
 	if not self.isMobile or self.lock then return end
 
-	if game.touch.anyTouchJustReleased then
-		local touch = game.touch.getTouch(0)
-		if not touch then return end
-		local tx, ty = touch.x, touch.y
-		for i, obj in ipairs(self.members) do
-			if not obj.unselectable and self:touchOverObj(tx, ty, obj) then
-				if i == self.curSelected then
-					if self.selectCallback then
-						self.selectCallback(obj)
-						self.lock = true
-					end
-				else
-					self:setSelection(i)
+	if not game.touch.anyTouchJustReleased then return end
+
+	for slot = 0, game.touch.maxTouches - 1 do
+		local touch = game.touch.getTouch(slot)
+		if touch and touch.justReleased then
+			for i, obj in ipairs(self.members) do
+				if not obj.unselectable and self:touchOverObj(touch.x, touch.y, obj) then
+					local activate = self.activateOnTouch or i == self.curSelected
+					if i ~= self.curSelected then self:setSelection(i) end
+					if activate then self:activateSelection() end
+					return
 				end
-				return
 			end
 		end
 	end
+end
+
+function MenuList:activateSelection()
+	if self.lock or not self.selectCallback or #self.members == 0 then return end
+	self.lock = true
+	self.selectCallback(self.members[self.curSelected])
 end
 
 function MenuList:touchOverObj(tx, ty, obj)
@@ -238,8 +241,7 @@ function MenuList:update(dt)
 
 	if not self.isMobile and not self.lock and controls:pressed("accept") and self.selectCallback
 		and #self.members > 0 then
-		self.selectCallback(self.members[self.curSelected])
-		self.lock = true
+		self:activateSelection()
 	end
 
 	self:updatePositions(dt)

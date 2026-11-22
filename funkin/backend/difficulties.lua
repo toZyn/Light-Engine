@@ -1,3 +1,4 @@
+local Psych = require "funkin.backend.modding.psych"
 local Difficulties = {}
 local indexCache = {}
 local cacheOwner
@@ -11,7 +12,8 @@ local function readIndex(key)
  if cacheOwner ~= paths then Difficulties.clearCache() end
  local resolved = paths.getPath(key .. '.json')
  local info = love and love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(resolved, 'file')
- local cached = info and indexCache[resolved]
+ local canCache = type(info) == "table" and type(info.size) == "number" and type(info.modtime) == "number"
+ local cached = canCache and indexCache[resolved]
  if cached and cached.size == info.size and cached.modtime == info.modtime then return cached.data end
  local ok, data = pcall(paths.getJSON, key, {skipArrays = true})
  if not ok or type(data) ~= 'table' then return nil end
@@ -26,7 +28,7 @@ local function readIndex(key)
    end
   end
  end
- if info then indexCache[resolved] = {size = info.size, modtime = info.modtime, data = summary} end
+ if canCache then indexCache[resolved] = {size = info.size, modtime = info.modtime, data = summary} end
  return summary
 end
 
@@ -63,7 +65,7 @@ function Difficulties.forSong(song, declared)
  local function read(key, variant)
   if variant and love and love.filesystem and love.filesystem.getInfo then
    local info=love.filesystem.getInfo(paths.getPath(key..'.json'),'file')
-   if info and info.size>262144 then add(variant);return end
+   if type(info) == "table" and type(info.size) == "number" and info.size > 262144 then add(variant);return end
   end
   local data=json(key)
   if type(data)~='table' then return end
@@ -80,6 +82,7 @@ function Difficulties.forSong(song, declared)
   if name and name~='events' and name~='meta' and name~='metadata' then read(base..'charts/'..name,name) end
  end
  local slug=paths.formatToSongPath(song)
+ for _, name in ipairs(Psych.difficulties(slug)) do add(name) end
  for _,file in ipairs(paths.getItems(base:sub(1,-2),'file','json')) do
   local name=file:match('^(.*)%.json$')
   if name then

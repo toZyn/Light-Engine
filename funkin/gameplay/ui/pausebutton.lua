@@ -8,6 +8,8 @@ function PauseButton:new(x, y, skin, onPause)
 		if self.onPause then self.onPause() end
 	end)
 
+	pauseButton.button.menuControl = true
+
 	pauseButton.animation:addByIndices('idle', 'pause', {0}, "", 24, false);
 	pauseButton.animation:addByIndices('hold', 'pause', {5}, "", 24, false);
 	pauseButton.animation:addByIndices('confirm', 'pause', {

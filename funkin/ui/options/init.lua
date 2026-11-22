@@ -272,8 +272,41 @@ function Options:changeBind(add, dont)
 	self.dontPlaySound = false
 end
 
+function Options:handleTouch()
+	if not self.buttons or self.blockInput or not game.touch.anyTouchJustReleased then return end
+
+	for slot = 0, game.touch.maxTouches - 1 do
+		local touch = game.touch.getTouch(slot)
+		if touch and touch.justReleased then
+			local x, y = touch.x - self.x, touch.y - self.y
+			if x >= self.tabBG.x and x <= self.tabBG.x + self.tabBG.width then
+				if not self.onTab and y >= self.titleTabBG.y and y <= self.titleTabBG.y + self.titleTabBG.height then
+					self:enterTab()
+					return
+				end
+				if self.onTab and not self.changingOption and y >= self.taby and y < game.height - 126 then
+					local tab = self.selectedTab
+					for index, item in ipairs(tab.items) do
+						local top = self.tabGroup.y + item.y
+						if not item.isTitle and y >= top and y < top + tab.data:getSize() then
+							self:changeSelection(index - self.curSelect, true)
+							self:enterOption()
+							if tab.data.settings[index][3] == "boolean" then
+								self:changeOption(1, true)
+								self:acceptOption()
+							end
+							return
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
 function Options:update(dt)
 	Options.super.update(self, dt)
+	self:handleTouch()
 
 	local shift = game.keys.pressed.SHIFT or controls:down("reset")
 	local selecty = 0

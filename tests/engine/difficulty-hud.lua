@@ -54,6 +54,40 @@ check('week discovers common variants and ignores metadata files',function()
  records={['songs/one/chart.json']={song={notes={}}}}
  assert(table.concat(D.forWeek({songs={'one'},difficulties='Normal, Expert'},{}),',')=='Normal,Expert')
 end)
+check('variant file info can omit size and modification time', function()
+ local savedLove = love
+ love = {filesystem = {getInfo = function() return {type = 'file'} end}}
+ records = {['songs/one/charts/expert.json'] = {}}
+ local ok, result = pcall(require('funkin.backend.difficulties').forSong, 'one')
+ love = savedLove
+ assert(ok and #result == 1 and result[1] == 'Expert', tostring(result))
+end)
+check('Psych layout resolves only for the active mod with compatibility enabled', function()
+ local savedLove, savedMods, savedPrefs = love, Mods, ClientPrefs
+ local root = 'mods/fixture/'
+ local dir = root .. 'data/hello'
+ love = {filesystem = {
+  getDirectoryItems = function(path)
+   if path == root .. 'data' then return {'hello'} end
+   if path == dir or path == dir .. '/' then return {'hello.json', 'hello-hard.json', 'events.json'} end
+   return {}
+  end,
+  getInfo = function(path)
+   if path == dir .. '/hello.json' or path == dir .. '/hello-hard.json' then return {type = 'file'} end
+  end
+ }}
+ Mods = {root = 'mods', currentMod = 'fixture'}
+ ClientPrefs = {data = {engineCompatibility = false}}
+ local Psych = require 'funkin.backend.modding.psych'
+ local disabled = Psych.chart('hello', 'normal')
+ ClientPrefs.data.engineCompatibility = true
+ local key, file = Psych.chart('hello', 'normal')
+ local variants = Psych.difficulties('hello')
+ local alias = Psych.alias('songs/hello/events.json')
+ love, Mods, ClientPrefs = savedLove, savedMods, savedPrefs
+ assert(disabled == nil and native == nil and key == 'data/hello/hello' and file == dir .. '/hello.json')
+ assert(table.concat(variants, ',') == 'Normal,hard' and alias == 'data/hello/events.json')
+end)
 check('difficulty colors support mod opt-out and overrides',function()
  local D=require 'funkin.backend.difficulties'
  local white=D.color('insane',{autoDifficultyColor=false})
@@ -209,3 +243,250 @@ check('rolling inputs remain bounded and unsorted notes remain intact',function(
  assert(info.ips>=99 and info.ips<=101 and #info.taps<=256)
  info:update(2);assert(info.ips==0)
 end)
+
+if originalLove then
+ check('Psych chart layout and scoped Lua callbacks work through the engine', function()
+  local root, name, song = Mods.root, Mods.currentMod, 'compat-layout-fixture'
+  local enabled = ClientPrefs.data.engineCompatibility
+  local dir = 'fixture-mods/psych/data/' .. song
+  assert(love.filesystem.createDirectory(dir))
+  assert(love.filesystem.createDirectory('fixture-mods/psych/shaders'))
+  assert(love.filesystem.write('fixture-mods/psych/shaders/tint.frag', [[
+#pragma header
+uniform float amount;
+void main() {
+ vec4 pixel = flixel_texture2D(bitmap, openfl_TextureCoordv);
+ gl_FragColor = vec4(pixel.rgb * amount, pixel.a);
+}
+]]))
+  assert(love.filesystem.write('fixture-mods/psych/shaders/tint.vert', [[
+#pragma header
+void main() {
+ #pragma body
+}
+]]))
+  assert(love.filesystem.write(dir .. '/' .. song .. '-hard.json',
+   '{"song":{"song":"compat-layout-fixture","bpm":100,"speed":1,"notes":[{"mustHitSection":true,"sectionNotes":[[250,0,0]]}]}}'))
+  assert(love.filesystem.write(dir .. '/events.json', '{"events":[[300,[["Test","one","two"]]]]}'))
+  assert(love.filesystem.write(dir .. '/dialogue.json', '{"dialogue":[{"text":"Hola, café"}]}'))
+  assert(love.filesystem.createDirectory('fixture-mods/psych/extra'))
+  assert(love.filesystem.write('fixture-mods/psych/extra/helper.lua', [[
+function onCreate() loads = (loads or 0) + 1 end
+function sum(a, b) return a + b end
+]]))
+  assert(love.filesystem.write(dir .. '/accompany.lua', [[
+function onCreate()
+ assert(type(makeLuaSprite) == "function")
+ created = true
+ haxeNumber = runHaxeCode('function addTo(value:Int) { return value + base; } return addTo(2);', {base=40})
+ haxeNext = runHaxeFunction('addTo', {3})
+ haxeImportBlocked = not pcall(runHaxeCode, 'import sys.FileSystem; return FileSystem.exists(".");')
+ haxeBudgetStopped = not pcall(runHaxeCode, 'while (true) {}')
+ makeLuaSprite('shaderTarget', '', 0, 0)
+ makeGraphic('shaderTarget', 8, 8, 'FFFFFF')
+ initLuaShader('tint')
+ assert(setSpriteShader('shaderTarget', 'tint'))
+ setShaderFloat('shaderTarget', 'amount', 0.5)
+end
+function onEvent(name, a, b)
+ lastEvent = name .. ":" .. a .. ":" .. b
+ local x = getPropertyFromGroup('playerStrums', 0, 'x')
+ noteTweenX('receptor', 4, x + 20, 0.25, 'linear')
+end
+function onEventPushed(name, a, b, time)
+ pushedTime = time
+end
+function eventEarlyTrigger(name, a, b, time)
+ if name == 'Test' then return 40 end
+end
+function onCountdownTick(counter)
+ countdownCounter = counter
+end
+function onNextDialogue(line)
+ dialogueLine = line
+end
+function onSkipDialogue(line)
+ dialogueSkipped = line
+end
+function goodNoteHitPre(index)
+ setPropertyFromGroup('notes', index, 'noAnimation', true)
+ return Function_Stop
+end
+function onCustomSubstateCreate(name)
+ assert(insertToCustomSubstate('shaderTarget'))
+ customOpened = name
+end
+function onCustomSubstateUpdate(name, dt)
+ customTime = dt
+end
+function onCustomSubstateDestroy(name)
+ customClosed = name
+end
+]]))
+  assert(love.filesystem.write(dir .. '/effect.hx', [[
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.group.FlxGroup.FlxTypedGroup;
+import flixel.text.FlxText;
+import flixel.util.FlxTimer;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
+import openfl.filters.ShaderFilter;
+import flixel.FlxCamera;
+import flixel.math.FlxPoint;
+import flixel.math.FlxMath;
+var tile:FlxSprite;
+function onCreate() {
+ tile = new FlxSprite(24, 16).makeGraphic(10, 12, 0xFF00FF);
+ game.add(tile);
+ var camera = new FlxCamera(0, 0, 16, 16);
+ camera.bgColor = 0;
+ FlxG.cameras.add(camera, false);
+ tile.cameras = [camera];
+ var pos = new FlxPoint(1, 2).add(3, 4);
+ setVar("point", FlxMath.bound(pos.x, 0, 3));
+ var label = new FlxText(10, 20, 128, "HScript", 24);
+ var group = new FlxTypedGroup();
+ game.add(group);
+ group.add(label);
+ group.forEach(function(member) { member.x += 1; });
+ setVar("groupSize", group.members.length);
+ FlxG.camera.zoom = 1.25;
+ var first = game.createRuntimeShader("tint");
+ var second = game.createRuntimeShader("tint");
+ first.setFloat("amount", 0.5);
+ second.setFloat("amount", 0.5);
+ game.camOther.setFilters([new ShaderFilter(first), new ShaderFilter(second)]);
+ game.health = 1.2;
+ var timer = new FlxTimer();
+ timer.start(0.1, function(t) { setVar("timerLoops", t.elapsedLoops); }, 2);
+}
+function onEvent(name:String, a:String, b:String) {
+ FlxG.camera.zoom = name == "Test" ? 1.5 : 1;
+ tile.x += 8;
+ setVar("compatBeat", curBeat);
+ FlxTween.tween(tile, {x: 56}, 0.25, {ease: FlxEase.linear, onComplete: function(t) {
+  setVar("tweenFinished", t.finished);
+ }});
+}
+]]))
+  Mods.root, Mods.currentMod = 'fixture-mods', 'psych'
+  ClientPrefs.data.engineCompatibility = true
+  Parser.clearCache(false)
+  local ok, err = xpcall(function()
+   local chart = assert(Parser.getChart(song, 'Hard', {strict = true}))
+   assert(chart.notes.player[1].t == 250)
+   local event = chart.events[#chart.events]
+   assert(event.t == 300 and event.e == 'Test')
+   local scripts, state = ScriptsHandler(), State()
+   state.scripts = scripts
+   state.camOther = Camera(0, 0, 8, 8)
+   state.camOther:resize(8, 8, 1, 1, true)
+   state.playerNotefield = Notefield(0, 0, 4, "default")
+   state.enemyNotefield = Notefield(0, 0, 4, "default")
+   local player = state.playerNotefield
+   local note = player:addNote(Note(0.25, 0, 0, nil, player.skin))
+   state:add(player)
+   state:add(state.enemyNotefield)
+   game.switchState(state, true)
+   game.update(0)
+   require('funkin.backend.modding.psych').loadScripts(state, scripts, song, chart)
+   assert(#scripts.scripts == 2 and scripts.scripts[1]._psych and scripts.scripts[2]._psych)
+   state.health = 1
+   local zoom = game.camera.zoom
+   local members = #state.members
+   scripts:call('create')
+   assert(#state.members == members + 2)
+   assert(state.members[members + 1].x == 24 and state.members[members + 2].members[1].content == 'HScript')
+   local customCam = state.members[members + 1].cameras[1]
+   assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
+   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3)
+   assert(state.members[members + 2].members[1].x == 11)
+   scripts:set('curBeat', 18)
+   local x = player.receptors[1].x
+   assert(scripts:preparePsychEvent(event) and event.t == 260)
+   state.countdown = {data = {true}, doCountdown = function() end}
+   PlayState.doCountdown(state, 1)
+   scripts:call('onEvent', event)
+   assert(game.camera.zoom == 1.5 and state.members[members + 1].x == 32)
+   game.camera.zoom = zoom
+   local vars = scripts.scripts[1].variables
+   assert(vars.created and vars.lastEvent == 'Test:one:two')
+   assert(vars.pushedTime == 300 and vars.countdownCounter == 0)
+   assert(vars.addLuaScript('extra/helper'))
+   assert(vars.isRunning('extra/helper.lua'))
+   assert(vars.callScript('extra/helper', 'sum', {4, 5}) == 9)
+   assert(vars.getGlobalFromScript('extra/helper', 'loads') == 1)
+   assert(not vars.addLuaScript('extra/helper.lua'))
+   assert(vars.removeLuaScript('extra/helper'))
+   assert(not vars.isRunning('extra/helper'))
+   local object = scripts.scripts[1]._psych.objects.shaderTarget
+   local canvas = love.graphics.newCanvas(8, 8)
+   love.graphics.push('all')
+   love.graphics.setCanvas(canvas)
+   love.graphics.clear()
+   love.graphics.setShader(object.shader)
+   love.graphics.draw(object.texture)
+   love.graphics.pop()
+   local data = canvas:newImageData()
+   local red, green, blue, alpha = data:getPixel(4, 4)
+   assert(math.abs(red - 0.5) < 0.01 and green == red and blue == red and alpha == 1)
+   data:release()
+   love.graphics.push('all')
+   love.graphics.setCanvas(state.camOther.canvas)
+   love.graphics.clear(1, 1, 1, 1)
+   love.graphics.setCanvas(canvas)
+   love.graphics.clear()
+   assert(state.camOther:drawCanvasToTarget(game.width, game.height))
+   love.graphics.pop()
+   local filtered = canvas:newImageData()
+   assert(math.abs(filtered:getPixel(4, 4) - 0.25) < 0.01)
+   filtered:release()
+   canvas:release()
+   assert(vars.haxeNumber == 42 and vars.haxeNext == 43 and vars.haxeBudgetStopped and vars.haxeImportBlocked)
+   assert(state.psychVariables.compatBeat == 18 and state.health == 1.2)
+   scripts:call('update', 0.125)
+   assert(state.psychVariables.timerLoops == 1 and state.members[members + 1].x == 44)
+   scripts:call('update', 0.125)
+   assert(state.psychVariables.timerLoops == 2 and state.members[members + 1].x == 56)
+   assert(state.psychVariables.tweenFinished and player.receptors[1].x == x + 20)
+   local hit = scripts:event('onNoteHit', Events.NoteHit(player, note))
+   assert(hit.cancelled and note.noAnimation)
+   assert(vars.openCustomSubstate('overlay'))
+   assert(vars.customOpened == 'overlay' and state.substate.members[1] == object)
+   state.substate:update(0.125)
+   assert(vars.customTime == 0.125)
+   assert(vars.closeCustomSubstate() and vars.customClosed == 'overlay' and not state.substate)
+   local originalSong = PlayState.SONG
+   PlayState.SONG = chart
+   local opened = vars.startDialogue('dialogue')
+   PlayState.SONG = originalSong
+   assert(opened and vars.dialogueLine == 1 and state.psychCutscene)
+   state.psychCutscene:update(0)
+   controls:onKeyPress('return')
+   controls:onKeyRelease('return')
+   controls:update()
+   state.psychCutscene:update(0)
+   assert(vars.dialogueSkipped == 1)
+   controls:update()
+   controls:onKeyPress('return')
+   controls:onKeyRelease('return')
+   controls:update()
+   state.psychCutscene:update(0)
+   controls:update()
+   assert(not state.psychCutscene)
+   assert(vars.startVideo('ughCutscene'))
+   assert(state.psychCutscene.video)
+   scripts:close()
+   assert(not state.psychCutscene)
+   assert(not state.camOther.shader and not state.camOther.psychFilterBuffers)
+   assert(not table.find(game.cameras.list, customCam))
+   state.camOther:destroy()
+   assert(#state.members == members)
+  end, debug.traceback)
+  Mods.root, Mods.currentMod = root, name
+  ClientPrefs.data.engineCompatibility = enabled
+  Parser.clearCache(false)
+  assert(ok, err)
+ end)
+end

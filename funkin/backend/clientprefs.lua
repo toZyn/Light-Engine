@@ -5,6 +5,7 @@ ClientPrefs.data = {
 	-- controls
 	asyncInput = false,
 	virtualControls = true,
+	engineCompatibility = false,
 
 	-- gameplay
 	autoPause = desktop,

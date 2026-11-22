@@ -47,13 +47,29 @@ function Compat:_root(name)
 	local object = self.objects[name]
 	if object ~= nil then return object end
 	if name == "camGame" then return self.state.camGame or game.camera end
+	if self.script._psych then
+		if name == "iconP1" or name == "icon-bf" then return self.state.healthBar and self.state.healthBar.iconP1 end
+		if name == "iconP2" or name == "icon-dad" then return self.state.healthBar and self.state.healthBar.iconP2 end
+		if name == "timeBar" or name == "timeTxt" or name == "timeBarBG" then
+			local hud = self.state.psychTimeHud or {}
+			self.state.psychTimeHud = hud
+			hud[name] = hud[name] or {visible = false}
+			return hud[name]
+		end
+	end
 	return self.state[name]
 end
 
 function Compat:_resolve(path)
+	if self.script._psych then
+		path = path:gsub("^icon%-bf([%.%[])", "iconP1%1"):gsub("^icon%-dad([%.%[])", "iconP2%1")
+	end
 	self:_active()
 	local parts = tokens(path)
 	if #parts == 1 then
+		if self.script._psych and parts[1] == "defaultCamZoom" then
+			return self.state, "camZoom", self.state.camZoom
+		end
 		local target = self.objects[parts[1]] ~= nil and self.objects or self.state
 		return target, parts[1], self:_root(parts[1])
 	end
@@ -131,6 +147,11 @@ function Compat:forward(nativeName, ...)
 		local event = ...
 		if type(event) ~= "table" then fail("event forwarding requires a native chart event") end
 		local values = event.v
+		if self.script._psych then
+			local a, b = values, nil
+			if type(values) == "table" then a, b = values[1], values[2] end
+			return self:_callback(self.callbackNames.event, event.e, a or "", b or "", event.t or 0)
+		end
 		if type(values) == "table" and values[1] ~= nil then
 			return self:_callback(self.callbackNames.event, event.e, values[1], values[2])
 		end
@@ -172,11 +193,16 @@ function Compat:_cancelTween(tag)
 end
 
 function Compat:_tween(tag, path, value, duration, ease)
+	local object, key = self:_resolve(path)
+	return self:_tweenObject(tag, object, key, value, duration, ease)
+end
+
+function Compat:_tweenObject(tag, object, key, value, duration, ease)
 	self:_active()
+	if self.script._psych then duration = tonumber(duration) end
 	positive(duration, "tween duration")
 	if type(tag) ~= "string" or tag == "" then fail("tween tag must be a nonempty string") end
-	local object, key, current = self:_resolve(path)
-	if type(current) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
+	if type(object[key]) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
 	ease = ease or "linear"
 	if type(ease) ~= "string" or not Ease[ease] then fail("unsupported easing: " .. tostring(ease)) end
 	self:_cancelTween(tag)
@@ -225,7 +251,7 @@ function Compat:_playSound(key, volume, tag, music, looped)
 	return tag
 end
 
-function Compat.new(state, script)
+function Compat.new(state, script, psych)
 	if not state or not state.add or not state.remove or not state.members then fail("state must be a native Group/State") end
 	if not script or script.closed or not script.variables or not script.set or not script.call then fail("script must be an open native Script") end
 	if script._compatibility and not script._compatibility.disposed then fail("script already has a compatibility context") end
@@ -297,6 +323,7 @@ function Compat.new(state, script)
 		if updateHitbox ~= false then object:updateHitbox() end
 	end
 	api.setScrollFactor = function(tag, x, y) self:_object(tag).scrollFactor:set(x, y) end
+	if psych then api.setLuaSpriteScrollFactor = api.setScrollFactor end
 	api.updateHitbox = function(tag) self:_object(tag):updateHitbox() end
 	api.screenCenter = function(tag, axes) self:_object(tag):screenCenter(axes) end
 	api.addAnimationByPrefix = function(tag, name, prefix, fps, looped)
@@ -458,6 +485,12 @@ function Compat.new(state, script)
 	api.runHaxeCode = function() fail("runHaxeCode is unsupported; use native Lua engine APIs") end
 	api.runHaxeFunction = function() fail("runHaxeFunction is unsupported; use native Lua engine APIs") end
 	require("funkin.backend.scripts.compat-controls").install(self, api)
+	if psych then
+		require("funkin.backend.scripts.psych.shaders").install(self, api)
+		require("funkin.backend.scripts.psych.substate").install(self, api)
+		require("funkin.backend.scripts.psych.cutscene").install(self, api)
+		self.loadHScript = require("funkin.backend.scripts.psych").install(self, api)
+	end
 	for name, fn in pairs(api) do
 		self.previous[name] = rawget(script.variables, name)
 		self.installed[name] = fn; script:set(name, fn)
@@ -476,6 +509,9 @@ end
 
 function Compat:dispose()
 	if self.disposed then return end
+	if self.disposePsychCutscene then self.disposePsychCutscene() end
+	if self.disposePsychShaders then self.disposePsychShaders() end
+	if self.disposePsychCameras then self.disposePsychCameras() end
 	self.timer:clear(); self.tween:clear()
 	local tags = {}; for tag in pairs(self.objects) do tags[#tags + 1] = tag end
 	for _, tag in ipairs(tags) do self:_remove(tag, true) end

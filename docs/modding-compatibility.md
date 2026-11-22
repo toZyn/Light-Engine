@@ -1,3 +1,47 @@
+# Psych Engine mods
+
+Enable **Gameplay → Compatibility with other Engines**, put an unpacked mod in
+`mods/<mod-name>/`, and select it in the Mods menu. Keeping the original
+`data/`, `songs/`, `weeks/`, and `characters/` directories allows Light Engine to
+find Psych charts, audio, events, weeks, and character definitions. Restart the
+song after changing the setting during gameplay.
+
+Light Engine detects Psych layouts from root-level week definitions or
+`data/<song>/<song>[-difficulty].json` charts. Enabling the option does not
+activate every mod's foreign script callbacks. Detection is refreshed when mods
+are reloaded or the option changes.
+
+For detected mods, Light Engine loads `.lua` and HScript `.hx` from `scripts/`,
+`data/<song>/`, and referenced files in `stages/`, `custom_events/`, and
+`custom_notetypes/`. Lua scripts can also use `runHaxeCode` and
+`runHaxeFunction`. The interpreter is hscript-iris 1.1.3 compiled to Lua and
+loaded on demand. The game does not ship a Haxe compiler or a second engine.
+
+## Supported host behavior
+
+- HScript sprites, text, groups, cameras, points, math, atlas animations, timers,
+  numeric tweens, and easing functions use native Light Engine objects.
+- Note and receptor groups use zero-based indices. Note spawn and hit hooks,
+  receptor tweens, countdown callbacks, camera focus, keyboard hooks, score
+  callbacks, and early chart events are available.
+- Compatible OpenFL-style fragment and vertex shaders can run on sprites or
+  in a camera filter chain. Camera buffers are allocated only when intermediate
+  passes are needed and released when the chain is detached.
+- Scripts can open substates, load and call other mod scripts, play OGV cutscenes,
+  and read Psych dialogue JSON with text and portrait images.
+- Psych game-over asset names, basic camera and character operations, and tagged
+  sound time, pitch, and fades are available.
+
+Light Engine renders holds as ribbons, so scripts that target individual Psych
+sustain segments need adaptation. MP4 playback requires a compatible decoder.
+Shaders that rely on OpenFL-specific internals and mods that build or replace
+HaxeFlixel classes require additional runtime support.
+
+To rebuild the interpreter, use Haxe 4.3.7 and run
+`python3 tools/build_psych_hscript.py /path/to/hscript-iris`. The builder verifies
+the upstream revision, uses only the checked-in Iris source from that revision,
+and generates the Lua module shipped with Light Engine.
+
 # Opt-in Lua compatibility
 
 Light Engine keeps its native Lua script lifecycle. A native script can opt in to a scoped set of Psych-like Lua helpers:
@@ -101,7 +145,11 @@ An event-specific native script can instead forward from `event(event)` to defau
 
 ## Supported boundary and example
 
-This is an opt-in Lua bridge, not a complete Psych runtime. It does not execute Haxe, translate arbitrary foreign scripts, create a Haxe class registry, reproduce Psych note/UI fields, load videos, or wrap shaders. `runHaxeCode` and `runHaxeFunction` raise explicit unsupported-operation diagnostics. Use native Lua APIs for features outside the documented table. Unknown foreign functions remain unavailable rather than pretending to succeed.
+The native Lua bridge exposes the helpers described here. Its direct opt-in
+factory leaves `runHaxeCode` and `runHaxeFunction` unavailable. Those functions
+are installed automatically for scripts loaded through Psych mod detection.
+Check the Psych Engine section above for the HScript host bindings and current
+limits.
 
 Copy `examples/compat-mod/data/scripts/compat-demo.lua` into your native mod's `data/scripts/` directory to see a HUD graphic, beat callbacks, a looping timer and scoped tween cleanup during normal gameplay. The example uses generated graphics and requires no new image/audio assets.
 

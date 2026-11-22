@@ -19,6 +19,7 @@ function Mods.getIcon(name) return ModdingUtil.getIcon(Mods.root, name) end
 function Mods.getMetadata(name) return ModdingUtil.getMeta(Mods.root, name) end
 
 function Mods.reload()
+	require("funkin.backend.modding.psych").clearDetection()
 	table.clear(Mods.all)
 	if not paths.exists(Mods.root, "directory") then return end
 
