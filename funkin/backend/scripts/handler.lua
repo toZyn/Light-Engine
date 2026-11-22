@@ -3,11 +3,24 @@ local ScriptsHandler = Classic:extend("ScriptsHandler")
 local function syncGlobals(script, state, name)
 	local conductor = state.conductor
 	if conductor then
-		script:set("bpm", conductor.bpm)
+		script:set("bpm", state.SONG and state.SONG.bpm or conductor.bpm)
+		script:set("curBpm", conductor.bpm)
+		script:set("curDecStep", conductor.step.f)
+		script:set("curDecBeat", conductor.beat.f)
 		script:set("crochet", conductor.crotchet)
 		script:set("stepCrochet", conductor.stepCrotchet)
 	end
+	script:set("songLength", (game.sound.music and game.sound.music.duration or 0) * 1000)
+	script:set("curStep", conductor and conductor.step.i or 0)
+	script:set("curBeat", conductor and conductor.beat.i or 0)
+	local sectionIndex = state.psychSectionIndex or 1
+	local section = state.psychSections and state.psychSections[sectionIndex]
+	script:set("curSection", sectionIndex - 1)
+	script:set("mustHitSection", section and section.mustHitSection or false)
+	script:set("altAnim", section and section.altAnim or false)
+	script:set("gfSection", section and section.gfSection or false)
 	script:set("score", state.score or 0)
+	script:set("hits", state.songHits or 0)
 	script:set("misses", state.misses or 0)
 	script:set("combo", state.combo or 0)
 	script:set("playbackRate", state.playback or 1)
@@ -28,7 +41,7 @@ local function call(script, name, ...)
 	local bridge = script._psych
 	if not bridge then return script:call(name, ...) end
 	if bridge.disposed then return end
-	if name == "update" or name == "postUpdate" or name == "create" or name == "postCreate" or name == "countdownStarted" or name == "beat" or name == "step" then
+	if name == "update" or name == "postUpdate" or name == "create" or name == "postCreate" or name == "countdownStarted" or name == "beat" or name == "step" or name == "section" then
 		syncGlobals(script, bridge.state, name)
 	end
 	if name == "create" then
@@ -36,6 +49,7 @@ local function call(script, name, ...)
 		script._psychCreateCalled = true
 	end
 	if name == "update" then return bridge:update(...) end
+	if name == "section" then return script:call("onSectionHit") end
 	if name == "onEvent" then return bridge:forward("event", ...) end
 	if name:sub(1, 16) == "onCustomSubstate" or name == "onNextDialogue" or name == "onSkipDialogue" then
 		return script:call(name, ...)
@@ -79,7 +93,7 @@ local function call(script, name, ...)
 			or note.parent == bridge.state.playerNotefield and "goodNoteHit" or "opponentNoteHit"
 		if not script:hasCallback(callback) then return end
 		if script.hscriptCall then
-			local proxy = require("funkin.backend.scripts.psych").note(note, bridge.state.playerNotefield)
+			local proxy = require("funkin.backend.scripts.psych").note(note, bridge.state.playerNotefield, bridge.state)
 			return script:call(callback, proxy)
 		end
 		local index = bridge.psychNoteIndex(note)
@@ -165,7 +179,7 @@ function ScriptsHandler:event(func, event)
 			if script:hasCallback(name) then
 				local result
 				if script.hscriptCall then
-					result = script:call(name, require("funkin.backend.scripts.psych").note(note, bridge.state.playerNotefield))
+					result = script:call(name, require("funkin.backend.scripts.psych").note(note, bridge.state.playerNotefield, bridge.state))
 				else
 					result = script:call(name, bridge.psychNoteIndex(note), note.direction, note.type or "", false)
 				end

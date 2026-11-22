@@ -76,6 +76,20 @@ check('keyboard hits, misses and pause preserve a native song and mod HUD', func
 	assert(not table.find(state.members, label) and next(trainer.__failedfunc) == nil, 'trainer cleanup failed')
 	state.scripts:remove(trainer)
 	trainer:close()
+
+	local field = state.playerNotefield
+	local note = field:addNote(Note(10, 0, 0, "Hazard", field.skin))
+	local proxy = require("funkin.backend.scripts.psych.notes").note(note, field, state)
+	proxy.ignoreNote = true
+	proxy.hitCausesMiss = true
+	proxy.missHealth = 0.4
+	assert(table.find(field:getNotes(10, 0), note))
+	assert(not table.find(field:getNotes(10, nil, true), note))
+	state.health = 1
+	local misses, hits = state.misses, state.songHits
+	state:goodNoteHit(note, 10)
+	assert(math.abs(state.health - 0.6) < 0.0001)
+	assert(state.misses == misses + 1 and state.songHits == hits)
 end)
 
 check('Psych stage separators preserve strict JSON as the default', function()
@@ -102,4 +116,70 @@ check("Psych Camera Follow Pos holds coordinates until explicitly released", fun
 	state:executeEvent({e = "Camera Follow Pos", v = {"", ""}, psych = true})
 	state:cameraMovement(100, 200)
 	assert(not state.psychForcedCamera and state.camFollow.x == 100 and state.camFollow.y == 200)
+end)
+
+check("Psych note textures and score counters work in both note-hit callbacks", function()
+	local asset = "psych-note-regression"
+	local folder = "assets/images"
+	assert(love.filesystem.createDirectory(folder))
+	local image = love.image.newImageData(32, 32)
+	image:encode("png", folder .. "/" .. asset .. ".png")
+	image:release()
+	local xml = {'<TextureAtlas imagePath="' .. asset .. '.png">'}
+	for _, color in ipairs({"purple", "blue", "green", "red"}) do
+		for _, suffix in ipairs({"0", " hold piece", " hold end"}) do
+			xml[#xml + 1] = ('<SubTexture name="%s" x="0" y="0" width="32" height="32"/>'):format(color .. suffix)
+		end
+	end
+	xml[#xml + 1] = "</TextureAtlas>"
+	assert(love.filesystem.write(folder .. "/" .. asset .. ".xml", table.concat(xml)))
+
+	local state = Group()
+	state.scripts = ScriptsHandler()
+	state.playerNotefield = Notefield(0, 0, 4, "default")
+	state.enemyNotefield = Notefield(0, 0, 4, "default")
+	local script = Script("tests/engine/compat-fixture.lua", false, true, true)
+	script._psych = require("funkin.backend.scripts.compat").new(state, script, true)
+	state.scripts:add(script)
+	local api = script.variables
+	local recalculations = 0
+	state.recalculateRating = function() recalculations = recalculations + 1 end
+	script:set("onSpawnNote", function(id)
+		api.setPropertyFromGroup("notes", id, "texture", asset)
+	end)
+	script:set("goodNoteHit", function() api.addMisses(2) end)
+	script:set("opponentNoteHit", function() api.addMisses(3) end)
+	api.setPropertyFromClass("PlayState", "SONG.arrowSkin", asset)
+	assert(api.getPropertyFromClass("states.PlayState", "SONG.arrowSkin") == asset)
+	for _, field in ipairs({state.playerNotefield, state.enemyNotefield}) do
+		local note = field:addNote(Note(0, 0, 4, "Glitch", field.skin))
+		state.scripts:call("noteSpawn", note)
+		assert(note.skin.psychTexture == asset and note.shader == nil)
+		assert(note.texture == paths.getAtlas(asset).texture)
+		assert(note.sustain.texture == note.texture and note.sustainEnd.texture == note.texture)
+		assert(note.sustain:getCurrentFrame().name == "purple hold piece")
+		assert(note.sustainEnd:getCurrentFrame().name == "purple hold end")
+		api.setPropertyFromGroup("notes", script._psych.psychNoteIndex(note), "texture", "")
+		assert(note.skin == field.skin and note.sustain:getCurrentFrame().name ~= "purple hold piece")
+		state.scripts:call("postGoodNoteHit", note, 0, true)
+	end
+	assert(api.getMisses() == 5 and recalculations == 2)
+	assert(api.getProperty("songMisses") == 5)
+	state.psychSections = {
+		{step = 0, mustHitSection = false},
+		{step = 12, mustHitSection = true, altAnim = true},
+		{step = 32, gfSection = true}
+	}
+	local sections = {}
+	script:set("onSectionHit", function()
+		sections[#sections + 1] = {api.curSection, api.mustHitSection, api.altAnim, api.gfSection}
+	end)
+	for _, step in ipairs({0, 11, 12, 31, 32, 12}) do PlayState.updatePsychSection(state, step) end
+	assert(#sections == 4 and sections[1][1] == 0)
+	assert(sections[2][1] == 1 and sections[2][2] and sections[2][3])
+	assert(sections[3][1] == 2 and sections[3][4] and sections[4][1] == 1)
+	assert(not next(script.__failedfunc))
+	script:close()
+	state.playerNotefield:destroy()
+	state.enemyNotefield:destroy()
 end)

@@ -171,7 +171,7 @@ function Notefield:getNotes(time, direction, sustainLoop, outBuffer)
 	for _, note in ipairs(notes) do
 		noteTime = note.time
 		if not self.removedNotes[note] and not note.tooLate
-			and not note.ignoreNote
+			and (not note.ignoreNote or (note.psychIgnoreNote and not sustainLoop))
 			and (direction == nil or note.direction == direction)
 			and (note.lastPress
 				or (sustainLoop and noteTime <= time)
@@ -379,7 +379,9 @@ function Notefield:update(dt)
 	local notes, count, write = self.activeNotes, #self.activeNotes, 1
 	for read = 1, count do
 		local note = notes[read]
-		local consumed = note.tooLate or (note.wasGoodHit and (not note.sustain or note.wasGoodSustainHit))
+		local ignored = note.psychIgnoreNote and note.ignoreNote
+			and note.time + (note.sustainTime or 0) + Note.safeZoneOffset <= timeNow
+		local consumed = ignored or note.tooLate or (note.wasGoodHit and (not note.sustain or note.wasGoodSustainHit))
 		local lane = self.lanes[note.direction + 1]
 		local passed = false
 		if consumed and lane then
@@ -389,7 +391,7 @@ function Notefield:update(dt)
 			local ending = Note.toPos(note.time + (note.sustainTime or 0) - timeNow, speed)
 			passed = speed > 0 and ending < center - extent or speed < 0 and ending > center + extent
 		end
-		if self.removedNotes[note] or passed then
+		if self.removedNotes[note] or passed or (ignored and lane and self.speed * lane.speed * (note.speed or 1) == 0) then
 			if not self.removedNotes[note] then self:removeNote(note) end
 		else
 			notes[write] = note

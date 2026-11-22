@@ -72,8 +72,11 @@ function Compat:_root(name)
 	return self.state[name]
 end
 
+local psychStateFields = {songMisses = "misses", songScore = "score"}
+
 function Compat:_resolve(path)
 	if self.script._psych then
+		path = psychStateFields[path] or path
 		path = path:gsub("^icon%-bf([%.%[])", "iconP1%1"):gsub("^icon%-dad([%.%[])", "iconP2%1")
 	end
 	self:_active()

@@ -281,7 +281,11 @@ function PlayState:enterScene()
 	self.doCountdownAtBeats = nil
 	self.skipCountdown = false
 	self.inCutscene = false
-	self.health = 1
+	self.health, self.score, self.combo, self.misses, self.songHits = 1, 0, 0, 0, 0
+	self.ratingNeedsRecalc = false
+	for _, rating in ipairs(self.ratings) do self[rating.name .. "s"] = 0 end
+	self.psychArrowSkin = PlayState.SONG.arrowSkin
+	self.psychDisableNoteRGB = PlayState.SONG.disableNoteRGB
 	self.lastCountdownBeats = nil
 
 	self.isDead = false
@@ -456,6 +460,7 @@ function PlayState:enterScene()
 	end
 
 	if psych then
+		self.psychSections = PlayState.SONG.sections
 		self.scripts:call("create")
 		local changed
 		for _, event in ipairs(self.events) do
@@ -498,6 +503,12 @@ function PlayState:enterScene()
 		local field, notes = nf[1] .. "Notefield", PlayState.SONG.notes[nf[1]]
 		self[field] = Notefield(0, y, keys, skin, nf[2], nf[3], speed)
 		local notefield = self[field]
+		if psych and (self.psychArrowSkin or self.psychDisableNoteRGB) then
+			local psychSkin = require("funkin.backend.scripts.psych.note-skin")
+			local variant = psychSkin.resolve(self, notefield.skin, self.psychArrowSkin) or notefield.skin
+			if self.psychDisableNoteRGB then variant = psychSkin.withoutRgb(self, variant) end
+			if variant ~= notefield.skin then notefield:setSkin({data = variant}) end
+		end
 		notefield.bot = nf[4]
 		notefield.canSpawnSplash = nf[5] or false
 		notefield.cameras = {self.camNotes}
@@ -584,14 +595,6 @@ function PlayState:enterScene()
 	for _, o in ipairs({
 		self.judgeSprites, self.countdown, self.healthBar, self.scoreText, self.informationText
 	}) do o.cameras = {self.camHUD} end
-
-	self.ratingNeedsRecalc = false
-	self.score = 0
-	self.combo = 0
-	self.misses = 0
-	for _, r in ipairs(self.ratings) do
-		self[r.name .. "s"] = 0
-	end
 
 	if love.system.getDevice() == "Mobile" then
 		local pad = ClientPrefs.data.margin
@@ -1077,6 +1080,18 @@ function PlayState:cameraMovement(ox, oy, easing, time)
 	end
 end
 
+function PlayState:updatePsychSection(step)
+	local sections = self.psychSections
+	if not sections or step < 0 then return end
+	local previous = self.psychSectionIndex
+	local index = previous or 1
+	while sections[index + 1] and sections[index + 1].step <= step do index = index + 1 end
+	while index > 1 and sections[index].step > step do index = index - 1 end
+	if index == previous then return end
+	self.psychSectionIndex = index
+	self.scripts:call("section")
+end
+
 function PlayState:step(s)
 	if self.skipConductor then return end
 
@@ -1084,6 +1099,7 @@ function PlayState:step(s)
 		self:resyncSong()
 	end
 
+	self:updatePsychSection(s)
 	self.scripts:set("curStep", s)
 	self.scripts:call("step", s)
 	self.scripts:call("postStep", s)
@@ -1414,6 +1430,7 @@ function PlayState:update(dt)
 			self:playSong(startSec)
 			if self.doCountdownAtBeats and startSec == 0 then self.scripts:call("countdownTick", 4) end
 			PlayState.conductor.time = self.startPos
+			self:updatePsychSection(self.conductor:getTimeInSteps(self.startPos))
 			self.scripts:call("songStart")
 		else
 			local noFocus, events = true, self.events
@@ -1683,6 +1700,13 @@ function PlayState:goodNoteHit(note, time)
 			note.character or (note.gf and self.gf or notefield.character), rating))
 
 	local completed = not event.cancelled and not note.wasGoodHit
+	if completed and note.hitCausesMiss and notefield == self.playerNotefield then
+		note.wasGoodHit = true
+		self:miss(note)
+		notefield:removeNote(note)
+		self.scripts:call("postGoodNoteHit", note, rating, true)
+		return
+	end
 	if completed then
 		note.wasGoodHit = true
 
@@ -1726,7 +1750,7 @@ function PlayState:goodNoteHit(note, time)
 		end
 
 		if self.playerNotefield == notefield then
-			self.health = math.clamp(self.health + 0.023, 0, 2)
+			self.health = math.clamp(self.health + (note.hitHealth or 0.023), 0, 2)
 			self.score = self.score + rating.score
 			if rating.resetCombo and self.gf then
 				local drop = self.gf:getDropAnim(self.combo)
@@ -1741,6 +1765,7 @@ function PlayState:goodNoteHit(note, time)
 				self.gf.lastHit = notefield.time * 1000
 			end
 
+			self.songHits = self.songHits + 1
 			if self.information then
 				self.information:hit(rating.mod, time - note.time, notefield.bot)
 				self.information.peakCombo = math.max(self.information.peakCombo, self.combo)
@@ -1807,12 +1832,12 @@ function PlayState:miss(note, dir)
 		end
 
 		local char = event.character
-		if char and not event.cancelledAnim and (ghostMiss or (not note.noAnimation and note.type ~= "No Animation")) then
+		if char and not event.cancelledAnim and (ghostMiss or (not note.noMissAnimation and not note.noAnimation and note.type ~= "No Animation")) then
 			char:sing(dir, "miss")
 		end
 
 		if notefield == self.playerNotefield then
-			self.health = math.clamp(self.health - (ghostMiss and 0.04 or 0.0475), 0, 2)
+			self.health = math.clamp(self.health - (ghostMiss and 0.04 or note.missHealth or 0.0475), 0, 2)
 			self.score, self.misses = self.score - 100, self.misses + 1
 			if not ghostMiss then
 				if self.gf and not event.cancelledSadGF then

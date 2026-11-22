@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add directional and confirm buttons to the Android pause menu.
+- Support Psych note texture changes, chart arrow skins, custom-note health
+  and miss behavior, score counters, and section timing callbacks.
+
 ### Performance
 
 - Submit each sustain body as a single mesh strip and clip geometry to the

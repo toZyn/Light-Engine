@@ -3,12 +3,16 @@ local preferences = {
 	downScroll = "downScroll", middleScroll = "middleScroll", ghostTapping = "ghostTap",
 	noteSplashes = "noteSplash", flashing = "flashingLights", lowQuality = "lowQuality"
 }
-local stateFields = {health = "health", songScore = "score", songMisses = "misses", combo = "combo"}
+local stateFields = {health = "health", songScore = "score", songMisses = "misses", songHits = "songHits", combo = "combo"}
 local aliases = {boyfriend = "boyfriend", dad = "dad", gf = "gf"}
 local gameOverFields = {
 	characterName = "characterName", deathSoundName = "deathSoundName",
 	loopSoundName = "loopSoundName", endSoundName = "endSoundName"
 }
+local function isPlayStateClass(class)
+	return class == "states.PlayState" or class == "PlayState"
+end
+
 local function isGameOverClass(class)
 	return class == "substates.GameOverSubstate" or class == "GameOverSubstate"
 end
@@ -41,7 +45,9 @@ function Gameplay.install(compat, api)
 				if field == "crochet" then return state.conductor.crotchet end
 				if field == "stepCrochet" then return state.conductor.stepCrotchet end
 			end
-		elseif class == "states.PlayState" or class == "PlayState" then
+		elseif isPlayStateClass(class) then
+			if field == "SONG.arrowSkin" then return state.psychArrowSkin or "" end
+			if field == "SONG.disableNoteRGB" then return state.psychDisableNoteRGB == true end
 			if field == "isStoryMode" then return PlayState.storyMode end
 			if field == "songName" then return PlayState.SONG and PlayState.SONG.song end
 		end
@@ -50,6 +56,14 @@ function Gameplay.install(compat, api)
 
 	api.setPropertyFromClass = function(class, field, value)
 		compat:_active()
+		if isPlayStateClass(class) and field == "SONG.arrowSkin" and type(value) == "string" then
+			state.psychArrowSkin = value
+			return true
+		end
+		if isPlayStateClass(class) and field == "SONG.disableNoteRGB" and type(value) == "boolean" then
+			state.psychDisableNoteRGB = value
+			return true
+		end
 		if isGameOverClass(class) and gameOverFields[field] and type(value) == "string" then
 			state.psychGameOver = state.psychGameOver or {}
 			state.psychGameOver[field] = value
@@ -78,9 +92,16 @@ function Gameplay.install(compat, api)
 	api.getHealth = function() return state.health end
 	api.setHealth = function(health) api.setProperty("health", health) end
 	api.addHealth = function(amount) api.setHealth(api.getHealth() + amount) end
-	api.getScore = function() return state.score end
-	api.setScore = function(score) api.setProperty("score", score) end
-	api.addScore = function(amount) api.setScore(api.getScore() + amount) end
+	for label, field in pairs({Score = "score", Misses = "misses", Hits = "songHits"}) do
+		local function get() return state[field] or 0 end
+		local function set(value)
+			state[field] = math.modf(tonumber(value) or 0)
+			if state.recalculateRating then state:recalculateRating() end
+		end
+		api["get" .. label] = get
+		api["set" .. label] = set
+		api["add" .. label] = function(value) set(get() + (tonumber(value) or 0)) end
+	end
 end
 
 function Gameplay.bind(interpreter, compat, api, gameProxy)
@@ -94,7 +115,7 @@ function Gameplay.bind(interpreter, compat, api, gameProxy)
 			end
 		}, {
 			__index = function(_, field)
-				if field == "curCharacter" then return getCharacter().name end
+				if field == "curCharacter" then return getCharacter().char end
 				if characterFields[field] then return getCharacter()[field] end
 			end,
 			__newindex = function(_, field, value)
@@ -115,7 +136,23 @@ function Gameplay.bind(interpreter, compat, api, gameProxy)
 			api.setProperty(field, value)
 		end
 	})
-	for _, name in ipairs({"getPropertyFromClass", "setPropertyFromClass", "getHealth", "setHealth", "addHealth", "getScore", "setScore", "addScore"}) do
+	local songFields = {song = true, bpm = true, speed = true, stage = true, player1 = true, player2 = true, gfVersion = true}
+	local chart = setmetatable({}, {
+		__index = function(_, key)
+			if key == "arrowSkin" or key == "disableNoteRGB" then
+				return api.getPropertyFromClass("PlayState", "SONG." .. key)
+			end
+			local song = state.SONG
+			if song and songFields[key] then return song[key] end
+		end,
+		__newindex = function(_, key, value)
+			api.setPropertyFromClass("PlayState", "SONG." .. key, value)
+		end
+	})
+	local playState = {SONG = chart, instance = gameProxy}
+	interpreter:expose("states.PlayState", playState)
+	interpreter:bind("PlayState", playState)
+	for _, name in ipairs({"getPropertyFromClass", "setPropertyFromClass", "getHealth", "setHealth", "addHealth", "getScore", "setScore", "addScore", "getMisses", "setMisses", "addMisses", "getHits", "setHits", "addHits"}) do
 		interpreter:bind(name, api[name])
 	end
 end

@@ -204,13 +204,18 @@ function Script:new(path, notFoundMsg, noLink, fullPath, configure, loader)
 	end
 end
 
+local hscriptGlobals = {
+	bpm = true, curBpm = true, crochet = true, stepCrochet = true, songLength = true,
+	curStep = true, curBeat = true, curDecStep = true, curDecBeat = true, curMeasure = true,
+	curSection = true, mustHitSection = true, altAnim = true, gfSection = true,
+	startedCountdown = true, score = true, misses = true, hits = true, combo = true,
+	playbackRate = true, botPlay = true, inGameOver = true
+}
+
 function Script:set(var, value)
 	if self.closed then return end
 	rawset(self.variables, var, value)
-	if self.hscriptBind and (var == "bpm" or var == "crotchet" or var == "stepCrotchet"
-		or var == "curStep" or var == "curBeat" or var == "curMeasure" or var == "startedCountdown"
-		or var == "score" or var == "misses" or var == "combo" or var == "playbackRate"
-		or var == "botPlay" or var == "inGameOver" or type(var) == "string" and var:match("^default%a+Strum[XY]%d$")) then
+	if self.hscriptBind and (hscriptGlobals[var] or type(var) == "string" and var:match("^default%a+Strum[XY]%d$")) then
 		self.hscriptBind(var, value)
 	end
 end

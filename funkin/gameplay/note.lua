@@ -99,6 +99,7 @@ end
 
 function Note:loadSkinData(skinData, name, direction, noRgb)
 	direction = direction + 1
+	noRgb = noRgb or skinData.psychDisableRgb
 	if not self.__shaderAnimations then
 		self.__shaderAnimations = table.new(0, 4)
 	else
@@ -106,9 +107,17 @@ function Note:loadSkinData(skinData, name, direction, noRgb)
 	end
 
 	local data = skinData[name]
+	data = data.byDirection and data.byDirection[direction] or data
+	if self._skinAtlas or data.atlas then
+		table.clear(self.animation.animations)
+		self.animation.curAnim, self.animation.name = nil, nil
+		self._skinAtlas = data.atlas
+	end
 	local anims, tex = data.animations, "skins/" .. skinData.skin .. "/" .. data.sprite
 	if anims then
-		if data.isPixel then
+		if data.atlas then
+			self:setFrames(data.atlas)
+		elseif data.isPixel then
 			self:loadTexture(paths.getImage(tex), true, data.frameWidth, data.frameHeight)
 		else
 			self:setFrames(paths.getSparrowAtlas(tex))
@@ -154,6 +163,12 @@ function Note:loadSkinData(skinData, name, direction, noRgb)
 	end
 end
 
+local function loadSustainSkin(sprite, skin, kind, animation, direction)
+	Note.loadSkinData(sprite, skin, kind, direction)
+	local name = animation .. "-note" .. direction
+	Note.play(sprite, sprite.animation:has(name) and name or animation, true, nil, nil, true)
+end
+
 function Note:setSkin(skin)
 	if skin == self.skin then return end
 	local name, col = skin.skin, self.direction
@@ -162,12 +177,12 @@ function Note:setSkin(skin)
 	self:loadSkinData(skin, "notes", col, true)
 
 	if self.sustain then
-		Note.loadSkinData(self.sustain, skin, "sustains", col)
-		Note.loadSkinData(self.sustainEnd, skin, "sustainends", col)
+		loadSustainSkin(self.sustain, skin, "sustains", "hold", col)
+		loadSustainSkin(self.sustainEnd, skin, "sustainends", "end", col)
 	end
 	if col then self:setDirection(col) end
 
-	self:play("note")
+	self:play("note", true)
 end
 
 function Note:setDirection(direction)
@@ -175,7 +190,7 @@ function Note:setDirection(direction)
 	self.direction, self.data = direction, direction
 
 	local data = self.skin.notes
-	if not data.disableRgb then
+	if not data.disableRgb and not self.skin.psychDisableRgb then
 		local color = data.colors[direction + 1]
 		self.__shaderAnimations.default = color and makeRGB(color) or nil
 	end
@@ -195,13 +210,8 @@ function Note:createSustain()
 	self.sustain, self.sustainEnd = sustain, sustainEnd
 
 	local skin, col = self.skin, self.direction
-	Note.loadSkinData(sustain, skin, "sustains", col)
-	Note.loadSkinData(sustainEnd, skin, "sustainends", col)
-
-	local toPlay = "hold-note" .. self.direction
-	Note.play(sustain, sustain.__animations[toPlay] and toPlay or "hold", nil, nil, nil, true)
-	toPlay = "end-note" .. self.direction
-	Note.play(sustainEnd, sustainEnd.__animations[toPlay] and toPlay or "end", nil, nil, nil, true)
+	loadSustainSkin(sustain, skin, "sustains", "hold", col)
+	loadSustainSkin(sustainEnd, skin, "sustainends", "end", col)
 
 	sustain.z, sustain.offset.z, sustain.origin.z, sustain.__render = 0, 0, 0, __NIL__
 	sustainEnd.z, sustainEnd.offset.z, sustainEnd.origin.z, sustainEnd.__render = 0, 0, 0, __NIL__

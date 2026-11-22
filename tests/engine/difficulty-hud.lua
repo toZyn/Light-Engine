@@ -328,6 +328,7 @@ end
 ]]))
   assert(love.filesystem.write(dir .. '/effect.hx', [[
 import flixel.FlxG;
+import states.PlayState;
 import flixel.FlxSprite;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.text.FlxText;
@@ -361,6 +362,10 @@ function onCreate() {
  second.setFloat("amount", 0.5);
  game.camOther.setFilters([new ShaderFilter(first), new ShaderFilter(second)]);
  game.health = 1.2;
+ PlayState.SONG.arrowSkin = "note-style";
+ addMisses(2);
+ setVar("hscriptArrowSkin", PlayState.SONG.arrowSkin);
+ setVar("hscriptMisses", getMisses());
  var timer = new FlxTimer();
  timer.start(0.1, function(t) { setVar("timerLoops", t.elapsedLoops); }, 2);
 }
@@ -404,6 +409,7 @@ function onEvent(name:String, a:String, b:String) {
    local customCam = state.members[members + 1].cameras[1]
    assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
    assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3)
+   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2)
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
    local x = player.receptors[1].x

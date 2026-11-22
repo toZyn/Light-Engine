@@ -80,6 +80,8 @@ function Psych.loadScripts(state, handler, song, chart)
 	local root = Psych.root()
 	if not root then return end
 	local loaded, loading = {}, {}
+	local conductor = state.conductor
+	local bpm = chart.bpm or (conductor and conductor.bpm) or 100
 	local function load(file)
 		local current = loaded[file]
 		if current and not current.closed then return current, false end
@@ -89,7 +91,12 @@ function Psych.loadScripts(state, handler, song, chart)
 			instance.psychRegistry = loaded
 			instance.psychLoadScript = load
 			instance.psychValues = {
-				songName = chart.song or song, difficultyName = PlayState.songDifficulty,
+				songName = chart.song or song, songPath = song, difficultyName = PlayState.songDifficulty,
+				bpm = bpm, curBpm = conductor and conductor.bpm or bpm,
+				crochet = 60000 / bpm, stepCrochet = 15000 / bpm,
+				songLength = (game.sound.music and game.sound.music.duration or 0) * 1000,
+				curStage = chart.stage or "stage", curStep = 0, curBeat = 0, curSection = 0,
+				altAnim = false, gfSection = false, mustHitSection = false,
 				isStoryMode = PlayState.storyMode, screenWidth = game.width, screenHeight = game.height,
 				downscroll = ClientPrefs.data.downScroll, middlescroll = ClientPrefs.data.middleScroll,
 				lowQuality = ClientPrefs.data.lowQuality, flashingLights = ClientPrefs.data.flashingLights,
