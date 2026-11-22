@@ -322,6 +322,7 @@ function PlayState:enterScene()
 		["camera follow pos"] = "focuscamera",
 		["add camera zoom"] = "addcamerazoom",
 		["change character"] = "changecharacter",
+		["alt idle animation"] = "altidleanimation",
 		["play animation"] = "playanimation",
 		["camera flash"] = "cameraflash",
 		["screen shake"] = "screenshake",

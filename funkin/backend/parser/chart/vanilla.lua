@@ -187,7 +187,7 @@ function vanilla.parse(data, events, meta, diff, options)
 
 	Parser.pset(chart, "player1", data.player1)
 	Parser.pset(chart, "player2", data.player2)
-	Parser.pset(chart, "gfVersion", data.gfVersion)
+	Parser.pset(chart, "gfVersion", data.gfVersion or data.player3)
 
 	local song = paths.formatToSongPath(chart.song)
 	if not chart.stage then

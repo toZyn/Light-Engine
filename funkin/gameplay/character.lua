@@ -291,6 +291,9 @@ function Character:dance(force)
 	if not result then return end
 
 	local animToPlay = self.idleAnims[self.idleIndex]
+	if animToPlay and self.psychIdleSuffix then
+		animToPlay = animToPlay .. self.psychIdleSuffix
+	end
 	if animToPlay and self.anim:has(animToPlay) then
 		self:playAnim(animToPlay, force)
 		self.idleIndex = (self.idleIndex % #self.idleAnims) + 1

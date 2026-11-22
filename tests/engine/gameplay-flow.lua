@@ -77,3 +77,12 @@ check('keyboard hits, misses and pause preserve a native song and mod HUD', func
 	state.scripts:remove(trainer)
 	trainer:close()
 end)
+
+check('Psych stage separators preserve strict JSON as the default', function()
+	local decode = (loxreq "lib.json").decode
+	local source = '{"opponent":[100,100]\n"hide_girlfriend":true,}'
+	assert(not pcall(decode, source))
+	local stage = decode(source, nil, {relaxedObjectSeparators = true})
+	assert(stage.hide_girlfriend and stage.opponent[2] == 100)
+	assert(not pcall(decode, source))
+end)
