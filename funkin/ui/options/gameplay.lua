@@ -12,6 +12,10 @@ local data = {
 	{"virtualControls", "Virtual controls", "boolean", function()
 		util.setVirtualControlsEnabled(not ClientPrefs.data.virtualControls)
 	end},
+	{"engineCompatibility", "Compatibility with other Engines", "boolean", function()
+		ClientPrefs.data.engineCompatibility = not ClientPrefs.data.engineCompatibility
+		Parser.clearCache(false)
+	end},
 	{"backgroundDim", "Background dim", "number", function(add)
 		local value = math.clamp(ClientPrefs.data.backgroundDim + add, 0, 100)
 		ClientPrefs.data.backgroundDim = value

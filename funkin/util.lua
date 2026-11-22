@@ -5,11 +5,11 @@ if VirtualPad then
 
 	function VirtualPad:update(dt)
 		virtualPadUpdate(self, dt)
-		if ClientPrefs and ClientPrefs.data.virtualControls == false then self.alpha = 0 end
+		if not self.menuControl and ClientPrefs and ClientPrefs.data.virtualControls == false then self.alpha = 0 end
 	end
 
 	function VirtualPad:check(x, y)
-		if ClientPrefs and ClientPrefs.data.virtualControls == false then return end
+		if not self.menuControl and ClientPrefs and ClientPrefs.data.virtualControls == false then return end
 		return virtualPadCheck(self, x, y)
 	end
 end
@@ -72,8 +72,10 @@ function util.setVirtualControlsEnabled(enabled)
 
 	local active = {}
 	for id, button in pairs(VirtualPad.active) do
-		active[id] = button
-		VirtualPad.active[id] = nil
+		if not button.menuControl then
+			active[id] = button
+			VirtualPad.active[id] = nil
+		end
 	end
 
 	for id, button in pairs(active) do
@@ -122,7 +124,9 @@ function util.createButtons(scheme, width)
 	for _, config in ipairs(conf) do
 		local key, name, x, y, color = unpack(config)
 		if scheme:find(key) then
-			buttons:add(VirtualPad(name, x, y, w, w, color))
+			local button = VirtualPad(name, x, y, w, w, color)
+			button.menuControl = true
+			buttons:add(button)
 		end
 	end
 

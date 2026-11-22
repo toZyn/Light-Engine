@@ -54,6 +54,39 @@ check('week discovers common variants and ignores metadata files',function()
  records={['songs/one/chart.json']={song={notes={}}}}
  assert(table.concat(D.forWeek({songs={'one'},difficulties='Normal, Expert'},{}),',')=='Normal,Expert')
 end)
+check('variant file info can omit size and modification time', function()
+ local savedLove = love
+ love = {filesystem = {getInfo = function() return {type = 'file'} end}}
+ records = {['songs/one/charts/expert.json'] = {}}
+ local ok, result = pcall(require('funkin.backend.difficulties').forSong, 'one')
+ love = savedLove
+ assert(ok and #result == 1 and result[1] == 'Expert', tostring(result))
+end)
+check('Psych layout resolves only for the active mod with compatibility enabled', function()
+ local savedLove, savedMods, savedPrefs = love, Mods, ClientPrefs
+ local root = 'mods/fixture/'
+ local dir = root .. 'data/hello'
+ love = {filesystem = {
+  getDirectoryItems = function(path)
+   assert(path == dir)
+   return {'hello.json', 'hello-hard.json', 'events.json'}
+  end,
+  getInfo = function(path)
+   if path == dir .. '/hello.json' or path == dir .. '/hello-hard.json' then return {type = 'file'} end
+  end
+ }}
+ Mods = {root = 'mods', currentMod = 'fixture'}
+ ClientPrefs = {data = {engineCompatibility = false}}
+ local Psych = require 'funkin.backend.modding.psych'
+ local disabled = Psych.chart('hello', 'normal')
+ ClientPrefs.data.engineCompatibility = true
+ local key, file = Psych.chart('hello', 'normal')
+ local variants = Psych.difficulties('hello')
+ local alias = Psych.alias('songs/hello/events.json')
+ love, Mods, ClientPrefs = savedLove, savedMods, savedPrefs
+ assert(disabled == nil and key == 'data/hello/hello' and file == dir .. '/hello.json')
+ assert(table.concat(variants, ',') == 'Normal,hard' and alias == 'data/hello/events.json')
+end)
 check('difficulty colors support mod opt-out and overrides',function()
  local D=require 'funkin.backend.difficulties'
  local white=D.color('insane',{autoDifficultyColor=false})
@@ -209,3 +242,45 @@ check('rolling inputs remain bounded and unsorted notes remain intact',function(
  assert(info.ips>=99 and info.ips<=101 and #info.taps<=256)
  info:update(2);assert(info.ips==0)
 end)
+
+if originalLove then
+ check('Psych chart layout and scoped Lua callbacks work through the engine', function()
+  local root, name, song = Mods.root, Mods.currentMod, 'compat-layout-fixture'
+  local enabled = ClientPrefs.data.engineCompatibility
+  local dir = 'fixture-mods/psych/data/' .. song
+  assert(love.filesystem.createDirectory(dir))
+  assert(love.filesystem.write(dir .. '/' .. song .. '-hard.json',
+   '{"song":{"song":"compat-layout-fixture","bpm":100,"speed":1,"notes":[{"mustHitSection":true,"sectionNotes":[[250,0,0]]}]}}'))
+  assert(love.filesystem.write(dir .. '/events.json', '{"events":[[300,[["Test","one","two"]]]]}'))
+  assert(love.filesystem.write(dir .. '/accompany.lua', [[
+function onCreate()
+ assert(type(makeLuaSprite) == "function")
+ created = true
+end
+function onEvent(name, a, b)
+ lastEvent = name .. ":" .. a .. ":" .. b
+end
+]]))
+  Mods.root, Mods.currentMod = 'fixture-mods', 'psych'
+  ClientPrefs.data.engineCompatibility = true
+  Parser.clearCache(false)
+  local ok, err = xpcall(function()
+   local chart = assert(Parser.getChart(song, 'Hard', {strict = true}))
+   assert(chart.notes.player[1].t == 250)
+   local event = chart.events[#chart.events]
+   assert(event.t == 300 and event.e == 'Test')
+   local scripts = ScriptsHandler()
+   require('funkin.backend.modding.psych').loadScripts(State(), scripts, song, chart)
+   assert(#scripts.scripts == 1 and scripts.scripts[1]._psych)
+   scripts:call('create')
+   scripts:call('onEvent', event)
+   local vars = scripts.scripts[1].variables
+   assert(vars.created and vars.lastEvent == 'Test:one:two')
+   scripts:close()
+  end, debug.traceback)
+  Mods.root, Mods.currentMod = root, name
+  ClientPrefs.data.engineCompatibility = enabled
+  Parser.clearCache(false)
+  assert(ok, err)
+ end)
+end

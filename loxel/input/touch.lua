@@ -165,6 +165,9 @@ function Touch.onReleased(id, x, y, dx, dy, pressure)
 
 	local touch = Touch.touches[slot]
 	if touch.active then
+		if x and y and (x ~= touch.screenX or y ~= touch.screenY) then
+			Touch.onMoved(id, x, y, dx, dy, pressure)
+		end
 		touch.justPressed = false
 		touch.pressed = false
 		touch.justReleased = true

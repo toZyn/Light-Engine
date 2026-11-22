@@ -303,6 +303,7 @@ function PlayState:enterScene()
 
 	self.scripts = ScriptsHandler()
 	self.scripts:loadDirectory("data/scripts", "data/scripts/" .. songName, "songs/" .. songName)
+	require("funkin.backend.modding.psych").loadScripts(self, self.scripts, songName, PlayState.SONG)
 	conductor.onTimeChange:add(function()
 		self.scripts:set("bpm", conductor.bpm)
 		self.scripts:set("crotchet", conductor.crotchet)
@@ -563,7 +564,7 @@ function PlayState:enterScene()
 
 		self.buttons = VirtualPadGroup()
 		self.pauseButton = PauseButton(game.width - 130 - ClientPrefs.data.margin, 20, skin, function()
-			if self.startedCountdown and self.canPause and not self.isDead
+			if self.startedCountdown and self.canPause ~= false and not self.isDead
 				and not self.substate and not self:hasActiveDialogue() then
 				self:tryPause()
 			end
@@ -1362,6 +1363,9 @@ function PlayState:update(dt)
 	end
 
 	self.scripts:call("update", dt)
+	for _, field in pairs(self.notefields) do
+		field.time, field.beat = PlayState.conductor.time / 1000, PlayState.conductor.currentBeatFloat
+	end
 	PlayState.super.update(self, dt)
 
 	local inDialogue = hadDialogue or self:hasActiveDialogue()
@@ -1377,10 +1381,9 @@ function PlayState:update(dt)
 
 	local time = PlayState.conductor.time / 1000
 	local missOffset = time - Note.safeZoneOffset / 1.25
-	local shouldRecalculateRating = false
+	self.processingNoteHits = true
 	for _, nf in pairs(self.notefields) do
 		if not nf.is then goto continue end
-		nf.time, nf.beat = time, PlayState.conductor.currentBeatFloat
 		local isPlayer, isPNF, sustainOffset = not nf.bot, nf == self.playerNotefield, 0.25 / nf.speed
 
 		for _, note in ipairs(nf:getNotes(time, nil, true, self._sustainHitBuffer)) do
@@ -1436,6 +1439,8 @@ function PlayState:update(dt)
 		::continue::
 	end
 
+	self.processingNoteHits = false
+
 	self.informationElapsed = (self.informationElapsed or 0) + realDt
 	if self.informationElapsed >= 0.1 then
 		self.informationElapsed = 0
@@ -1454,7 +1459,7 @@ function PlayState:update(dt)
 	self.camHUD.zoom = util.coolLerp(self.camHUD.zoom, 1, 3, dt * self.camZoomSpeed)
 	self.camNotes.zoom = self.camHUD.zoom
 
-	if self.startedCountdown and not inDialogue and controls:pressed("pause") then
+	if realDt > 0 and self.startedCountdown and self.canPause ~= false and not inDialogue and controls:pressed("pause") then
 		self:tryPause()
 	end
 
@@ -1569,7 +1574,7 @@ function PlayState:onSettingChange(category, setting)
 end
 
 function PlayState:goodNoteHit(note, time)
-	local rating = self:getRating(note.time, time)
+	local rating = self:getRating(note.time, note.parent.bot and note.time or time)
 	self.scripts:call("goodNoteHit", note, rating, time)
 
 	local notefield, dir, isSustain =
@@ -1609,7 +1614,9 @@ function PlayState:goodNoteHit(note, time)
 			if not event.strumGlowCancelled and not note.strumGlowCancelled then
 				receptor:play("confirm", true)
 				if not note.sustain then receptor.holdTime = notefield.bot and 0.15 or 0.25 end
-				if ClientPrefs.data.noteSplash and notefield.canSpawnSplash and rating.splash then
+				if ClientPrefs.data.noteSplash and notefield.canSpawnSplash and rating.splash
+					and (not self.processingNoteHits or receptor.lastSplashTick ~= self.lastTick) then
+					receptor.lastSplashTick = self.lastTick
 					receptor:spawnSplash()
 				end
 			end
@@ -1642,7 +1649,11 @@ function PlayState:goodNoteHit(note, time)
 
 			local hitSoundVolume = ClientPrefs.data.hitSound
 			if hitSoundVolume > 0 then
-				game.sound.play(paths.getSound("hitsound"), hitSoundVolume / 100)
+				local now = love.timer.getTime()
+				if now >= (self.nextHitSoundTime or 0) then
+					self.nextHitSoundTime = now + 1 / 120
+					game.sound.play(paths.getSound("hitsound"), hitSoundVolume / 100)
+				end
 			end
 		end
 	end
@@ -1725,7 +1736,11 @@ function PlayState:recalculateRating(rating)
 		self[field] = (self[field] or 0) + 1
 		self:popUpScore(rating)
 	end
-	self:updateInformation(true)
+	if self.processingNoteHits then
+		self.ratingNeedsRecalc = true
+	else
+		self:updateInformation(true)
+	end
 end
 
 function PlayState:popUpScore(rating)
@@ -1851,11 +1866,10 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 					self:miss(notefield, key)
 				end
 			else
-				-- remove stacked notes (this is dedicated to spam songs)
 				local i, firstNote, note = 2, hitNotes[1]
 				while i <= l do
 					note = hitNotes[i]
-					if note and math.abs(note.time - firstNote.time) < 0.01 then
+					if note and note.time == firstNote.time then
 						notefield:removeNote(note)
 					else
 						break

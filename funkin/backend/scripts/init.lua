@@ -131,7 +131,7 @@ Script.messages = Signal()
 Script.Event_Continue = 1
 Script.Event_Cancel = 2
 
-function Script:new(path, notFoundMsg, noLink, fullPath)
+function Script:new(path, notFoundMsg, noLink, fullPath, configure)
 	self.path = path
 	self.variables = {}
 	self.notFoundMsg = notFoundMsg ~= false
@@ -180,6 +180,7 @@ function Script:new(path, notFoundMsg, noLink, fullPath)
 			if not noLink then
 				self:linkObject(game.getState())
 			end
+			if configure then configure(self) end
 			chunk()
 		else
 			if not self.notFoundMsg then return end

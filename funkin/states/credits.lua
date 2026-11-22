@@ -21,7 +21,7 @@ CreditsState.defaultData = {
 	category("Owners", {
 
 		user("Zyn", "tozyn", "#FF6B35", "Independent Light Engine developer, teenager, and current owner of Light Engine\n\nGreetings! - Zyn",
-			"X", "@Zyn",
+			"X", "@itsZyn_lol",
 			"Youtube", "@Chatger",
 			"Github", "/toZyn"
 		),

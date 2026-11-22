@@ -61,3 +61,35 @@ check('pause difficulties open separated on desktop and permit returning', funct
  pause:close()
  PlayState.SONG,PlayState.songDifficulty=savedSong,savedDifficulty
 end)
+
+check("a second finger opens pause options on the first tap", function()
+	local getDevice = love.system.getDevice
+	love.system.getDevice = function() return "Mobile" end
+	local pause = PauseSubstate()
+	love.system.getDevice = getDevice
+	local list = pause.menuList
+	local option
+	for _, item in ipairs(list.members) do
+		if tostring(item) == "Options" then option = item; break end
+	end
+	assert(option)
+	list:updatePositions(0, 0)
+
+	local x, y, w, h, sx, sy = option:_getBoundary()
+	local windowWidth, windowHeight = love.graphics.getDimensions()
+	local scale = math.min(windowWidth / game.width, windowHeight / game.height)
+	local tx = (x + w * sx / 2) * scale + (windowWidth - game.width * scale) / 2
+	local ty = (y + h * sy / 2) * scale + (windowHeight - game.height * scale) / 2
+	local touch = game.touch
+	touch.onPressed("held", 0, 0)
+	touch.onPressed("tap", 0, 0)
+	touch.onReleased("tap", tx, ty)
+	list:handleTouch(0)
+	touch.onReleased("held", 0, 0)
+	touch.reset()
+
+	assert(pause.optionsUI and pause.blockInput)
+	pause:remove(pause.optionsUI)
+	assert(not pause.blockInput and not list.lock)
+	pause:close()
+end)

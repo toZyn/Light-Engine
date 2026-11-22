@@ -1,3 +1,18 @@
+# Psych Engine mods
+
+Enable **Gameplay → Compatibility with other Engines**, put an unpacked mod in
+`mods/<mod-name>/`, and select it in the Mods menu. Keeping the original
+`data/`, `songs/`, `weeks/`, and `characters/` directories allows Light Engine to
+find Psych charts, audio, events, weeks, and character definitions. Restart the
+song after changing the setting during gameplay.
+
+The compatibility setting also loads Lua files from `scripts/`, the active
+song's `data/<song>/` directory, and referenced files in `stages/`,
+`custom_events/`, and `custom_notetypes/`. They run with the scoped Lua
+helpers described below. Callbacks and properties that rely on Psych-specific
+objects may need changes. Haxe, HScript, and mod APIs outside this bridge require
+a separate port.
+
 # Opt-in Lua compatibility
 
 Light Engine keeps its native Lua script lifecycle. A native script can opt in to a scoped set of Psych-like Lua helpers:

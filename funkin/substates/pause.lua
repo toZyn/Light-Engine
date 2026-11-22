@@ -24,6 +24,7 @@ function PauseSubstate:new()
 
 	self.menuList = MenuList(paths.getSound('scrollMenu'), false,
 		love.system.getDevice() == "Mobile" and "mobile" or nil)
+	self.menuList.activateOnTouch = true
 	self.menuList.selectCallback = bind(self, self.selectOption)
 	self:add(self.menuList)
 
@@ -31,6 +32,7 @@ function PauseSubstate:new()
 	self.diffList = MenuList(paths.getSound('scrollMenu'), false,
 		love.system.getDevice() == "Mobile" and "mobile" or nil)
 	self.diffList.mobileTop = 140
+	self.diffList.activateOnTouch = true
 	self.diffList.selectCallback = bind(self, self.selectDifficulty)
 	self.diffList.lock, self.diffList.open = true, false
 
@@ -128,7 +130,10 @@ function PauseSubstate:selectDifficulty(choice)
 end
 
 function PauseSubstate:selectOption(daChoice)
-	if self.lock or self.blockInput then return end
+	if self.lock or self.blockInput or self._openingFrame then
+		self.menuList.lock = self.lock or self.blockInput
+		return
+	end
 
 	switch(tostring(daChoice):lower(), {
 		["resume"] = function() self:close() end,
@@ -196,7 +201,7 @@ function PauseSubstate:update(dt)
 		return
 	end
 
-	if self.lock or self.blockInput or self.optionsUI then return end
+	if self.lock or self.blockInput then return end
 
 	if self.diffList.open then
 		if controls:pressed("back") then
@@ -224,11 +229,11 @@ function PauseSubstate:openDifficultyMenu()
 
 	self.menuList.lock = true
 	self.blockInput = true
-	Timer(self.timer):start(0.1, function() self.diffList.lock = false end)
 
 	self.diffList.x = -300
 	Tween.tween(self.diffList, {x = 120}, 0.4, {ease = "circOut", onComplete = function()
 		self.diffList.open = true
+		self.diffList.lock = false
 		self.blockInput = false
 	end})
 	Tween.tween(self.menuList, {alpha = 0}, 0.4, {ease = "circOut"})

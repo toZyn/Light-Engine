@@ -246,10 +246,18 @@ function paths.clearCache(incoming)
 	collectgarbage()
 end
 
+local Psych = require "funkin.backend.modding.psych"
+
 function paths.getMods(key)
 	local root = Mods.root .. "/"
 	if Mods.currentMod then
-		return root .. Mods.currentMod .. "/" .. key
+		root = root .. Mods.currentMod .. "/"
+		local native = root .. key
+		if Psych.root() and not paths.exists(native) then
+			local alias = Psych.alias(key)
+			if alias and paths.exists(root .. alias) then return root .. alias end
+		end
+		return native
 	end
 	return "_"
 end
@@ -270,7 +278,7 @@ function paths.getPath(key, allowMods, allowAddons, allowSaves)
 		if paths.exists(savePath) then return savePath end
 	end
 	if allowMods and Mods and Mods.currentMod then
-		local modPath = Mods.root .. "/" .. Mods.currentMod .. "/" .. key
+		local modPath = paths.getMods(key)
 		if paths.exists(modPath) then return modPath end
 	end
 	if allowAddons and Addons and Addons.all then

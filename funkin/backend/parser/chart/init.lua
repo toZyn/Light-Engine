@@ -5,6 +5,7 @@ local codename = require(f .. "codename")
 local vslice = require(f .. "vslice")
 
 local ChartParse = {}
+local Psych = require "funkin.backend.modding.psych"
 
 function ChartParse.get(song, diff)
 	song = paths.formatToSongPath(song)
@@ -35,6 +36,17 @@ function ChartParse.get(song, diff)
 	addFolder("chart")
 	addFolder(song)
 
+	local foreignKey, foreignFile = Psych.chart(song, diffKey)
+	if foreignKey then
+		for _, candidate in ipairs(candidates) do
+			if candidate[1]:sub(1, 7) ~= "assets/" and paths.exists(candidate[1], "file") then
+				local raw, resolved = paths.getJSON(candidate[2])
+				return raw, path, resolved or candidate[1]
+			end
+		end
+		return paths.getJSON(foreignKey), path, foreignFile
+	end
+
 	for _, p in ipairs(candidates) do
 		if paths.exists(p[1], "file") then
 			local rawChart, resolvedPath = paths.getJSON(p[2])
@@ -49,7 +61,7 @@ function ChartParse.getParser(data)
 	if type(data) ~= "table" then return vanilla end
 	if data.codenameChart then
 		return codename
-	elseif type(data.song) == "table" then
+	elseif type(data.song) == "table" or (type(data.format) == "string" and data.format:match("^psych")) then
 		return vanilla
 	elseif data.version ~= nil or type(data.scrollSpeed) == "table" then
 		return vslice
