@@ -77,10 +77,8 @@ jobs:
           set -euo pipefail
           extract_section() {
             local ver="$1"
-            local pat
-            pat="^## \[$(printf '%s' "$ver" | sed 's/\./\\./g')\]"
-            awk -v pat="$pat" '
-              $0 ~ pat { found = 1; next }
+            awk -v heading="## [$ver]" '
+              index($0, heading) == 1 { found = 1; next }
               /^## \[/ && found { exit }
               found { print }
             ' CHANGELOG.md
