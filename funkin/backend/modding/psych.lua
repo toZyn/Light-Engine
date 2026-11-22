@@ -57,17 +57,30 @@ end
 function Psych.loadScripts(state, handler, song, chart)
 	local root = Psych.root()
 	if not root then return end
-	local loaded = {}
+	local loaded, loading = {}, {}
 	local function load(file)
-		if loaded[file] then return end
-		loaded[file] = true
-		if not love.filesystem.getInfo(root .. file, "file") then return end
+		local current = loaded[file]
+		if current and not current.closed then return current, false end
+		if loading[file] or not love.filesystem.getInfo(root .. file, "file") then return end
+		loading[file] = true
 		local script = Script(root .. file, true, false, true, function(instance)
+			instance.psychRegistry = loaded
+			instance.psychLoadScript = load
+			instance.psychValues = {
+				songName = chart.song or song, difficultyName = PlayState.songDifficulty,
+				isStoryMode = PlayState.storyMode, screenWidth = game.width, screenHeight = game.height,
+				downscroll = ClientPrefs.data.downScroll, middlescroll = ClientPrefs.data.middleScroll,
+				lowQuality = ClientPrefs.data.lowQuality, flashingLights = ClientPrefs.data.flashingLights,
+				Function_Continue = Script.Event_Continue, Function_Stop = Script.Event_Cancel
+			}
+			for key, value in pairs(instance.psychValues) do instance:set(key, value) end
 			instance._psych = require("funkin.backend.scripts.compat").new(state, instance, true)
-			instance:set("Function_Continue", Script.Event_Continue)
-			instance:set("Function_Stop", Script.Event_Cancel)
 		end, file:match("%.hx$") and loadHScript or nil)
-		if not script.closed then handler:add(script) end
+		loading[file] = nil
+		if script.closed then return end
+		loaded[file] = script
+		handler:add(script)
+		return script, true
 	end
 	for _, dir in ipairs({"scripts", "data/" .. song}) do
 		for _, name in ipairs(love.filesystem.getDirectoryItems(root .. dir)) do

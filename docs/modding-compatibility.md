@@ -17,13 +17,25 @@ For detected mods, Light Engine loads `.lua` and HScript `.hx` from `scripts/`,
 `runHaxeFunction`. The interpreter is hscript-iris 1.1.3 compiled to Lua and
 loaded on demand. The game does not ship a Haxe compiler or a second engine.
 
-The host bindings currently include camera effects, `FlxG.camera`, basic
-`FlxSprite` and `FlxText` construction, sprite ownership and ordering, atlas animations, scoped `FlxTimer`, and
-single-run numeric `FlxTween` with `FlxEase`. They also include timing,
-health and score, basic character access, shared script variables, and a
-subset of the Lua helper API below. Native Psych
-source mods, external Haxe libraries, arbitrary HaxeFlixel classes, and
-unimplemented Psych-specific fields need further adaptation.
+## Supported host behavior
+
+- HScript sprites, text, groups, cameras, points, math, atlas animations, timers,
+  numeric tweens, and easing functions use native Light Engine objects.
+- Note and receptor groups use zero-based indices. Note spawn and hit hooks,
+  receptor tweens, countdown callbacks, camera focus, keyboard hooks, score
+  callbacks, and early chart events are available.
+- Compatible OpenFL-style fragment and vertex shaders can run on sprites or
+  in a camera filter chain. Camera buffers are allocated only when intermediate
+  passes are needed and released when the chain is detached.
+- Scripts can open substates, load and call other mod scripts, play OGV cutscenes,
+  and read Psych dialogue JSON with text and portrait images.
+- Psych game-over asset names, basic camera and character operations, and tagged
+  sound time, pitch, and fades are available.
+
+Light Engine renders holds as ribbons, so scripts that target individual Psych
+sustain segments need adaptation. MP4 playback requires a compatible decoder.
+Shaders that rely on OpenFL-specific internals and mods that build or replace
+HaxeFlixel classes require additional runtime support.
 
 To rebuild the interpreter, use Haxe 4.3.7 and run
 `python3 tools/build_psych_hscript.py /path/to/hscript-iris`. The builder verifies

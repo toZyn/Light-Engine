@@ -1,10 +1,11 @@
 local HScript = {}
 local Gameplay = require "funkin.backend.scripts.psych.gameplay"
+local Notes = require "funkin.backend.scripts.psych.notes"
 local createRuntime
 local haxeLibraries = {
-	FlxG = "flixel", FlxSprite = "flixel", FlxText = "flixel.text", FlxColor = "flixel.util",
+	FlxG = "flixel", FlxCamera = "flixel", FlxSprite = "flixel", FlxText = "flixel.text", FlxColor = "flixel.util",
 	FlxTimer = "flixel.util", FlxTween = "flixel.tweens", FlxEase = "flixel.tweens",
-	Paths = ""
+	Paths = "", Conductor = "backend", FlxPoint = "flixel.math", FlxMath = "flixel.math", ShaderFilter = "openfl.filters", FlxGroup = "flixel.group", FlxTypedGroup = "flixel.group"
 }
 
 local function runtime()
@@ -23,29 +24,129 @@ local function hexColor(color)
 	return color
 end
 
-local function camera(compat, api, name, field)
+local function installRuntimeShaders(interpreter, compat, gameProxy)
+	local runtimeShaders = compat.psychShaderBindings
+	local proxies, filters = {}, {}
+	local function create(_, name)
+		local shader = runtimeShaders.create(name)
+		if not shader then return end
+		local proxy = {}
+		local function send(_, uniform, value)
+			assert(shader:hasUniform(uniform), "Unknown HScript shader uniform: " .. tostring(uniform))
+			shader:send(uniform, value)
+		end
+		proxy.setFloat, proxy.setInt, proxy.setBool = send, send, send
+		proxies[proxy] = shader
+		return proxy
+	end
+	local function filter(args)
+		local shader = assert(proxies[args[0]], "Expected a Psych runtime shader")
+		local object = {}
+		filters[object] = shader
+		return object
+	end
+
+	gameProxy.createRuntimeShader = create
+	local class = {}
+	interpreter:bind("ShaderFilter", class)
+	interpreter:expose("openfl.filters.ShaderFilter", class)
+	interpreter:registerConstructor("ShaderFilter", filter)
+	interpreter:registerConstructor("openfl.filters.ShaderFilter", filter)
+	return function(tag, object, list)
+		if not list or list.length == 0 then runtimeShaders.remove(tag); return end
+		local shaders = {}
+		for index = 0, list.length - 1 do
+			shaders[#shaders + 1] = assert(filters[list[index]], "Expected a Psych ShaderFilter")
+		end
+		runtimeShaders.filters(tag, object, shaders)
+	end, function(tag, object, proxy)
+		if not proxy then runtimeShaders.remove(tag); return end
+		runtimeShaders.attach(tag, object, assert(proxies[proxy], "Expected a Psych runtime shader"))
+	end
+end
+
+local function camera(compat, api, name, field, native)
+	local function actual()
+		return native or compat:_root(field)
+	end
+	local fields = {x = true, y = true, zoom = true, alpha = true, visible = true, angle = true}
 	local proxy = {
-		shake = function(_, intensity, duration) return api.cameraShake(name, intensity, duration) end,
+		shake = function(_, intensity, duration)
+			if native then return native:shake(intensity or 0.01, duration or 0.25, nil, true) end
+			return api.cameraShake(name, intensity, duration)
+		end,
 		flash = function(_, color, duration, _, force)
+			if native then return native:flash(Color.fromHEX((color or 0xFFFFFFFF) % 2^32), duration or 1, nil, force) end
 			return api.cameraFlash(name, hexColor(color), duration, force)
 		end,
 		fade = function(_, color, duration, fadeIn, _, force)
+			if native then return native:fade(Color.fromHEX((color or 0xFF000000) % 2^32), duration or 1, fadeIn, nil, force) end
 			return api.cameraFade(name, hexColor(color), duration, force, fadeIn)
 		end
 	}
 	return setmetatable(proxy, {
 		__index = function(_, key)
-			local actual = compat.state[field] or (field == "camGame" and game.camera)
-			if actual and (key == "zoom" or key == "alpha" or key == "visible") then return actual[key] end
+			local object = actual()
+			if not object then return end
+			if key == "width" or key == "height" or fields[key] then return object[key] end
+			if key == "bgColor" then
+				return bit.tobit((object.bgColor[4] or 1) * 255 * 2^24
+					+ tonumber(Color.toHexString(object.bgColor, false), 16))
+			end
 		end,
 		__newindex = function(_, key, value)
-			local actual = compat.state[field] or (field == "camGame" and game.camera)
-			if not actual or (key ~= "zoom" and key ~= "alpha" and key ~= "visible") then
-				error("HScript camera field unavailable: " .. tostring(key), 2)
+			local object = assert(actual(), "HScript camera is unavailable")
+			if key == "bgColor" then
+				local color = Color.fromHEX(value)
+				color[4] = bit.band(bit.rshift(value, 24), 255) / 255
+				object.bgColor = color
+				return
 			end
-			actual[key] = value
+			assert(fields[key], "HScript camera field unavailable: " .. tostring(key))
+			object[key] = value
 		end
 	})
+end
+
+local function installCameras(interpreter, compat, flxG, cameras, setFilters)
+	local owned, serial = {}, 0
+	local class = {}
+	local function make(args)
+		serial = serial + 1
+		local native = Camera(args[0] or 0, args[1] or 0, args[2], args[3])
+		native.zoom = args[4] or 1
+		local proxy = camera(compat, nil, nil, nil, native)
+		local token = "_runtimeCamera" .. serial
+		owned[proxy] = {native = native, token = token}
+		cameras[proxy] = native
+		rawset(proxy, "setFilters", function(_, filters) setFilters(token, native, filters) end)
+		return proxy
+	end
+	interpreter:bind("FlxCamera", class)
+	interpreter:expose("flixel.FlxCamera", class)
+	interpreter:registerConstructor("FlxCamera", make)
+	interpreter:registerConstructor("flixel.FlxCamera", make)
+	flxG.cameras = {
+		add = function(_, proxy, default)
+			local entry = assert(owned[proxy], "Expected an owned HScript camera")
+			if not table.find(game.cameras.list, entry.native) then game.cameras.add(entry.native, default) end
+			return proxy
+		end,
+		remove = function(_, proxy, destroy)
+			local entry = assert(owned[proxy], "Expected an owned HScript camera")
+			if destroy ~= false then
+				compat.psychShaderBindings.remove(entry.token)
+				owned[proxy], cameras[proxy] = nil, nil
+			end
+			game.cameras.remove(entry.native, destroy ~= false)
+		end
+	}
+	compat.disposePsychCameras = function()
+		for _, entry in pairs(owned) do
+			if table.find(game.cameras.list, entry.native) then game.cameras.remove(entry.native)
+			elseif entry.native.exists then entry.native:destroy() end
+		end
+	end
 end
 
 local function invoke(session, name, ...)
@@ -62,8 +163,9 @@ local spriteMethods = {
 	setScrollFactor = "setScrollFactor", setGraphicSize = "setGraphicSize"
 }
 
-local function installSprites(interpreter, compat, api, gameProxy, cameras)
+local function installSprites(interpreter, compat, api, gameProxy, cameras, setShader)
 	local metadata = setmetatable({}, {__mode = "k"})
+	local proxyFor, tagsByObject, parents, children = {}, {}, {}, {}
 	local atlases = setmetatable({}, {__mode = "k"})
 	local assetPaths = {__name__ = "Paths", image = function(key) return key end}
 	function assetPaths.getSparrowAtlas(key)
@@ -75,11 +177,36 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 	interpreter:expose("backend.Paths", assetPaths)
 	interpreter:expose("Paths", assetPaths)
 	local serial = 0
-	local function construct(kind, arguments)
+	local function newTag()
 		repeat
 			serial = serial + 1
 		until not compat.objects["_hscript" .. serial]
-		local tag = "_hscript" .. serial
+		return "_hscript" .. serial
+	end
+	local function detach(tag)
+		local parent = parents[tag]
+		if parent then
+			parents[tag] = nil
+			children[parent][tag] = nil
+			compat.objects[parent]:remove(compat.objects[tag])
+		end
+	end
+	local remove = compat._remove
+	compat._remove = function(self, tag, destroy)
+		detach(tag)
+		if destroy then
+			if children[tag] then
+				for child in pairs(children[tag]) do detach(child) end
+				children[tag] = nil
+			end
+			local object = compat.objects[tag]
+			if object then tagsByObject[object] = nil end
+			proxyFor[tag] = nil
+		end
+		return remove(self, tag, destroy)
+	end
+	local function construct(kind, arguments)
+		local tag = newTag()
 		local x, y = arguments[0] or 0, arguments[1] or 0
 		local object
 		if kind == "FlxText" then
@@ -89,8 +216,9 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 			object = api.makeLuaSprite(tag, arguments[2], x, y)
 		end
 		local proxy = {}
-		metadata[proxy] = tag
+		metadata[proxy], proxyFor[tag], tagsByObject[object] = tag, proxy, tag
 		proxy.animation = {
+			add = function(_, ...) return api.addAnimation(tag, ...) end,
 			addByPrefix = function(_, ...) return api.addAnimationByPrefix(tag, ...) end,
 			addByIndices = function(_, name, prefix, indices, postfix, fps, looped)
 				local frames = {}
@@ -112,10 +240,9 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 			api.makeGraphic(tag, width, height, hexColor(color))
 			return proxy
 		end
-		proxy.loadGraphic = function(_, image, animated)
-			if animated then error("HScript loadGraphic sprite sheets require an atlas adapter", 2) end
+		proxy.loadGraphic = function(_, image, animated, width, height)
 			local asset = assert(paths.getImage(image), "Missing HScript image: " .. tostring(image))
-			compat:_owned(tag):loadTexture(asset)
+			compat:_owned(tag):loadTexture(asset, animated == true, width, height)
 			return proxy
 		end
 		proxy.destroy = function() api.removeLuaSprite(tag, true) end
@@ -130,6 +257,10 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 				local sprite = compat:_owned(tag)
 				local native = spriteFields[field]
 				if native then sprite[native] = value; return end
+				if field == "shader" then
+					setShader(tag, sprite, value)
+					return
+				end
 				if field == "frames" then
 					sprite:setFrames(assert(atlases[value], "Expected an HScript atlas"))
 					return
@@ -139,7 +270,8 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 					for index = 0, value.length - 1 do
 						local name = cameras[value[index]]
 						assert(name, "Unknown HScript camera")
-						targets[#targets + 1] = assert(compat:_root(name), "HScript camera unavailable")
+						targets[#targets + 1] = assert(type(name) == "string" and compat:_root(name) or name,
+							"HScript camera unavailable")
 					end
 					sprite.cameras = targets
 					return
@@ -157,8 +289,78 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 		interpreter:registerConstructor(name, make)
 		interpreter:registerConstructor(path, make)
 	end
+	local function group()
+		local tag = newTag()
+		local object = SpriteGroup()
+		compat.objects[tag], children[tag] = object, {}
+		local proxy = {}
+		metadata[proxy], proxyFor[tag], tagsByObject[object] = tag, proxy, tag
+		local function childTag(sprite)
+			local child = assert(metadata[sprite], "Expected an HScript group member")
+			assert(compat.objects[child], "HScript group member was destroyed")
+			local cursor = tag
+			while cursor do
+				assert(cursor ~= child, "HScript groups cannot contain themselves")
+				cursor = parents[cursor]
+			end
+			return child
+		end
+		function proxy:insert(index, sprite)
+			local child = childTag(sprite)
+			detach(child)
+			if compat.added[child] then
+				compat.state:remove(compat.objects[child])
+				compat.added[child] = nil
+			end
+			object:insert(math.min(math.max(index, 0), #object.members) + 1, compat.objects[child])
+			parents[child], children[tag][child] = tag, true
+			return sprite
+		end
+		function proxy:add(sprite) return self:insert(#object.members, sprite) end
+		function proxy:remove(sprite)
+			local child = metadata[sprite]
+			if parents[child] == tag then detach(child) end
+			return sprite
+		end
+		function proxy:forEach(callback)
+			local members = {}
+			for _, child in ipairs(object.members) do members[#members + 1] = child end
+			for _, child in ipairs(members) do
+				local memberTag = tagsByObject[child]
+				if memberTag and parents[memberTag] == tag then callback(proxyFor[memberTag]) end
+			end
+		end
+		function proxy:destroy() api.removeLuaSprite(tag, true) end
+		proxy.members = setmetatable({}, {__index = function(_, index)
+			if index == "length" then return #object.members end
+			if type(index) ~= "number" then return end
+			local member = object.members[index + 1]
+			return proxyFor[tagsByObject[member]]
+		end})
+		return setmetatable(proxy, {
+			__index = function(_, key)
+				if key == "length" then return #object.members end
+				if key == "visible" or key == "alpha" or key == "active" then return object[key] end
+			end,
+			__newindex = function(_, key, value)
+				assert(key == "visible" or key == "alpha" or key == "active", "Unsupported HScript group field")
+				object[key] = value
+			end
+		})
+	end
+	for _, name in ipairs({"FlxGroup", "FlxTypedGroup"}) do
+		local class = {}
+		interpreter:bind(name, class)
+		interpreter:expose("flixel.group." .. name, class)
+		interpreter:expose("flixel.group.FlxGroup." .. name, class)
+		interpreter:registerConstructor(name, group)
+		interpreter:registerConstructor("flixel.group." .. name, group)
+		interpreter:registerConstructor("flixel.group.FlxGroup." .. name, group)
+	end
 	gameProxy.add = function(_, sprite)
-		api.addLuaSprite(assert(metadata[sprite], "Expected an HScript sprite"), true)
+		local tag = assert(metadata[sprite], "Expected an HScript sprite")
+		detach(tag)
+		api.addLuaSprite(tag, true)
 		return sprite
 	end
 	gameProxy.remove = function(_, sprite)
@@ -167,6 +369,7 @@ local function installSprites(interpreter, compat, api, gameProxy, cameras)
 	end
 	gameProxy.insert = function(_, index, sprite)
 		local tag = assert(metadata[sprite], "Expected an HScript sprite")
+		detach(tag)
 		api.addLuaSprite(tag, true)
 		api.setObjectOrder(tag, index)
 		return sprite
@@ -177,6 +380,9 @@ function HScript.install(compat, api)
 	local session
 	local script = compat.script
 	Gameplay.install(compat, api)
+	require("funkin.backend.scripts.psych.media").install(compat, api)
+	require("funkin.backend.scripts.psych.scripts").install(compat, api)
+	local installNoteGroups = Notes.install(compat, api)
 	local function getSession()
 		if session then return session end
 		session = runtime()(script.path)
@@ -190,11 +396,19 @@ function HScript.install(compat, api)
 		session:expose("flixel.FlxG", flxG)
 		session:bind("FlxG", flxG)
 		session:bind("game", gameProxy)
-		installSprites(session, compat, api, gameProxy, {
-			[camGame] = "camGame", [gameProxy.camHUD] = "camHUD", [gameProxy.camOther] = "camOther"
-		})
+		local setFilters, setShader = installRuntimeShaders(session, compat, gameProxy)
+		local cameras = {[camGame] = "camGame", [gameProxy.camHUD] = "camHUD", [gameProxy.camOther] = "camOther"}
+		for proxy, name in pairs(cameras) do
+			rawset(proxy, "setFilters", function(_, filters)
+				setFilters("_runtimeShader" .. name, assert(compat:_root(name), "HScript camera unavailable"), filters)
+			end)
+		end
+		installCameras(session, compat, flxG, cameras, setFilters)
+		installSprites(session, compat, api, gameProxy, cameras, setShader)
+		installNoteGroups(gameProxy)
 		Gameplay.bind(session, compat, api, gameProxy)
 		require("funkin.backend.scripts.psych.motion").install(session, compat, api)
+		require("funkin.backend.scripts.psych.primitives").install(session, api, flxG)
 		local colors = {
 			__name__ = "flixel.util.FlxColor",
 			BLACK = 0xFF000000, WHITE = 0xFFFFFFFF, RED = 0xFFFF0000,
@@ -205,6 +419,9 @@ function HScript.install(compat, api)
 		end
 		session:bind("FlxColor", colors)
 		session:expose("flixel.util.FlxColor", colors)
+		local countdown = {THREE = 0, TWO = 1, ONE = 2, GO = 3, START = 4}
+		session:bind("Countdown", countdown)
+		session:expose("states.PlayState.Countdown", countdown)
 		session:bind("Function_Continue", Script.Event_Continue)
 		session:bind("Function_Stop", Script.Event_Cancel)
 		local operations = {
@@ -212,16 +429,32 @@ function HScript.install(compat, api)
 			"makeLuaSprite", "makeGraphic", "addLuaSprite", "removeLuaSprite",
 			"setObjectCamera", "runTimer", "cancelTimer", "triggerEvent",
 			"cameraShake", "cameraFlash", "cameraFade", "playSound", "stopSound",
-			"getSongPosition", "getSongBpm", "getSongBeat", "setVar", "getVar"
+			"getSongPosition", "getSongBpm", "getSongBeat", "setVar", "getVar",
+			"initLuaShader", "setSpriteShader", "removeSpriteShader", "setShaderFloat", "setShaderBool", "setShaderInt",
+			"getShaderFloat", "getShaderInt", "getShaderBool", "setShaderSampler2D",
+			"setShaderFloatArray", "setShaderIntArray", "setShaderBoolArray",
+			"noteTweenX", "noteTweenY", "noteTweenAngle", "noteTweenAlpha", "noteTweenDirection",
+			"openCustomSubstate", "closeCustomSubstate", "insertToCustomSubstate",
+			"startCountdown", "keyboardPressed", "keyboardJustPressed", "keyboardReleased",
+			"startVideo", "startDialogue", "addLuaScript", "addHScript", "removeLuaScript", "removeHScript",
+			"isRunning", "getGlobalFromScript", "setGlobalFromScript",
+			"getColorFromHex", "loadGraphic", "loadFrames", "setGraphicSize", "setBlendMode",
+			"getCharacterX", "getCharacterY", "setCharacterX", "setCharacterY",
+			"cameraSetTarget", "setCameraScroll", "setCameraFollowPoint", "getMouseX", "getMouseY",
+			"luaSoundExists", "soundFadeIn", "soundFadeOut", "soundFadeCancel", "getSoundTime",
+			"setSoundTime", "getSoundPitch", "setSoundPitch", "debugPrint"
 		}
 		for _, name in ipairs(operations) do
 			local operation = api[name]
-			session:bind(name, function(...)
-				local first = operation(...)
-				if type(first) ~= "table" and type(first) ~= "userdata" then return first end
-			end)
+			if operation then
+				session:bind(name, function(...)
+					local first = operation(...)
+					if type(first) ~= "table" and type(first) ~= "userdata" then return first end
+				end)
+			end
 		end
-		for _, key in ipairs({"bpm", "crotchet", "stepCrotchet", "curStep", "curBeat", "curMeasure"}) do
+		for key, value in pairs(script.psychValues or {}) do session:bind(key, value) end
+		for _, key in ipairs({"bpm", "crotchet", "stepCrotchet", "curStep", "curBeat", "curMeasure", "startedCountdown"}) do
 			session:bind(key, rawget(script.variables, key))
 		end
 		script.hscriptBind = function(key, value)
@@ -277,29 +510,6 @@ function HScript.install(compat, api)
 	end
 end
 
-function HScript.note(note, playerField)
-	local fields = {
-		noteType = "type", noteData = "direction", ignoreNote = "ignoreNote",
-		noAnimation = "noAnimation", wasGoodHit = "wasGoodHit",
-		x = "x", y = "y", alpha = "alpha", visible = "visible"
-	}
-	return setmetatable({}, {
-		__index = function(_, key)
-			if key == "strumTime" then return note.time * 1000 end
-			if key == "sustainLength" then return (note.sustainTime or 0) * 1000 end
-			if key == "mustPress" then return note.parent == playerField end
-			if key == "isSustainNote" then return false end
-			local native = fields[key]
-			if native then return note[native] end
-		end,
-		__newindex = function(_, key, value)
-			if key == "ignoreNote" or key == "noAnimation" or key == "alpha" or key == "visible" then
-				note[fields[key]] = value
-				return
-			end
-			error("HScript note field unavailable for writing: " .. tostring(key), 2)
-		end
-	})
-end
+HScript.note = Notes.note
 
 return HScript

@@ -131,6 +131,11 @@ function Compat:forward(nativeName, ...)
 		local event = ...
 		if type(event) ~= "table" then fail("event forwarding requires a native chart event") end
 		local values = event.v
+		if self.script._psych then
+			local a, b = values, nil
+			if type(values) == "table" then a, b = values[1], values[2] end
+			return self:_callback(self.callbackNames.event, event.e, a or "", b or "", event.t or 0)
+		end
 		if type(values) == "table" and values[1] ~= nil then
 			return self:_callback(self.callbackNames.event, event.e, values[1], values[2])
 		end
@@ -172,11 +177,15 @@ function Compat:_cancelTween(tag)
 end
 
 function Compat:_tween(tag, path, value, duration, ease)
+	local object, key = self:_resolve(path)
+	return self:_tweenObject(tag, object, key, value, duration, ease)
+end
+
+function Compat:_tweenObject(tag, object, key, value, duration, ease)
 	self:_active()
 	positive(duration, "tween duration")
 	if type(tag) ~= "string" or tag == "" then fail("tween tag must be a nonempty string") end
-	local object, key, current = self:_resolve(path)
-	if type(current) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
+	if type(object[key]) ~= "number" or type(value) ~= "number" then fail("tweens require numeric properties") end
 	ease = ease or "linear"
 	if type(ease) ~= "string" or not Ease[ease] then fail("unsupported easing: " .. tostring(ease)) end
 	self:_cancelTween(tag)
@@ -458,7 +467,12 @@ function Compat.new(state, script, psych)
 	api.runHaxeCode = function() fail("runHaxeCode is unsupported; use native Lua engine APIs") end
 	api.runHaxeFunction = function() fail("runHaxeFunction is unsupported; use native Lua engine APIs") end
 	require("funkin.backend.scripts.compat-controls").install(self, api)
-	if psych then self.loadHScript = require("funkin.backend.scripts.psych").install(self, api) end
+	if psych then
+		require("funkin.backend.scripts.psych.shaders").install(self, api)
+		require("funkin.backend.scripts.psych.substate").install(self, api)
+		require("funkin.backend.scripts.psych.cutscene").install(self, api)
+		self.loadHScript = require("funkin.backend.scripts.psych").install(self, api)
+	end
 	for name, fn in pairs(api) do
 		self.previous[name] = rawget(script.variables, name)
 		self.installed[name] = fn; script:set(name, fn)
@@ -477,6 +491,9 @@ end
 
 function Compat:dispose()
 	if self.disposed then return end
+	if self.disposePsychCutscene then self.disposePsychCutscene() end
+	if self.disposePsychShaders then self.disposePsychShaders() end
+	if self.disposePsychCameras then self.disposePsychCameras() end
 	self.timer:clear(); self.tween:clear()
 	local tags = {}; for tag in pairs(self.objects) do tags[#tags + 1] = tag end
 	for _, tag in ipairs(tags) do self:_remove(tag, true) end

@@ -1,5 +1,6 @@
 ---@class PlayState:State
 local PlayState = State:extend("PlayState")
+local TimeIndex = require "funkin.backend.timeindex"
 local SceneJob = require "funkin.backend.scenejob"
 local Scene = require "funkin.backend.scene"
 local PauseButton = require "funkin.gameplay.ui.pausebutton"
@@ -388,6 +389,13 @@ function PlayState:enterScene()
 
 	SceneJob.checkpoint("Song scripts",0.15)
 	self.scripts:call("create")
+	if require("funkin.backend.modding.psych").root() then
+		local changed
+		for _, event in ipairs(self.events) do
+			if event.psych and self.scripts:preparePsychEvent(event) then changed = true end
+		end
+		if changed then TimeIndex.sort(self.events) end
+	end
 
 	if not self.stage then
 		self.stage = Stage(PlayState.SONG.stage)
@@ -862,6 +870,7 @@ function PlayState:getRating(a, b)
 end
 
 function PlayState:hasActiveDialogue()
+	if self.psychCutscene then return true end
 	if not self.members or not DialogueBox then return false end
 	for _, m in ipairs(self.members) do
 		if m and not m._closed and m.exists ~= false and m.is and m:is(DialogueBox) then
@@ -891,6 +900,8 @@ function PlayState:startCountdown()
 	self.countdown.playback = 1
 
 	self:fadeReceptors()
+	self.scripts:set("startedCountdown", true)
+	self.scripts:call("countdownStarted")
 end
 
 function PlayState:fadeReceptors()
@@ -1083,10 +1094,16 @@ function PlayState:focus(f)
 end
 
 function PlayState:executeEvent(event)
+	local oldTarget = self.camTarget
 	if self.eventScripts[event.e] then
 		self.eventScripts[event.e]:call("event", event)
 	end
 	self.scripts:call("onEvent", event)
+	if self.camTarget and self.camTarget ~= oldTarget then
+		local focus = self.camTarget == self.boyfriend and "boyfriend"
+			or self.camTarget == self.gf and "gf" or self.camTarget == self.dad and "dad"
+		if focus then self.scripts:call("cameraFocus", focus) end
+	end
 end
 
 function PlayState:pushEvent(name, params)
@@ -1207,6 +1224,7 @@ function PlayState:doCountdown(beat)
 		self.doCountdownAtBeats = nil
 	else
 		self.countdown:doCountdown(beat)
+		if beat > 0 then self.scripts:call("countdownTick", beat - 1) end
 	end
 end
 
@@ -1324,6 +1342,7 @@ function PlayState:update(dt)
 			end
 
 			self:playSong(startSec)
+			if self.doCountdownAtBeats and startSec == 0 then self.scripts:call("countdownTick", 4) end
 			PlayState.conductor.time = self.startPos
 			self.scripts:call("songStart")
 		else
@@ -1583,7 +1602,8 @@ function PlayState:goodNoteHit(note, time)
 		Events.NoteHit(notefield, note,
 			note.character or (note.gf and self.gf or notefield.character), rating))
 
-	if not event.cancelled and not note.wasGoodHit then
+	local completed = not event.cancelled and not note.wasGoodHit
+	if completed then
 		note.wasGoodHit = true
 
 		if event.unmuteVocals then
@@ -1658,7 +1678,7 @@ function PlayState:goodNoteHit(note, time)
 		end
 	end
 
-	self.scripts:call("postGoodNoteHit", note, rating)
+	self.scripts:call("postGoodNoteHit", note, rating, completed)
 end
 
 function PlayState:goodSustainHit(note, time, fullyHeldSustain)
@@ -1722,7 +1742,7 @@ function PlayState:miss(note, dir)
 				self.combo = math.min(self.combo, 0) - 1
 				self:popUpScore()
 			end
-			self:recalculateRating()
+			self:recalculateRating(nil, true)
 		end
 	end
 	notefield.lastSustain = nil
@@ -1730,17 +1750,20 @@ function PlayState:miss(note, dir)
 	self.scripts:call(ghostMiss and "postMiss" or "postNoteMiss", funcParam)
 end
 
-function PlayState:recalculateRating(rating)
+function PlayState:recalculateRating(rating, missed)
 	if rating then
 		local field = rating .. "s"
 		self[field] = (self[field] or 0) + 1
 		self:popUpScore(rating)
 	end
+	if self.scripts and self.scripts:call("onRecalculateRating") == Script.Event_Cancel then return end
+	if self.scripts and self.scripts:call("preUpdateScore", missed == true) == Script.Event_Cancel then return end
 	if self.processingNoteHits then
 		self.ratingNeedsRecalc = true
 	else
 		self:updateInformation(true)
 	end
+	if self.scripts then self.scripts:call("onUpdateScore", missed == true) end
 end
 
 function PlayState:popUpScore(rating)
@@ -1773,6 +1796,7 @@ end
 function PlayState:tryGameOver()
 	local event = self.scripts:event("onGameOver", Events.GameOver())
 	if not event.cancelled then
+		for key, value in pairs(self.psychGameOver or {}) do event[key] = value end
 		if self.buttons then self:remove(self.buttons) end
 
 		GameOverSubstate.characterName = event.characterName
@@ -1845,6 +1869,7 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 	if not boundControls then return end
 	key = self:getKeyFromEvent(boundControls)
 	if key < 0 then return end
+	if self.scripts:call("keyPressPre", key) == Script.Event_Cancel then return end
 
 	if self.information and self.startedCountdown and not self.startingSong
 		and not self.paused and not self.playerNotefield.bot then self.information:tap() end
@@ -1858,6 +1883,7 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 			local l = #hitNotes
 
 			if l == 0 then
+				if not hasSustain then self.scripts:call("ghostTap", key) end
 				local receptor = notefield.receptors[fixedKey]
 				if receptor then
 					receptor:play(hasSustain and "confirm" or "pressed")
@@ -1881,6 +1907,7 @@ function PlayState:onKeyPress(key, type, scancode, isrepeat, time)
 			end
 		end
 	end
+	self.scripts:call("keyPressPost", key)
 end
 
 function PlayState:onKeyRelease(key, type, scancode, time)
@@ -1894,12 +1921,14 @@ function PlayState:onKeyRelease(key, type, scancode, time)
 	if key < 0 then return end
 	local controlName = PlayState.keysControls[key]
 	if controlName and controls:down(controlName) then return end
+	if self.scripts:call("keyReleasePre", key) == Script.Event_Cancel then return end
 
 	for _, notefield in pairs(self.notefields) do
 		if notefield.is and not notefield.bot then
 			self:resetStroke(notefield, key)
 		end
 	end
+	self.scripts:call("keyReleasePost", key)
 end
 
 function PlayState:closeSubstate()

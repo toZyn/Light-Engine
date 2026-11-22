@@ -208,7 +208,9 @@ function Script:set(var, value)
 	if self.closed then return end
 	rawset(self.variables, var, value)
 	if self.hscriptBind and (var == "bpm" or var == "crotchet" or var == "stepCrotchet"
-		or var == "curStep" or var == "curBeat" or var == "curMeasure") then
+		or var == "curStep" or var == "curBeat" or var == "curMeasure" or var == "startedCountdown"
+		or var == "score" or var == "misses" or var == "combo" or var == "playbackRate"
+		or var == "botPlay" or var == "inGameOver" or type(var) == "string" and var:match("^default%a+Strum[XY]%d$")) then
 		self.hscriptBind(var, value)
 	end
 end
@@ -305,6 +307,7 @@ function Script:close()
 	self.variables = nil
 	self.chunk = nil
 	self.hscriptCall, self.hscriptHas, self.hscriptBind = nil, nil, nil
+	self.psychRegistry, self.psychLoadScript = nil, nil
 	self.__failedfunc = {}
 
 	if not self.closed then

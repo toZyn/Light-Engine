@@ -470,7 +470,15 @@ function Camera:draw()
 	end
 end
 
+function Camera:clearPsychFilterBuffers()
+	if self.psychFilterBuffers then
+		for _, buffer in ipairs(self.psychFilterBuffers) do buffer:release() end
+		self.psychFilterBuffers = nil
+	end
+end
+
 function Camera:destroy()
+	self:clearPsychFilterBuffers()
 	Camera.super.destroy(self)
 	if self.canvas then self.canvas:release() end
 	self.canvas = nil
@@ -561,6 +569,39 @@ function Camera:drawSimple(_skipCheck)
 	grap.setScissor(xc, yc, wc, hc)
 	grap.setColor(r, g, b, a)
 	grap.setBlendMode(blendMode, alphaMode)
+end
+
+local function applyPsychFilters(camera, input)
+	local filters = camera.psychPrefilters
+	if not filters or #filters == 0 then return input end
+	local grap = love.graphics
+	local width, height = input:getDimensions()
+	local buffers = camera.psychFilterBuffers
+	if buffers and (buffers[1]:getWidth() ~= width or buffers[1]:getHeight() ~= height) then
+		camera:clearPsychFilterBuffers()
+		buffers = nil
+	end
+	buffers = buffers or {}
+	camera.psychFilterBuffers = buffers
+	for index = #buffers + 1, math.min(2, #filters) do
+		buffers[index] = grap.newCanvas(width, height, {format = input:getFormat(), dpiscale = 1})
+	end
+	grap.push("all")
+	grap.origin()
+	grap.setScissor()
+	grap.setBlendMode("replace", "premultiplied")
+	grap.setColor(1, 1, 1, 1)
+	for index, filter in ipairs(filters) do
+		local buffer = buffers[(index - 1) % 2 + 1]
+		grap.setCanvas(buffer)
+		grap.clear()
+		grap.setShader(filter)
+		if filter:hasUniform("openfl_TextureSize") then filter:send("openfl_TextureSize", {width, height}) end
+		grap.draw(input, 0, 0)
+		input = buffer
+	end
+	grap.pop()
+	return input
 end
 
 function Camera:drawComplex(_skipCheck)
@@ -657,6 +698,7 @@ function Camera:drawComplex(_skipCheck)
 		grap.setCanvas(cv)
 	end
 
+	canvas = applyPsychFilters(self, canvas)
 	local alpha = self.alpha
 	local color = self.color
 	grap.setShader(self.shader)
@@ -697,6 +739,7 @@ function Camera:drawCanvasToTarget(targetW, targetH)
 	end
 
 	local grap = love.graphics
+	canvas = applyPsychFilters(self, canvas)
 	local pr, pg, pb, pa = grap.getColor()
 	local prevShader = grap.getShader()
 	local prevBlend, prevAlphaMode = grap.getBlendMode()
