@@ -206,6 +206,28 @@ check('every Psych 1.0.4 Lua function is defined', function()
 	assert(#missing == 0, 'missing Psych functions: ' .. table.concat(missing, ', '))
 end)
 
+check('a HUD camera a state does not own yet still answers numbers', function()
+	-- Mods size their sprites from `game.camHUD.height`. In a state that has not
+	-- built a HUD camera yet that read was nil, and the mod died with
+	-- "attempt to perform arithmetic on local 'tdGameH' (a nil value)". Both the
+	-- HScript camera proxy and the reflection path now fall back to the game
+	-- camera, so a read stays numeric.
+	local Resolve = require 'funkin.backend.scripts.psych.resolve'
+	local Compat = require 'funkin.backend.scripts.compat'
+	local state = Group()
+	state.camOther = Camera()
+	game.camera = Camera()
+	game.camera.width, game.camera.height = 320, 240
+	local script = Script('tests/engine/compat-fixture.lua', false, true, true)
+	local compat = Compat.new(state, script, true)
+	local missing = Resolve.get(compat, 'camHUD')
+	assert(missing == game.camera, 'a missing HUD camera must fall back to the game camera')
+	local height = type(Resolve.get(compat, 'camHUD.height')) == 'number'
+	assert(height, 'camHUD.height must stay numeric for mods that do arithmetic with it')
+	local other = Resolve.get(compat, 'camOther')
+	assert(other == state.camOther, 'a camera the state does own must not be replaced')
+end)
+
 check('an unreadable property is reported once, not every frame', function()
 	-- getProperty answering nil in silence is what made a mod die later with
 	-- "arithmetic on a nil value" somewhere unrelated. The path now shows up in the
