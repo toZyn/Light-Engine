@@ -287,7 +287,10 @@ function onCreate()
  haxeBudgetStopped = not pcall(runHaxeCode, 'while (true) {}')
  makeLuaSprite('shaderTarget', '', 0, 0)
  makeGraphic('shaderTarget', 8, 8, 'FFFFFF')
- initLuaShader('tint')
+ local okSh, shErr = pcall(initLuaShader, 'tint')
+ if not okSh then
+  error('DIAG6 initLuaShader threw: ' .. tostring(shErr), 0)
+ end
  assert(setSpriteShader('shaderTarget', 'tint'))
  setShaderFloat('shaderTarget', 'amount', 0.5)
 end
