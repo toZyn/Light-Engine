@@ -411,7 +411,10 @@ function onEvent(name:String, a:String, b:String) {
    assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3,
     ('DIAG2 zoom=%s groupSize=%s point=%s'):format(tostring(game.camera.zoom),
       tostring(state.psychVariables.groupSize), tostring(state.psychVariables.point)))
-   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2)
+   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2,
+    ('DIAG3 arrowSkin=%s misses=%s psychArrowSkin=%s stateMisses=%s'):format(
+      tostring(state.psychVariables.hscriptArrowSkin), tostring(state.psychVariables.hscriptMisses),
+      tostring(state.psychArrowSkin), tostring(state.misses)))
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
    local x = player.receptors[1].x
