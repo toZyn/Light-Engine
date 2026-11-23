@@ -287,10 +287,7 @@ function onCreate()
  haxeBudgetStopped = not pcall(runHaxeCode, 'while (true) {}')
  makeLuaSprite('shaderTarget', '', 0, 0)
  makeGraphic('shaderTarget', 8, 8, 'FFFFFF')
- local okSh, shErr = pcall(initLuaShader, 'tint')
- if not okSh then
-  error('DIAG6 initLuaShader threw: ' .. tostring(shErr), 0)
- end
+ initLuaShader('tint')
  assert(setSpriteShader('shaderTarget', 'tint'))
  setShaderFloat('shaderTarget', 'amount', 0.5)
 end
@@ -406,33 +403,13 @@ function onEvent(name:String, a:String, b:String) {
    state.health = 1
    local zoom = game.camera.zoom
    local members = #state.members
-   local degraded = {}
-   local Reflection = require('funkin.backend.scripts.psych.reflection')
-   local originalWarn = Reflection.warn
-   Reflection.warn = function(message) degraded[#degraded+1] = tostring(message) end
    scripts:call('create')
-   Reflection.warn = originalWarn
    assert(#state.members == members + 2)
    assert(state.members[members + 1].x == 24 and state.members[members + 2].members[1].content == 'HScript')
    local customCam = state.members[members + 1].cameras[1]
    assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
-   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3,
-    ('DIAG2 zoom=%s groupSize=%s point=%s'):format(tostring(game.camera.zoom),
-      tostring(state.psychVariables.groupSize), tostring(state.psychVariables.point)))
-   do
-    local hv = scripts.scripts[1].variables
-    local t = {}
-    t[#t+1] = 'addMisses=' .. type(hv.addMisses)
-    t[#t+1] = 'getMisses=' .. type(hv.getMisses)
-    local ok1, r1 = pcall(function() return hv.addMisses(2) end)
-    t[#t+1] = 'callOk=' .. tostring(ok1) .. ' ret=' .. tostring(r1) .. ' stateMisses=' .. tostring(state.misses)
-    local ok2, r2 = pcall(function() return hv.getPropertyFromClass('PlayState', 'SONG.arrowSkin') end)
-    t[#t+1] = 'getPropOk=' .. tostring(ok2) .. ' val=' .. tostring(r2)
-    local ok3, r3 = pcall(function() return hv.setPropertyFromClass('PlayState', 'SONG.arrowSkin', 'note-style') end)
-    t[#t+1] = 'setPropOk=' .. tostring(ok3) .. ' psychArrowSkin=' .. tostring(state.psychArrowSkin)
-    assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2,
-      'DIAG5 ' .. table.concat(t, ' | ') .. ' || degraded: ' .. table.concat(degraded, ' ;; '))
-   end
+   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3)
+   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2)
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
    local x = player.receptors[1].x

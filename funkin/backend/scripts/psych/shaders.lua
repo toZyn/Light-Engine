@@ -35,7 +35,11 @@ local function translate(source, vertex)
 	-- A bare `texture(...)` call (GLSL3 spelling) must reach love's Texel too.
 	source = source:gsub("%f[%w_]texture%s*%(", "Texel(")
 	source = source:gsub("%f[%w_]gl_FragColor%f[^%w_]", "psychOutput")
-	local rewritten, mains = source:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain() {")
+	-- `bitmap` is the sampled image under HaxeFlixel/OpenFL naming. The moved body
+	-- must receive it as a parameter: effect() parameters are not visible inside a
+	-- separate top-level function, which failed to compile with
+	-- "ERROR: 'bitmap' : undeclared identifier".
+	local rewritten, mains = source:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain(Image bitmap) {")
 	if mains ~= 1 then error("Psych fragment shader must declare one void main()", 2) end
 	local declaration = vertex and "varying vec2 psychUV;\n" or ""
 	return declaration .. [[
@@ -44,10 +48,10 @@ vec2 openfl_TextureCoordv;
 vec4 psychOutput;
 ]] .. rewritten .. [[
 
-vec4 effect(vec4 color, Image image, vec2 uv, vec2 screen) {
+vec4 effect(vec4 color, Image bitmap, vec2 uv, vec2 screen) {
 	openfl_TextureCoordv = ]] .. (vertex and "psychUV" or "uv") .. [[;
 	psychOutput = vec4(0.0);
-	psychMain();
+	psychMain(bitmap);
 	return psychOutput * color;
 }
 ]]
