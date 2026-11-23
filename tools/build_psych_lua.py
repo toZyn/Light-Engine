@@ -89,7 +89,9 @@ def stage(source: Path, work: Path) -> None:
         # bare `LEFT`/`CENTER` text alignment constructors (wildcard import).
         # Everything else resolves by falling back to the root of the class
         # path, which is where the externs live.
-        header = [decl, "using StringTools;", "import TextAlign.*;"]
+        header = [decl, "using StringTools;",
+                  "import TextAlign.*;", "import AssetType.*;",
+                  "import FlxGamepadInputID.*;"]
         package.joinpath(f"{name}.hx").write_text(
             "\n".join(header + body_lines), encoding="utf-8")
     if missing:

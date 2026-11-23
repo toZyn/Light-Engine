@@ -9,6 +9,6 @@ extern class FlxG {
 	public static var sound:Dynamic;
 	public static var save:Dynamic;
 	public static function log(data:Dynamic):Void;
-	public static function random(?min:Int, ?max:Int):Float;
+	public static var random:FlxRandom;
 	public static function overlap(?object1:Dynamic, ?object2:Dynamic, ?notifyCallback:Dynamic):Bool;
 }
