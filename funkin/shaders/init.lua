@@ -73,12 +73,12 @@ vec4 position(mat4 transformProjection, vec4 vertexPosition) {
 	code = code:gsub("%f[%w_]texture2D%f[^%w_]", "Texel")
 	code = code:gsub("%f[%w_]texture%s*%(", "Texel(")
 	code = code:gsub("%f[%w_]gl_FragColor%f[^%w_]", "psychOutput")
-	local rewritten, count = code:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain() {")
+	-- `bitmap` is the sampled image: the name HaxeFlixel/OpenFL shaders use.
+	-- It must reach the moved body as a parameter -- an `effect()` parameter is not
+	-- in scope inside a separate top-level function, which failed to compile with
+	-- "ERROR: 'bitmap' : undeclared identifier".
+	local rewritten, count = code:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain(Image bitmap) {")
 	if count ~= 1 then return code end
-	-- `bitmap` and `openfl_TextureCoordv` are Psych/OpenFL names for the sampled
-	-- image and its coordinates. They must exist in the generated wrapper or a
-	-- shader that only uses those names fails to compile with
-	-- "undeclared identifier bitmap".
 	return [[
 extern vec2 openfl_TextureSize;
 vec2 openfl_TextureCoordv;
@@ -88,7 +88,7 @@ vec4 psychOutput;
 vec4 effect(vec4 color, Image bitmap, vec2 uv, vec2 screen) {
 	openfl_TextureCoordv = uv;
 	psychOutput = vec4(0.0);
-	psychMain();
+	psychMain(bitmap);
 	return psychOutput * color;
 }
 ]]

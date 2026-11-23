@@ -119,6 +119,12 @@ void main() {
 		assert(sanitized:find('vec4%s+effect%s*%('), 'Psych fragment shader was not translated to effect()')
 		assert(not sanitized:find('void%s+main%s*%(%s*%)%s*{'), 'standalone main() survived translation')
 		assert(not sanitized:find('#define%s+texture'), 'redefined prelude macro was kept')
+		-- `bitmap` must be in scope inside the moved body, otherwise the driver
+		-- reports "ERROR: 'bitmap' : undeclared identifier".
+		assert(sanitized:find('psychMain%s*%(%s*Image%s+bitmap%s*%)'),
+			'translated body cannot see the sampled image as `bitmap`')
+		assert(sanitized:find('psychMain%s*%(%s*bitmap%s*%)'),
+			'translated effect() does not forward bitmap to the Psych body')
 		local psychVert = [[
 void main() {
   gl_Position = openfl_Matrix * openfl_Position;
