@@ -71,6 +71,56 @@ jobs:
             2>&1 | tee build/psych-lua.log
         continue-on-error: true
 
+      - name: Report the remaining surface gap
+        # Logs are not always readable from automation, so the missing-symbol
+        # list is emitted as annotations: that is the whole deliverable of a
+        # failed run, and it must survive however this job is inspected.
+        if: always()
+        run: |
+          set -euo pipefail
+          LOG=build/psych-lua.log
+          [ -f "$LOG" ] || { echo "::warning::no compiler log was produced"; exit 0; }
+          if [ -f build/psych-lua/psych-lua.lua ]; then
+            echo "::notice::compile succeeded"; exit 0
+          fi
+          python3 - "$LOG" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          lines = text.splitlines()
+
+          kinds = {}
+          for line in lines:
+              for pat, label in (
+                  (r"Unknown identifier : (\w+)", 'identifier'),
+                  (r"Unknown type : (\w+)", 'type'),
+                  (r"has no field (\w+)", 'field'),
+                  (r"Cannot access (\w+)", 'field'),
+                  (r"Module (\w+) does not define", 'module'),
+              ):
+                  m = re.search(pat, line)
+                  if m:
+                      kinds.setdefault((label, m.group(1)), 0)
+                      kinds[(label, m.group(1))] += 1
+                      break
+
+          grouped = {}
+          for (label, name), n in kinds.items():
+              grouped.setdefault(label, []).append(f"{name}(x{n})")
+
+          summary = {k: sorted(v) for k, v in grouped.items()}
+          print("RESULT missing symbols:")
+          for label in sorted(summary):
+              print(f"  {label}: {', '.join(summary[label])}")
+
+          emit = [(l, n) for (l, n) in kinds][:40]
+          for label, name in emit:
+              print(f"::error title=missing {label}::{name}")
+
+          first = [l for l in lines if re.search(r"\.hx:\d+:", l)][:12]
+          for l in first:
+              print(f"::error title=haxe::{l[:400]}")
+          PY
+
       - name: Check the output is loadable Lua
         id: verify
         if: hashFiles('build/psych-lua/psych-lua.lua') != ''
