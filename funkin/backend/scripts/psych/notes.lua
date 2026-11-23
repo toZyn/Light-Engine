@@ -5,13 +5,29 @@ local noteFields = {
 	noteType = "type", noteData = "direction", ignoreNote = "ignoreNote", noAnimation = "noAnimation",
 	wasGoodHit = "wasGoodHit", tooLate = "tooLate", alpha = "alpha", visible = "visible",
 	gfNote = "gf", hitHealth = "hitHealth", missHealth = "missHealth",
-	hitCausesMiss = "hitCausesMiss", noMissAnimation = "noMissAnimation"
+	hitCausesMiss = "hitCausesMiss", noMissAnimation = "noMissAnimation",
+	-- Fields Psych mods read and do arithmetic with in note callbacks. Leaving them
+	-- out answered nil, which surfaced as "attempt to perform arithmetic on a nil
+	-- value" inside otherwise healthy onCreate/onStepHit handlers.
+	speed = "speed", angle = "angle", offsetX = "offsetX",
+	offsetY = "offsetY", scaleX = "scaleX", scaleY = "scaleY", column = "direction",
+	sustainNote = "sustainNote", animationPlayed = "animationPlayed",
+	hitByOpponent = "hitByOpponent", prevNote = "prevNote", nextNote = "nextNote",
+	rating = "rating", hits = "hits", misses = "misses",
 }
 local editable = {
 	ignoreNote = true, noAnimation = true, alpha = true, visible = true, gfNote = true,
-	hitHealth = true, missHealth = true, hitCausesMiss = true, noMissAnimation = true
+	hitHealth = true, missHealth = true, hitCausesMiss = true, noMissAnimation = true,
+	speed = true, offsetX = true, offsetY = true, scaleX = true, scaleY = true,
+	angle = true, column = true, -- column writes through to noteData, like Psych
 }
-local defaults = {hitHealth = 0.023, missHealth = 0.0475, hitCausesMiss = false, noMissAnimation = false, gfNote = false}
+-- Psych leaves these at 0/false on a fresh note; returning nil here is what broke
+-- mods that immediately use the value in arithmetic.
+local defaults = {
+	hitHealth = 0.023, missHealth = 0.0475, hitCausesMiss = false, noMissAnimation = false,
+	gfNote = false, speed = 1, angle = 0, offsetX = 0, offsetY = 0,
+	scaleX = 1, scaleY = 1, column = 0, hits = 0, misses = 0,
+}
 
 function Notes.note(note, playerField, state)
 	-- Writes the native Note cannot model are remembered here and replayed by
@@ -33,6 +49,10 @@ function Notes.note(note, playerField, state)
 				if value ~= nil then return value end
 				return defaults[key]
 			end
+			-- Psych exposes a fixed set of numeric note fields. Answering nil for a
+			-- known one is what turned into "arithmetic on a nil value" inside the
+			-- mod, far from the read that caused it.
+			if defaults[key] ~= nil then return defaults[key] end
 			return extra[key]
 		end,
 		__newindex = function(_, key, value)

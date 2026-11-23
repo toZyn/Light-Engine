@@ -122,11 +122,15 @@ end
 function Receptor:setSkin(skin)
 	if skin == self.skin or not skin.receptors then return end
 
+	-- Same defect Note:setSkin had: `direction` was cleared for the reload and
+	-- only restored when the reload returned normally, so a receptor whose
+	-- direction was already gone stayed direction-less and its sprite was rebuilt
+	-- for the wrong lane. That is what made the strum line look skewed.
 	local col = self.direction
-	self.skin, self.direction = skin, nil
+	self.skin = skin
 	Note.loadSkinData(self, skin, "receptors", col)
 
-	if col then self:setDirection(col) end
+	if col ~= nil and self.direction ~= col then self:setDirection(col) end
 	self:play("static")
 end
 

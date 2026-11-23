@@ -98,7 +98,10 @@ local function makeRGB(color)
 end
 
 function Note:loadSkinData(skinData, name, direction, noRgb)
-	direction = direction + 1
+	-- A skin reload that raised part way could leave the note without a direction;
+	-- adding 1 to nil then aborted the notefield update. Fall back to lane 0 so the
+	-- sprite is rebuilt sane instead of crashing the song.
+	direction = (tonumber(direction) or 0) + 1
 	noRgb = noRgb or skinData.psychDisableRgb
 	if not self.__shaderAnimations then
 		self.__shaderAnimations = table.new(0, 4)
@@ -171,8 +174,15 @@ end
 
 function Note:setSkin(skin)
 	if skin == self.skin then return end
-	local name, col = skin.skin, self.direction
-	self.skin, self.direction = skin, nil
+	local col = self.direction
+	-- `direction` must never be cleared. It used to be nilled for the duration of
+	-- the reload and restored afterwards, so a note whose direction was already
+	-- nil -- or a reload that raised part way -- left it nil for good. The note
+	-- then crashed the notefield update with
+	--   attempt to perform arithmetic on field 'direction' (a nil value)
+	-- and, when it survived, its sprite was rebuilt in the wrong lane, which is
+	-- what "malformed arrows that drift in a random direction" looked like.
+	self.skin = skin
 
 	self:loadSkinData(skin, "notes", col, true)
 
@@ -180,7 +190,7 @@ function Note:setSkin(skin)
 		loadSustainSkin(self.sustain, skin, "sustains", "hold", col)
 		loadSustainSkin(self.sustainEnd, skin, "sustainends", "end", col)
 	end
-	if col then self:setDirection(col) end
+	if col ~= nil and self.direction ~= col then self:setDirection(col) end
 
 	self:play("note", true)
 end

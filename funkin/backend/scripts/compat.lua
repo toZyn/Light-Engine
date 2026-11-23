@@ -54,6 +54,8 @@ function Compat:_owner(tag)
 end
 
 function Compat:_register(tag, object)
+	-- Replacing a tag must retire the old object through whichever context holds
+	-- it. Skipping that leaves the previous sprite in the state and on screen.
 	local owner = self:_owner(tag)
 	if owner.objects[tag] then owner:_remove(tag, true) end
 	self.objects[tag] = object
@@ -146,13 +148,37 @@ end
 
 function Compat:_owned(tag)
 	self:_active()
-	if not self.objects[tag] then fail("sprite tag is not owned by this context: " .. tostring(tag)) end
-	return self.objects[tag]
+	local object = self.objects[tag]
+	if object then return object end
+	-- Psych mods share tag names across scripts (a HUD counter created by one file
+	-- and updated by another, usually through callScript). The owning context is
+	-- recorded in objectOwners, so resolve through it instead of failing with
+	-- "sprite tag is not owned by this context", which silently dropped the update
+	-- and left the object frozen on screen.
+	local owner = self.objectOwners and self.objectOwners[tag]
+	if owner and owner ~= self and owner.objects and owner.objects[tag] then
+		return owner.objects[tag]
+	end
+	for _, context in ipairs(self.compatContexts or {}) do
+		if context ~= self and not context.disposed and context.objects and context.objects[tag] then
+			return context.objects[tag]
+		end
+	end
+	fail("sprite tag is not owned by this context: " .. tostring(tag))
 end
 
 function Compat:_remove(tag, destroy)
 	local owner = self:_owner(tag)
-	if owner ~= self then return owner:_remove(tag, destroy) end
+	if owner ~= self and owner.objects and owner.objects[tag] then return owner:_remove(tag, destroy) end
+	-- The tag may live in a sibling context; _owned resolves it, so the delete has
+	-- to happen on whichever context actually registered it.
+	if not self.objects[tag] then
+		for _, context in ipairs(self.compatContexts or {}) do
+			if context ~= self and not context.disposed and context.objects[tag] then
+				return context:_remove(tag, destroy)
+			end
+		end
+	end
 	local object = self:_owned(tag)
 	if self.added[tag] then self.state:remove(object); self.added[tag] = nil end
 	if destroy then
@@ -359,10 +385,27 @@ function Compat.new(state, script, psych)
 		state.psychObjectOwners = state.psychObjectOwners or {}
 		self.objectOwners = state.psychObjectOwners
 	end
+	-- Psych funnels every script of a state through one tag namespace, so a mod
+	-- may build a sprite in one file and update it from another. Keep the sibling
+	-- contexts reachable so those lookups resolve instead of failing.
+	state.compatContexts = state.compatContexts or {}
+	table.insert(state.compatContexts, self)
+	self.compatContexts = state.compatContexts
 	for name, callback in pairs(callbacks) do self.callbackNames[name] = callback end
 	local api = {}
 	api.getProperty = function(path, allowMaps)
-		if psych then return resolver().get(self, path, allowMaps) end
+		if psych then
+			local value = resolver().get(self, path, allowMaps)
+			-- A nil read used to be completely silent, so the mod died later with
+			-- "attempt to perform arithmetic on a nil value" on a line that looked
+			-- fine. The value still comes back nil (Psych does the same), but the
+			-- unreadable path is now named in the log so it can be diagnosed
+			-- instead of guessed at.
+			if value == nil and type(path) == "string" then
+				Reflection.warn("getProperty: could not read \"" .. path .. "\"", true)
+			end
+			return value
+		end
 		local _, _, value = self:_resolve(path)
 		return value
 	end
@@ -686,6 +729,8 @@ function Compat:dispose()
 	-- Signal dispatch iterates its live array; removing our listener while it is
 	-- executing would skip the listener after us. A closed Script cannot repeat.
 	if self.onClose and not self.closing then self.script.closeCallback:remove(self.onClose) end
+	local siblings = self.compatContexts
+	if siblings then for i = #siblings, 1, -1 do if siblings[i] == self then table.remove(siblings, i) end end end
 	if self.script._compatibility == self then self.script._compatibility = nil end
 	self.disposed = true
 end

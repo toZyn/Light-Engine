@@ -100,6 +100,102 @@ check('Psych note proxies accept writes they cannot model', function()
 	assert(proxy.alpha == 0.5, 'modelled note fields must still write through')
 end)
 
+check('note fields mods do arithmetic with are never nil', function()
+	-- Reading `note.speed` or `note.angle` and adding to it raised "attempt to
+	-- perform arithmetic on a nil value" inside healthy onSpawnNote handlers.
+	local Notes = require 'funkin.backend.scripts.psych.notes'
+	local fakeNote = {time = 1, sustainTime = 0, type = '', speed = 1,
+		skin = {psychTexture = ''}, directions = {z = 0}}
+	local proxy = Notes.note(fakeNote, 'playerField', nil)
+	for _, key in ipairs({'speed', 'angle', 'offsetX', 'offsetY', 'column', 'hits', 'misses',
+		'scaleX', 'scaleY', 'hitHealth', 'missHealth'}) do
+		local value = proxy[key]
+		assert(type(value) == 'number', 'note.' .. key .. ' must be numeric, got ' .. type(value))
+	end
+	assert(proxy.speed == 1 and proxy.scaleX == 1, 'scale/speed defaults must match Psych')
+	assert(proxy.hitCausesMiss == false and proxy.noMissAnimation == false,
+		'boolean note defaults must match Psych')
+end)
+
+check('a skin reload never clears the note direction', function()
+	-- Note:setSkin used to blank `direction` for the length of the reload and
+	-- restore it afterwards. A note whose direction was already gone, or a
+	-- reload that raised, kept nil for good: the sprite was rebuilt in the wrong
+	-- lane (the arrows that render skewed) and the notefield update then died on
+	-- `note.direction + 1`.
+	local Note = require 'funkin.gameplay.note'
+	local note = setmetatable({direction = 2, skin = {}, sustainSegments = 1}, Note)
+	note.play = function() end
+	note.setDirection = function(self, value) self.direction = value end
+	note.loadSkinData = function() end
+	Note.setSkin(note, {skin = 'test'})
+	assert(note.direction == 2, 'setSkin must preserve direction, got ' .. tostring(note.direction))
+
+	-- Even a reload that raises must not strand the note without a direction.
+	local broken = setmetatable({direction = 1, skin = {}}, Note)
+	broken.play = function() end
+	broken.loadSkinData = function() error('skin asset missing') end
+	pcall(Note.setSkin, broken, {skin = 'broken'})
+	assert(broken.direction == 1, 'a failed reload must not clear direction')
+
+	-- Receptor:setSkin carried the identical defect, which is why the strum line
+	-- looked skewed as well.
+	local Receptor = require 'funkin.gameplay.receptor'
+	local receptor = setmetatable({direction = 3, skin = {}}, Receptor)
+	receptor.play = function() end
+	receptor.setDirection = function(self, value) self.direction = value end
+	Receptor.setSkin(receptor, {receptors = true, skin = 'test'})
+	assert(receptor.direction == 3, 'Receptor:setSkin must preserve direction, got '
+		.. tostring(receptor.direction))
+end)
+
+check('sprites resolve across the contexts of one state', function()
+	-- Psych shares one tag namespace per state, so a counter built in one script
+	-- is routinely updated from another. Lookups that answered nil made the
+	-- update silently do nothing: `slpCounter` stayed frozen on screen and the
+	-- compatibility layer logged 255 "sprite tag is not owned" warnings a song.
+	local Compat = require 'funkin.backend.scripts.compat'
+	-- Compat.new validates its arguments against native types, so these have to be
+	-- a real Group and a real loaded Script, not tables.
+	local state = Group()
+	state.camHUD, state.camOther = Camera(), Camera()
+	game.camera = Camera()
+	local first = Compat.new(state, Script('tests/engine/compat-fixture.lua', false, true, true), true)
+	local second = Compat.new(state, Script('tests/engine/compat-fixture.lua', false, true, true), true)
+	local sprite = first:_sprite('slpCounter', nil, 0, 0, false)
+	assert(sprite, 'first context must create the sprite')
+	local found = second:_owned('slpCounter')
+	assert(found == sprite, 'a sibling context must resolve the shared tag')
+	second:_remove('slpCounter', true)
+	assert(first.objects.slpCounter == nil, 'removal must hit the context that owns the tag')
+	second:dispose()
+	first:dispose()
+	assert(#state.compatContexts == 0, 'disposing must unregister the context')
+end)
+
+check('every Psych 1.0.4 Lua function is defined', function()
+	-- The expected list is read from Psych's own source (source/psychlua/*.hx,
+	-- every `add_callback` name). A function missing here raises
+	-- "attempt to call a nil value" and aborts whichever callback used it, which
+	-- is how a mod dies half way through a song with nothing obviously wrong.
+	local expected = require 'tests.engine.psych-api-surface'
+	local state = Group()
+	state.camHUD, state.camOther = Camera(), Camera()
+	game.camera = Camera()
+	local Compat = require 'funkin.backend.scripts.compat'
+	local script = Script('tests/engine/compat-fixture.lua', false, true, true)
+	-- Constructing a psych context installs the whole Lua surface onto its own api
+	-- table, which is exactly what a mod sees, so diffing that is authoritative.
+	Compat.new(state, script, true)
+	-- Every entry point is mirrored onto the script's variables, which is the
+	-- table the mod itself reads a global from.
+	local missing = {}
+	for _, name in ipairs(expected) do
+		if rawget(script.variables, name) == nil then missing[#missing + 1] = name end
+	end
+	assert(#missing == 0, 'missing Psych functions: ' .. table.concat(missing, ', '))
+end)
+
 check('Psych shaders are translated to LÖVE entry points', function()
 	-- Mods ship standalone `void main()` programs that write gl_FragColor and
 	-- sample `bitmap`. LÖVE needs effect()/position(), so every one of them failed

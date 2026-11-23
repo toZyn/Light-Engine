@@ -81,7 +81,14 @@ end
 
 local function camera(compat, api, name, field, native)
 	local function actual()
-		return native or compat:_root(field)
+		local object = native or compat:_root(field)
+		-- A PlayState under construction (or a substate) may not own a HUD camera
+		-- yet. Returning nil made `game.camHUD.height` nil, and mods that size
+		-- their own sprites from it died with
+		--   attempt to perform arithmetic on local 'tdGameH' (a nil value).
+		-- Fall back to the game camera so reads stay numeric.
+		if object == nil and name ~= "game" then return game.camera end
+		return object
 	end
 	local fields = {x = true, y = true, zoom = true, alpha = true, visible = true, angle = true}
 	local proxy = {

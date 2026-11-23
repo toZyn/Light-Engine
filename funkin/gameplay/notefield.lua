@@ -382,7 +382,11 @@ function Notefield:update(dt)
 		local ignored = note.psychIgnoreNote and note.ignoreNote
 			and note.time + (note.sustainTime or 0) + Note.safeZoneOffset <= timeNow
 		local consumed = ignored or note.tooLate or (note.wasGoodHit and (not note.sustain or note.wasGoodSustainHit))
-		local lane = self.lanes[note.direction + 1]
+		-- A note with no direction would abort the whole update pass and with it
+		-- the rest of the lane bookkeeping. An unroutable note can never be drawn
+		-- or hit either, so it is retired below instead of staying in activeNotes.
+		local direction = note.direction
+		local lane = type(direction) == "number" and self.lanes[direction + 1] or nil
 		local passed = false
 		if consumed and lane then
 			local speed = self.speed * lane.speed * (note.speed or 1)
@@ -391,7 +395,8 @@ function Notefield:update(dt)
 			local ending = Note.toPos(note.time + (note.sustainTime or 0) - timeNow, speed)
 			passed = speed > 0 and ending < center - extent or speed < 0 and ending > center + extent
 		end
-		if self.removedNotes[note] or passed or (ignored and lane and self.speed * lane.speed * (note.speed or 1) == 0) then
+		local doomed = lane == nil or passed or (ignored and self.speed * lane.speed * (note.speed or 1) == 0)
+		if self.removedNotes[note] or doomed then
 			if not self.removedNotes[note] then self:removeNote(note) end
 		else
 			notes[write] = note
@@ -546,7 +551,10 @@ function Notefield:_prepareCameraDraw(camera, force)
 	local time = self.time - self.offsetTime
 	if not self.noNoteRender then
 		for _, note in ipairs(self.activeNotes) do
-			local lane = self.lanes[note.direction + 1]
+			-- Same guard as update(): a note without a numeric direction has no
+			-- lane to draw into, and indexing with nil used to abort the pass.
+			local direction = note.direction
+			local lane = type(direction) == "number" and self.lanes[direction + 1] or nil
 			if lane then
 				local candidates = lane.renderCandidates
 				candidates[#candidates + 1] = note
