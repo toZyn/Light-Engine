@@ -67,7 +67,18 @@ def check_haxe(haxe: str) -> str:
 
 
 def stage(source: Path, work: Path) -> None:
-    """Copy the psychlua sources next to the externs and add the implicit imports."""
+    """Copy the psychlua sources next to the externs, with imports resolved.
+
+    Two adjustments, both mechanical and both reported:
+
+    1. Psych's files rely on HaxeFlixel's implicit class path, so every class it
+       names works without an import. Haxe 4 has no such fallback, so the
+       externs are imported explicitly.
+    2. Psych's own `import` lines point at the engine (`flixel.util.FlxSave`,
+       `objects.Character`, `backend.WeekData`, ...). Those are stripped rather
+       than faked: leaving them out makes the compiler *name* every engine type
+       this layer still needs, which is the measurement.
+    """
     package = work / "psychlua"
     package.mkdir(parents=True)
     missing = []
@@ -76,12 +87,13 @@ def stage(source: Path, work: Path) -> None:
         if not origin.exists():
             missing.append(str(origin))
             continue
-        # Psych calls these classes without importing them (HaxeFlixel resolves
-        # them through the class path). Haxe 4 refuses that, so the imports are
-        # added here instead of editing the declaration.
         body = origin.read_text(encoding="utf-8")
-        imports = "\n".join(f"import {name};" for name in IMPLICIT if name not in body)
-        package.joinpath(f"{name}.hx").write_text(imports + "\n" + body, encoding="utf-8")
+        stripped = [l for l in body.splitlines() if not re.match(r"\s*import\s", l)]
+        header = "\n".join(f"import {n};" for n in IMPLICIT)
+        header += "\nimport FunkinLua;\nimport " + ";\nimport ".join(
+            m for m in MODULES if m != name) + ";"
+        package.joinpath(f"{name}.hx").write_text(
+            header + "\n" + "\n".join(stripped), encoding="utf-8")
     if missing:
         raise SystemExit("missing Psych sources:\n  " + "\n  ".join(missing))
 

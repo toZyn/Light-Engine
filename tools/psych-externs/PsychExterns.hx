@@ -251,3 +251,22 @@ extern class FlxTransitionableState {
 extern class Lua_helper {
 	public static function add_callback(lua:Dynamic, name:String, callback:Dynamic):Void;
 }
+
+/* ---------------------------------------------- the Psych host object */
+/**
+ * Psych's `FunkinLua` instance as the per-file `implement(funk:FunkinLua)`
+ * helpers actually use it. `funk` is the script host: it owns the Lua state and
+ * the shader cache, and it is where each callback is registered.
+ *
+ * Declared from the call sites in `source/psychlua/*.hx`, which use exactly
+ * these four members.
+ */
+typedef State = cpp.RawPointer<Dynamic>;
+
+extern class FunkinLua {
+	public var lua:State;
+	public var runtimeShaders:Map<String, FlxRuntimeShader>;
+	public function addLocalCallback(name:String, myFunction:Dynamic):Void;
+	public function initLuaShader(name:String):Bool;
+	public static function luaTrace(text:String, ?ignoreCheck:Bool = false, ?ignoreDisabled:Bool = false, ?color:Int = 0):Void;
+}
