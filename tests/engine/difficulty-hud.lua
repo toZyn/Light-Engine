@@ -403,7 +403,12 @@ function onEvent(name:String, a:String, b:String) {
    state.health = 1
    local zoom = game.camera.zoom
    local members = #state.members
+   local degraded = {}
+   local Reflection = require('funkin.backend.scripts.psych.reflection')
+   local originalWarn = Reflection.warn
+   Reflection.warn = function(message) degraded[#degraded+1] = tostring(message) end
    scripts:call('create')
+   Reflection.warn = originalWarn
    assert(#state.members == members + 2)
    assert(state.members[members + 1].x == 24 and state.members[members + 2].members[1].content == 'HScript')
    local customCam = state.members[members + 1].cameras[1]
@@ -423,7 +428,7 @@ function onEvent(name:String, a:String, b:String) {
     local ok3, r3 = pcall(function() return hv.setPropertyFromClass('PlayState', 'SONG.arrowSkin', 'note-style') end)
     t[#t+1] = 'setPropOk=' .. tostring(ok3) .. ' psychArrowSkin=' .. tostring(state.psychArrowSkin)
     assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2,
-      'DIAG4 ' .. table.concat(t, ' | '))
+      'DIAG5 ' .. table.concat(t, ' | ') .. ' || degraded: ' .. table.concat(degraded, ' ;; '))
    end
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
