@@ -4,14 +4,7 @@
 -- primitive or one dead callback left an entire song unscripted. These run
 -- through the suite runner's `check()`, so a failure reports its full message.
 
-local outcome = {}
-local function note(name, ok, err)
-	outcome[#outcome + 1] = (ok and 'ok   ' or 'FAIL ') .. name ..
-		(ok and '' or (': ' .. tostring(err)))
-end
-
 check('Psych scripts may extend the standard library', function()
-	local ok, err = pcall(function()
 	-- `table.new`, `math.clamp` and `os.clock` shims are everywhere in Psych mods.
 	-- Blocking writes aborted onCreate with "table new indexing not allowed"
 	-- before the mod ran a single line of its own code.
@@ -47,24 +40,21 @@ end
 	assert(type(math.random) == 'function', 'math.random must stay reserved')
 	reserved:close()
 	love.filesystem.remove('tests/engine/psych-reserved.lua')
-	end)
-	note('stdlib-extension', ok, err)
-	if not ok then error(err, 0) end
 end)
 
-print('SUMMARY ' .. table.concat(outcome, ' || '))
-
 check('getfenv and setfenv work inside scripts', function()
-	local ok, err = pcall(function()
 	-- They sat in the dofile/loadstring blocklist, so the classic
 	-- `setfenv(1, module)` pattern failed with "setfenv not allowed".
+	-- Real Psych module scripts capture the globals they still need before
+	-- switching environment, because setfenv replaces the whole table.
 	love.filesystem.write('tests/engine/psych-fenv.lua', [[
 function modulePattern()
+  local globalEnv, exported = getfenv(1), nil
   local mod = {}
   setfenv(1, mod)
   exported = 'set via fenv'
-  setfenv(1, getfenv(0))
-  return true
+  setfenv(1, globalEnv)
+  return exported == 'set via fenv'
 end
 ]])
 	local fenv = Script('tests/engine/psych-fenv.lua', true, true, true)
@@ -72,12 +62,7 @@ end
 	assert(not fenv.__failedfunc.modulePattern, 'getfenv/setfenv must not be blocked')
 	fenv:close()
 	love.filesystem.remove('tests/engine/psych-fenv.lua')
-	end)
-	note('fenv', ok, err)
-	if not ok then error(err, 0) end
 end)
-
-print('SUMMARY ' .. table.concat(outcome, ' || '))
 
 check('a throwing callback stays callable and recovers', function()
 	-- Psych reports the Lua error and keeps dispatching. Permanently disabling the
