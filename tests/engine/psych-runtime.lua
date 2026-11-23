@@ -206,6 +206,33 @@ check('every Psych 1.0.4 Lua function is defined', function()
 	assert(#missing == 0, 'missing Psych functions: ' .. table.concat(missing, ', '))
 end)
 
+check('an unreadable property is reported once, not every frame', function()
+	-- getProperty answering nil in silence is what made a mod die later with
+	-- "arithmetic on a nil value" somewhere unrelated. The path now shows up in the
+	-- log, but only once: it is usually called from onUpdate, so repeating it would
+	-- bury every other message at 60 lines a second.
+	local Compat = require 'funkin.backend.scripts.compat'
+	local state = Group()
+	state.camHUD, state.camOther = Camera(), Camera()
+	game.camera = Camera()
+	local messages = {}
+	local Reflection = require 'funkin.backend.scripts.psych.reflection'
+	local saved = Reflection.warn
+	Reflection.warn = function(message) messages[#messages + 1] = message end
+	local script = Script('tests/engine/compat-fixture.lua', false, true, true)
+	Compat.new(state, script, true)
+	local getProperty = script.variables.getProperty
+	local accepted = pcall(getProperty, 'definitelyMissingField')
+	for _ = 1, 5 do pcall(getProperty, 'definitelyMissingField') end
+	Reflection.warn = saved
+	assert(accepted, 'an unreadable property must not raise')
+	local hits = 0
+	for _, message in ipairs(messages) do
+		if message:find('definitelyMissingField', 1, true) then hits = hits + 1 end
+	end
+	assert(hits == 1, 'expected one report for the unreadable path, got ' .. hits)
+end)
+
 check('Psych shaders are translated to LÖVE entry points', function()
 	-- Mods ship standalone `void main()` programs that write gl_FragColor and
 	-- sample `bitmap`. LÖVE needs effect()/position(), so every one of them failed

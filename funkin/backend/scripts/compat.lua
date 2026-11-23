@@ -393,15 +393,18 @@ function Compat.new(state, script, psych)
 	self.compatContexts = state.compatContexts
 	for name, callback in pairs(callbacks) do self.callbackNames[name] = callback end
 	local api = {}
+	local unreadable = {}
 	api.getProperty = function(path, allowMaps)
 		if psych then
 			local value = resolver().get(self, path, allowMaps)
 			-- A nil read used to be completely silent, so the mod died later with
 			-- "attempt to perform arithmetic on a nil value" on a line that looked
 			-- fine. The value still comes back nil (Psych does the same), but the
-			-- unreadable path is now named in the log so it can be diagnosed
-			-- instead of guessed at.
-			if value == nil and type(path) == "string" then
+			-- unreadable path is now named in the log. Reported once per path: a
+			-- getProperty inside onUpdate runs every frame and would otherwise bury
+			-- everything else.
+			if value == nil and type(path) == "string" and not unreadable[path] then
+				unreadable[path] = true
 				Reflection.warn("getProperty: could not read \"" .. path .. "\"", true)
 			end
 			return value
