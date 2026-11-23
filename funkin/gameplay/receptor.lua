@@ -130,12 +130,16 @@ function Receptor:setSkin(skin)
 	self.skin = skin
 	Note.loadSkinData(self, skin, "receptors", col)
 
-	if col ~= nil and self.direction ~= col then self:setDirection(col) end
+	if col ~= nil then self:setDirection(col, true) end
 	self:play("static")
 end
 
-function Receptor:setDirection(direction)
-	if direction == self.direction then return end
+function Receptor:setDirection(direction, force)
+	-- A skin reload re-applies the same direction, but the splash animation list
+	-- and the per-direction skins still have to be rebuilt. Bailing out on an
+	-- unchanged direction left __splashAnimations empty, and spawnSplash then
+	-- called play(nil) -- "attempt to concatenate local 'anim' (a nil value)".
+	if direction == self.direction and not force then return end
 	self.direction, self.data = direction, direction -- data is for backward compatibilty
 
 	local skin = self.skin

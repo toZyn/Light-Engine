@@ -141,12 +141,22 @@ check('a skin reload never clears the note direction', function()
 	-- Receptor:setSkin carried the identical defect, which is why the strum line
 	-- looked skewed as well.
 	local Receptor = require 'funkin.gameplay.receptor'
+	local skinData = {skin = 'test', receptors = {sprite = 'arrow', animations = {{name = 'static'}}}}
 	local receptor = setmetatable({direction = 3, skin = {}}, Receptor)
 	receptor.play = function() end
 	receptor.setDirection = function(self, value) self.direction = value end
-	Receptor.setSkin(receptor, {receptors = true, skin = 'test'})
-	assert(receptor.direction == 3, 'Receptor:setSkin must preserve direction, got '
+	local saved = Note.loadSkinData
+	Note.loadSkinData = function() end
+	local forced
+	receptor.setDirection = function(self, value, force) self.direction, forced = value, force end
+	local ok, err = pcall(Receptor.setSkin, receptor, skinData)
+	Note.loadSkinData = saved
+	assert(ok, 'Receptor:setSkin raised: ' .. tostring(err))
+	assert(receptor.direction == 3, 'Receptor:setSkin must keep the receptor direction, got '
 		.. tostring(receptor.direction))
+	-- The per-direction splash list has to be rebuilt even though the direction did
+	-- not change; without the force flag spawnSplash played nil and the song died.
+	assert(forced == true, 'a skin reload must force the direction rebuild')
 end)
 
 check('sprites resolve across the contexts of one state', function()

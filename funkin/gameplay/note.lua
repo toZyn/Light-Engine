@@ -190,17 +190,20 @@ function Note:setSkin(skin)
 		loadSustainSkin(self.sustain, skin, "sustains", "hold", col)
 		loadSustainSkin(self.sustainEnd, skin, "sustainends", "end", col)
 	end
-	if col ~= nil and self.direction ~= col then self:setDirection(col) end
+	if col ~= nil then self:setDirection(col, true) end
 
 	self:play("note", true)
 end
 
-function Note:setDirection(direction)
-	if direction == self.direction then return end
+function Note:setDirection(direction, force)
+	if direction == self.direction and not force then return end
 	self.direction, self.data = direction, direction
 
+	-- setSkin reloads with noRgb set, so this is what actually builds the note
+	-- colour from the skin palette. It must run on a reload too (force), or every
+	-- note loses its shader and a live palette edit stops reaching new notes.
 	local data = self.skin.notes
-	if not data.disableRgb and not self.skin.psychDisableRgb then
+	if data and not data.disableRgb and not self.skin.psychDisableRgb and data.colors then
 		local color = data.colors[direction + 1]
 		self.__shaderAnimations.default = color and makeRGB(color) or nil
 	end
