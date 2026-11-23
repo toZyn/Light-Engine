@@ -24,6 +24,12 @@ Light Engine 0.7.0 includes compatibility improvements for Psych Engine 1.0.4 mo
   that registered the tag, including other scripts of the same state, so a HUD
   object created by one file and updated by another keeps updating instead of
   freezing on screen.
+- A camera the state does not own yet resolves to the game camera on both the
+  HScript proxy and the reflection path, so `game.camHUD.height` stays numeric
+  instead of nil.
+- An unreadable `getProperty` path is named in the log once. The value is still
+  nil, exactly like Psych; only the silence is gone. Reporting it every frame
+  would bury every other message, since these reads usually live in `onUpdate`.
 - Psych HUD contract: `timeBar`/`timeTxt`/`timeBarBG` map to a native time bar, and `scoreTxt`/`botplayTxt` map to native PlayState text (or a Psych stand-in when a state has none) so `updateScoreText` and `setProperty("scoreTxt.text", …)` work.
 - Missing menu asset recovery. Recovery beyond Psych behavior is identified by `[Light extension]` in the log.
 
