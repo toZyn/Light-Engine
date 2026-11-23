@@ -68,17 +68,12 @@ def check_haxe(haxe: str) -> str:
 
 
 def stage(source: Path, work: Path) -> None:
-    """Copy the psychlua sources next to the externs, with imports resolved.
+    """Copy the psychlua sources, dropping the imports that point into the engine.
 
-    Two adjustments, both mechanical and both reported:
-
-    1. Psych's files rely on HaxeFlixel's implicit class path, so every class it
-       names works without an import. Haxe 4 has no such fallback, so the
-       externs are imported explicitly.
-    2. Psych's own `import` lines point at the engine (`flixel.util.FlxSave`,
-       `objects.Character`, `backend.WeekData`, ...). Those are stripped rather
-       than faked: leaving them out makes the compiler *name* every engine type
-       this layer still needs, which is the measurement.
+    Psych's files `import` engine packages (`flixel.util.FlxSave`,
+    `objects.Character`, `backend.WeekData`, ...). Stripping those instead of
+    faking them is deliberate: the compile then *names* every engine type this
+    layer still needs, which is the measurement this job exists to produce.
     """
     package = work / "psychlua"
     package.mkdir(parents=True)
@@ -95,12 +90,13 @@ def stage(source: Path, work: Path) -> None:
         body_lines = [l for l in lines
                       if not re.match(r"\s*import\s", l)
                       and not re.match(r"\s*package\s", l)]
-        # `import Paths;` inside `package psychlua` would resolve to
-        # psychlua.Paths; the leading `::` forces the root of the class path.
+        # No imports are added. Haxe resolves a bare type name first in the
+        # file's own package, then at the root of the class path, which is
+        # exactly where the externs live -- so `Paths` and `FlxSprite` in
+        # `package psychlua` reach them without a declaration. Adding
+        # `import Paths;` here made the compiler resolve psychlua.Paths instead
+        # and report the root type as redefined.
         header = [decl]
-        header += [f"import ::{n};" for n in IMPLICIT]
-        header.append("import ::FunkinLua;")
-        header += [f"import {m};" for m in MODULES if m != name]
         package.joinpath(f"{name}.hx").write_text(
             "\n".join(header + body_lines), encoding="utf-8")
     if missing:
