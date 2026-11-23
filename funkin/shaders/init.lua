@@ -3,14 +3,117 @@ Shader.instances = {}
 
 local function fileExists(path)
 	if type(path) == "userdata" then return path, false end
-	path = paths.getPath("shaders/" .. path)
-	return path, paths.exists(path, "file")
+	local key = tostring(path)
+	local resolved = paths.getPath("shaders/" .. key)
+	if paths.exists(resolved, "file") then return resolved, true end
+	-- Psych mods pass full asset paths ("external/mods/<mod>/shaders/x.frag").
+	-- Prefixing those with "shaders/" pointed at a file that cannot exist, so the
+	-- path string was compiled as GLSL and failed with
+	--   missing 'position' or 'effect' function?
+	local direct = paths.getPath(key)
+	if paths.exists(direct, "file") then return direct, true end
+	return resolved, false
 end
 
 -- Sanitize common desktop GLSL / OpenGL ES 3.0 precision conflicts before compiling
 -- so LÖVE's forward-declared `vec4 effect(vec4, Image, vec2, vec2)` never hits S0023.
-function Shader.sanitizeGLSL(code)
+-- love's shader prelude already defines the GLSL2/GLSL3 compatibility macros.
+-- Psych mods ship their own copies (`#define texture texture2D`, `#define
+-- attribute in`), and keeping them makes the driver abort with
+--   ERROR: '#define' : Macro redefined; different substitutions: texture
+local PRELUDE_MACROS = {
+	texture = true, texture2D = true, textureLod = true, textureProj = true,
+	attribute = true, varying = true, gl_FragColor = true, gl_FragData = true,
+}
+
+local function stripRedefinedMacros(code)
+	local seen, kept = {}, {}
+	for line in (code .. "\n"):gmatch("([^\n]*)\n") do
+		local macro = line:match("^%s*#%s*define%s+([%w_]+)")
+		if not (macro and (seen[macro] or PRELUDE_MACROS[macro])) then
+			if macro then seen[macro] = true end
+			kept[#kept + 1] = line
+		end
+	end
+	return table.concat(kept, "\n")
+end
+
+-- Psych Engine shaders are full standalone programs (`void main() { ... }`)
+-- that write gl_FragColor. LÖVE needs `vec4 effect(...)`. Without this, every
+-- Psych shader in a mod failed validation on Android with
+--   bad argument #2 to 'validateShader' (missing 'position' or 'effect' function?)
+local function translatePsychMain(code, isVertex)
+	if not code:find("void%s+main%s*%(%s*%)") then return code end
+	code = code:gsub("#pragma%s+header[^\n]*", "")
+	code = code:gsub("#pragma%s+body[^\n]*", "")
+	code = code:gsub("#version[^\n]*", "")
+
+	if isVertex then
+		code = code:gsub("%f[%w_]gl_Position%f[^%w_]", "psychPosition")
+		local rewritten, count = code:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain() {")
+		if count ~= 1 then return code end
+		return [[
+varying vec2 psychUV;
+vec4 psychPosition;
+mat4 openfl_Matrix;
+vec4 openfl_Position;
+]] .. rewritten .. [[
+
+vec4 position(mat4 transformProjection, vec4 vertexPosition) {
+	openfl_Matrix = transformProjection;
+	openfl_Position = vertexPosition;
+	psychUV = VertexTexCoord.xy;
+	psychMain();
+	return psychPosition;
+}
+]]
+	end
+
+	code = code:gsub("%f[%w_]flixel_texture2D%f[^%w_]", "Texel")
+	code = code:gsub("%f[%w_]texture2D%f[^%w_]", "Texel")
+	code = code:gsub("%f[%w_]texture%s*%(", "Texel(")
+	code = code:gsub("%f[%w_]gl_FragColor%f[^%w_]", "psychOutput")
+	-- `bitmap` is the sampled image: the name HaxeFlixel/OpenFL shaders use.
+	-- It must reach the moved body as a parameter -- an `effect()` parameter is not
+	-- in scope inside a separate top-level function, which failed to compile with
+	-- "ERROR: 'bitmap' : undeclared identifier".
+	local rewritten, count = code:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain(Image bitmap) {")
+	if count ~= 1 then return code end
+	return [[
+extern vec2 openfl_TextureSize;
+vec2 openfl_TextureCoordv;
+vec4 psychOutput;
+]] .. rewritten .. [[
+
+vec4 effect(vec4 color, Image bitmap, vec2 uv, vec2 screen) {
+	openfl_TextureCoordv = uv;
+	psychOutput = vec4(0.0);
+	psychMain(bitmap);
+	return psychOutput * color;
+}
+]]
+end
+
+-- `isVertex` tells the translator which LÖVE entry point to synthesise. File
+-- callers know the role from the extension; inline sources fall back to looking
+-- for gl_Position. Guessing matters: a LÖVE vertex shader written as
+-- `#pragma header / void main() { #pragma body }` has no gl_Position, and
+-- treating it as a fragment program produced an effect() shader that then failed
+-- validateShader as a vertex program.
+function Shader.sanitizeGLSL(code, isVertex)
 	if type(code) ~= "string" then return code end
+	code = stripRedefinedMacros(code)
+	-- Only rewrite standalone programs; already-valid LÖVE shaders are untouched.
+	if not code:find("vec4%s+effect%s*%(") and not code:find("vec4%s+position%s*%(")
+		and code:find("void%s+main%s*%(%s*%)") then
+		if isVertex == nil then
+			-- gl_Position, or a `#pragma body` (which LÖVE expands into the
+			-- gl_Position assignment), both identify a vertex program.
+			isVertex = code:find("gl_Position", 1, true) ~= nil
+				or code:find("#pragma%s+body") ~= nil
+		end
+		code = translatePsychMain(code, isVertex)
+	end
 	code = code:gsub("(#pragma%s+language%s+glsl3)%s*;", "%1")
 	-- Remove file-scope `precision highp float;` if `effect(` uses unqualified or mediump params
 	if code:find("precision%s+highp%s+float%s*;") and code:find("effect%s*%(") then
@@ -28,11 +131,11 @@ function Shader.sanitizeGLSL(code)
 	return code
 end
 
-local function readOrIdentity(path, exists)
+local function readOrIdentity(path, exists, isVertex)
 	if not exists then return nil end
 	local content = love.filesystem.read(path)
 	if type(content) == "string" then
-		return Shader.sanitizeGLSL(content)
+		return Shader.sanitizeGLSL(content, isVertex)
 	end
 	return path
 end
@@ -56,8 +159,8 @@ local function compile(source)
  local fragPath,fragExists=fileExists(tostring(source)..".frag")
  local vertPath,vertExists=fileExists(tostring(source)..".vert")
  local args={}
- if fragExists then args[#args+1]=readOrIdentity(fragPath,true) end
- if vertExists then args[#args+1]=readOrIdentity(vertPath,true) end
+ if fragExists then args[#args+1]=readOrIdentity(fragPath,true,false) end
+ if vertExists then args[#args+1]=readOrIdentity(vertPath,true,true) end
  if #args==0 then args[1]=type(source)=="string" and Shader.sanitizeGLSL(source) or source end
  local mobile=love.system.getOS()=="Android" or love.system.getOS()=="iOS"
  local ok,compiled=pcall(function()

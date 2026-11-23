@@ -39,9 +39,11 @@ function healthy(value,tail) healthyValue=value; healthyTail=tail; return 2 end
   assert(not script.closed and script.__failedfunc.explode and notified==1,'native callback isolation/notification changed')
   saved=love.filesystem.read('diagnostics/last-error.txt')
   contains(saved,'nested callback boom 17'); contains(saved,'fail-callback.lua'); contains(saved,'deepest'); contains(saved,'middle')
+  -- Psych Engine keeps calling a callback after it throws: one bad frame must not
+  -- leave the stage unscripted. Repeated failures are rate limited, not silenced.
   script:call('explode',99)
-  assert(script.variables.calls==1 and notified==1,'failed callback executed twice')
-  assert(love.filesystem.read('diagnostics/last-error.txt')==saved,'isolated callback rewrote diagnostic')
+  assert(script.variables.calls==2 and notified==2,'failed callback must stay callable like Psych')
+  assert(love.filesystem.read('diagnostics/last-error.txt')==saved,'repeated failure rewrote the diagnostic')
   assert(script:call('healthy',nil,'tail')==2 and script.variables.healthyTail=='tail','healthy callback return/nil args changed')
   script:close()
   local before=love.filesystem.read('diagnostics/last-error.txt')

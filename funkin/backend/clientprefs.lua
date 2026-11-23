@@ -5,7 +5,10 @@ ClientPrefs.data = {
 	-- controls
 	asyncInput = false,
 	virtualControls = true,
-	engineCompatibility = false,
+	-- Psych Engine charts, weeks and scripts are expected to work out of the box:
+	-- a mod folder that ships `data/<song>/<song>.json` and `weeks/*.json` is a
+	-- Psych mod. Leaving this off made those songs report "chart file not found".
+	engineCompatibility = true,
 
 	-- gameplay
 	autoPause = desktop,

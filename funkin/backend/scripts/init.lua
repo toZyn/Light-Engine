@@ -39,6 +39,13 @@ local function noindex(module)
 		__index = function(_, k) return deny(module .. "." .. k) end,
 	})
 end
+-- Names a mod may not overwrite: replacing these breaks every other script.
+local PROTECTED = {
+	math = {random = true, randomseed = true, floor = true, ceil = true, abs = true, max = true, min = true},
+	table = {insert = true, remove = true, concat = true, sort = true},
+	string = {format = true, gsub = true, sub = true, find = true, rep = true},
+}
+
 local function limitindex(name, blocklist)
 	local mt = {
 		__index = function(_, k)
@@ -49,7 +56,19 @@ local function limitindex(name, blocklist)
 			end
 			return _G[name][k]
 		end,
-		__newindex = deny(name .. " new indexing")
+		-- Psych Engine scripts legitimately extend the standard libraries:
+		-- `table.new`, `math.clamp`, `os.time` shims and classic getfenv-based
+		-- module loaders are all common. Blocking writes made those scripts die
+		-- with "table new indexing not allowed" before they ever ran mod code.
+		-- Writes are forwarded to the real library instead. A few names stay
+		-- protected because overwriting them would break the engine itself.
+		__newindex = function(_, k, v)
+			if PROTECTED[name] and PROTECTED[name][k] then
+				deny(name .. "." .. tostring(k) .. " is reserved")( )
+				return
+			end
+			_G[name][k] = v
+		end
 	}
 
 	-- uhh workaround
@@ -62,9 +81,15 @@ end
 local blockset = {
 	loxreq = true, dofile = true, loadfile = true, loadstring = true,
 	load = true, module = true, rawset = true, rawget = true,
-	rawequal = true, setfenv = true, getfenv = true, newproxy = true
+	rawequal = true, newproxy = true,
 }
 
+-- LÖVE builds LuaJIT with LUAJIT_ENABLE_LUA52COMPAT, so the 5.1
+-- getfenv/setfenv globals are absent. Psych mods still rely on the classic module
+-- pattern (`getfenv(1)`, `setfenv(1, mod)`), and with these names in the blocklist
+-- the sandbox answered with a denial function instead. Real implementations follow
+-- `modules` below: they only inspect or replace a chunk environment, and a script
+-- cannot escape the sandbox because it supplies whatever table it swaps in.
 local modules = {
 	debug = noindex("debug"),
 	package = noindex("package"),
@@ -94,6 +119,44 @@ local modules = {
 		addToEnv = deny("Script addToEnv")
 	})
 }
+
+-- 5.1 environment helpers, restored because LÖVE's LuaJIT omits them.
+local envRefs = setmetatable({}, {__mode = "k"})
+
+local function sandboxGetfenv(level)
+	local native = rawget(_G, "getfenv")
+	if type(level) == "function" then
+		return envRefs[level] or (native and native(level)) or _G
+	end
+	level = tonumber(level) or 1
+	if level == 0 then return _G end
+	if native then
+		local ok, value = pcall(native, level + 1)
+		if ok and value then return value end
+	end
+	local info = debug and debug.getinfo and debug.getinfo(level + 1, "f")
+	if info and info.func then return envRefs[info.func] or _G end
+	return _G
+end
+
+local function sandboxSetfenv(target, env)
+	if type(env) ~= "table" then
+		error("bad argument #2 to 'setfenv' (table expected)", 2)
+	end
+	local native = rawget(_G, "setfenv")
+	if type(target) == "function" then
+		envRefs[target] = env
+		if native then pcall(native, target, env) end
+		return target
+	end
+	-- Level form. Without the 5.1 builtin a running chunk cannot be re-pointed from
+	-- Lua, so the mapping is remembered and the script keeps executing.
+	envRefs[tonumber(target) or target] = env
+	return target
+end
+
+modules.getfenv = sandboxGetfenv
+modules.setfenv = sandboxSetfenv
 
 modules.require = function(path)
 	path = path:gsub("%.", "/")
@@ -138,6 +201,7 @@ function Script:new(path, notFoundMsg, noLink, fullPath, configure, loader)
 	self.closed = false
 	self.chunk = nil
 	self.__failedfunc = {}
+	self.__failcount = {}
 
 	self.errorCallback = Signal()
 	self.closeCallback = Signal()
@@ -284,17 +348,30 @@ function Script:call(func, ...)
 		f = function(...) return self.hscriptCall(func, ...) end
 	end
 	if f and type(f) == "function" then
-		if self.__failedfunc[func] and not (self._psych and self._psych.retryCallbacks) then return end
 		local s, err = xpcall(f, captureError, ...)
 		if s then
+			-- A callback that recovers stops being marked as failed.
+			if self.__failedfunc[func] then self.__failedfunc[func] = nil end
 			if err ~= nil then
 				return err
 			end
 			return true
 		else
-			local message = string.format('%s failed at %s: %s', self.path, func, err.message)
-			persistError(message, err.traceback)
+			-- A callback must not stay dead for the rest of the song. Psych Engine
+			-- reports the Lua error and keeps honouring the script, which is why a
+			-- Psych mod that throws once can still finish the stage. Permanently
+			-- disabling the callback turned one bad frame into a silently
+			-- unscripted song: no camera work, no events, no cleanup.
+			local failures = (self.__failcount[func] or 0) + 1
+			self.__failcount[func] = failures
 			self.__failedfunc[func] = true
+			-- Report the first failure and then a heartbeat, so a callback that
+			-- throws every frame cannot fill the diagnostics store.
+			if failures == 1 or failures % 300 == 0 then
+				local message = string.format('%s failed at %s (%d time%s): %s',
+					self.path, func, failures, failures == 1 and "" or "s", err.message)
+				persistError(message, err.traceback)
+			end
 			self.errorCallback:dispatch(func)
 		end
 	end
