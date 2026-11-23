@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Arrow sprites no longer render in the wrong lane and the notefield update no
+  longer dies with `attempt to perform arithmetic on field 'direction' (a nil
+  value)`. `Note:setSkin` cleared `direction` for the length of a skin reload and
+  restored it afterwards, so a note whose direction was already gone, or a reload
+  that raised part way, kept nil for good. `Receptor:setSkin` carried the same
+  defect, which is why the strum line looked skewed too. Both are engine defects,
+  not mod defects.
+- Mods that read note fields in a callback no longer hit arithmetic-on-nil.
+  `speed`, `angle`, `offsetX/Y`, `column`, `scaleX/Y`, `hits` and `misses` answer
+  the Psych default instead of nil.
+- Sprites are resolved across the scripts of one state. A tag created by one file
+  and updated by another (the usual `callScript` pattern) used to fail with
+  `sprite tag is not owned by this context` once per frame, which froze the object
+  on screen while the log filled with warnings.
+- `bpm` falls back to the conductor value instead of nil, and `scrollSpeed`
+  defaults to 1, so `onStepHit` handlers doing arithmetic survive a chart without
+  an explicit bpm.
+- `game.camHUD`/`game.camOther` no longer answer nil in a state that does not own a
+  HUD camera yet; reads fall back to the game camera, on both the HScript proxy and
+  the reflection path.
+- `getProperty` names an unreadable path in the log once instead of answering nil
+  in silence. The value still comes back nil, exactly like Psych; reporting it
+  every frame would bury every other message.
+
 - Psych Engine scripts can extend the standard library again. Writes to `math`,
   `table`, `string` and `os` were rejected with "table new indexing not allowed",
   which aborted `onCreate` for any mod that defines a `math.clamp`, `table.new` or
@@ -66,10 +90,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `psych-runtime` engine suite: standard-library extension with reserved
-  primitives, `getfenv`/`setfenv` reachability, callback retry and recovery,
-  tolerant note writes, Psych shader translation for fragment/vertex/LÖVE
-  programs, and the `initLuaShader` translator.
+- The remaining Psych 1.0.4 Lua functions: `doTweenX/Y/Angle/Alpha/Zoom`,
+  `noteTweenX/Y/Angle/Alpha/Direction`, `pauseSound`, `resumeSound` and
+  `precacheImage`/`precacheSound`/`precacheMusic`.
+- `tools/check_psych_surface.py` regenerates the expected function list from
+  Psych's own `source/psychlua/*.hx`, and `tests/engine/psych-runtime.lua` fails
+  when one of those names is undefined. The list ships as
+  `tests/engine/psych-api-surface.lua` (223 entries).
 
 ## [0.7.0] - 2026-11-22
 

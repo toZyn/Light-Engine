@@ -30,7 +30,7 @@ SUCCESS = {
     'display': r'DISPLAY PASSED:',
     'recoverable-errors': r'RECOVERABLE ERRORS PASSED:',
     'luajit-stdlib': r'LUAJIT STDLIB PASS:',
-    'psych-runtime': r'RESULT 6 passed / 0 failed',
+    'psych-runtime': r'RESULT 12 passed / 0 failed',
 }
 BOOT = '''dofile(%s)
 local originalLoad=love.load

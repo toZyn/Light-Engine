@@ -58,7 +58,7 @@ function Globals.initial(state, chart, scriptName)
  local section = chart.sections and chart.sections[(state.psychSectionIndex or 1)]
  local values = {
   songName=chart.song, songPath=chart.song and paths.formatToSongPath(chart.song),
-  bpm=chart.bpm, curBpm=conductor and conductor.bpm or bpm,
+  bpm=bpm, curBpm=conductor and conductor.bpm or bpm,
   crochet=conductor and conductor.crotchet or 60000/bpm,
   stepCrochet=conductor and conductor.stepCrotchet or 15000/bpm,
   songLength=(game.sound.music and game.sound.music.duration or 0)*1000,
@@ -70,7 +70,9 @@ function Globals.initial(state, chart, scriptName)
   score = state.score, misses = state.misses, hits = state.songHits, combo = state.combo,
   rating = state.ratingPercent, ratingName = state.ratingName, ratingFC = state.ratingFC,
   totalPlayed = state.totalPlayed, totalNotesHit = state.totalNotesHit,
-  scrollSpeed = chart.speed, startedCountdown = false,
+  -- Mods multiply these; a nil song bpm or scroll speed used to raise
+  -- "attempt to perform arithmetic on a nil value" in onStepHit.
+  scrollSpeed = chart.speed or 1, startedCountdown = false,
   curDecBeat = state.conductor and state.conductor.beat.f or 0,
   curDecStep = state.conductor and state.conductor.step.f or 0,
   healthGainMult = state.healthGain or 1, healthLossMult = state.healthLoss or 1,

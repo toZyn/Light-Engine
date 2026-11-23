@@ -31,9 +31,9 @@ end
 
 local function camera(state, name)
 	if name == "camGame" or name == "camera" then return state.camGame or game.camera end
-	if name == "camHUD" then return state.camHUD end
-	if name == "camOther" then return state.camOther end
-	if name == "camNotes" then return state.camNotes end
+	if name == "camHUD" then return state.camHUD or game.camera end
+	if name == "camOther" then return state.camOther or game.camera end
+	if name == "camNotes" then return state.camNotes or game.camera end
 	return nil
 end
 

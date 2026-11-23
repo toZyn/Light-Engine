@@ -122,16 +122,24 @@ end
 function Receptor:setSkin(skin)
 	if skin == self.skin or not skin.receptors then return end
 
+	-- Same defect Note:setSkin had: `direction` was cleared for the reload and
+	-- only restored when the reload returned normally, so a receptor whose
+	-- direction was already gone stayed direction-less and its sprite was rebuilt
+	-- for the wrong lane. That is what made the strum line look skewed.
 	local col = self.direction
-	self.skin, self.direction = skin, nil
+	self.skin = skin
 	Note.loadSkinData(self, skin, "receptors", col)
 
-	if col then self:setDirection(col) end
+	if col ~= nil then self:setDirection(col, true) end
 	self:play("static")
 end
 
-function Receptor:setDirection(direction)
-	if direction == self.direction then return end
+function Receptor:setDirection(direction, force)
+	-- A skin reload re-applies the same direction, but the splash animation list
+	-- and the per-direction skins still have to be rebuilt. Bailing out on an
+	-- unchanged direction left __splashAnimations empty, and spawnSplash then
+	-- called play(nil) -- "attempt to concatenate local 'anim' (a nil value)".
+	if direction == self.direction and not force then return end
 	self.direction, self.data = direction, direction -- data is for backward compatibilty
 
 	local skin = self.skin

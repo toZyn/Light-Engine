@@ -1,4 +1,5 @@
 local Media = {}
+local paths = require "funkin.backend.paths"
 local colorNames = {
 	transparent = 0, black = 0xFF000000, white = 0xFFFFFFFF, red = 0xFFFF0000,
 	lime = 0xFF00FF00, green = 0xFF008000, blue = 0xFF0000FF, yellow = 0xFFFFFF00
@@ -157,6 +158,38 @@ function Media.install(compat, api)
 		api["setSound" .. name] = function(tag, value)
 			local object = sound(tag)
 			if object then object[property] = value / (property == "time" and 1000 or 1) end
+		end
+	end
+	-- pauseSound/resumeSound were missing, so any mod that paused a cue during a
+	-- cutscene raised "attempt to call a nil value" and stopped its callback.
+	api.pauseSound = function(tag)
+		compat:_active()
+		local object = sound(tag)
+		if object then object:pause() end
+	end
+	api.resumeSound = function(tag)
+		compat:_active()
+		local object = sound(tag)
+		if object then object:play() end
+	end
+
+	-- Psych precaches by touching the asset path; doing nothing here is not the
+	-- same thing, because a missing asset must still be reported the same way.
+	local precache = {precacheImage = "getImage", precacheSound = "getSound", precacheMusic = "getMusic"}
+	for entry, getter in pairs(precache) do
+		local name = entry
+		api[name] = function(asset)
+			compat:_active()
+			if type(asset) ~= "string" or asset == "" then
+				compat:psychWarn(name .. ": missing asset name", true)
+				return nil
+			end
+			local ok, value = pcall(paths[getter], asset)
+			if not ok then
+				compat:psychWarn(name .. ": " .. tostring(value), true)
+				return nil
+			end
+			return value
 		end
 	end
 	api.debugPrint = function(...) print(...) end
