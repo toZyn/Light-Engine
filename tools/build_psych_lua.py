@@ -88,12 +88,18 @@ def stage(source: Path, work: Path) -> None:
             missing.append(str(origin))
             continue
         body = origin.read_text(encoding="utf-8")
-        stripped = [l for l in body.splitlines() if not re.match(r"\s*import\s", l)]
-        header = "\n".join(f"import {n};" for n in IMPLICIT)
-        header += "\nimport FunkinLua;\nimport " + ";\nimport ".join(
-            m for m in MODULES if m != name) + ";"
+        lines = body.splitlines()
+        # `package` has to stay first; imports go right after it.
+        decl = next((l for l in lines if re.match(r"\s*package\s", l)), "package psychlua;")
+        body_lines = [l for l in lines
+                      if not re.match(r"\s*import\s", l)
+                      and not re.match(r"\s*package\s", l)]
+        header = [decl]
+        header += [f"import {n};" for n in IMPLICIT]
+        header.append("import FunkinLua;")
+        header += [f"import {m};" for m in MODULES if m != name]
         package.joinpath(f"{name}.hx").write_text(
-            header + "\n" + "\n".join(stripped), encoding="utf-8")
+            "\n".join(header + body_lines), encoding="utf-8")
     if missing:
         raise SystemExit("missing Psych sources:\n  " + "\n  ".join(missing))
 
