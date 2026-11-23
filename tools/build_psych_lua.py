@@ -48,18 +48,6 @@ MODULES = [
     "FlxAnimateFunctions",
 ]
 
-# Globals Psych uses without an explicit import. On HaxeFlixel these resolve
-# through the class path; Haxe 4 needs them imported, so the staged copy lists
-# them. Every one of these comes from the externs.
-IMPLICIT = [
-    "Paths", "FlxG", "FlxCamera", "FlxObject", "FlxBasic", "FlxSprite", "FlxText",
-    "FlxSound", "FlxTimer", "FlxTween", "FlxEase", "FlxColor", "FlxSave",
-    "FlxRuntimeShader", "BlendMode", "Assets", "Conductor", "ClientPrefs", "Mods",
-    "MusicBeatState", "PlayState", "Song", "Note", "FlxTransitionableState",
-    "Lua_helper", "Std", "Math", "StringTools", "Reflect", "Type", "StdTypes",
-]
-
-
 def check_haxe(haxe: str) -> str:
     version = subprocess.check_output([haxe, "--version"], text=True).strip()
     if version != EXPECTED_HAXE:
@@ -96,7 +84,12 @@ def stage(source: Path, work: Path) -> None:
         # `package psychlua` reach them without a declaration. Adding
         # `import Paths;` here made the compiler resolve psychlua.Paths instead
         # and report the root type as redefined.
-        header = [decl]
+        # Two things HaxeFlixel gave Psych for free and Haxe 4 needs spelled out:
+        # `.trim()`/`.replace()` on strings (StringTools as a `using`), and the
+        # bare `LEFT`/`CENTER` text alignment constructors (wildcard import).
+        # Everything else resolves by falling back to the root of the class
+        # path, which is where the externs live.
+        header = [decl, "using StringTools;", "import TextAlign.*;"]
         package.joinpath(f"{name}.hx").write_text(
             "\n".join(header + body_lines), encoding="utf-8")
     if missing:
