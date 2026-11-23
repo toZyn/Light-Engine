@@ -427,7 +427,15 @@ function Compat.new(state, script, psych)
 		local owner = self:_owner(tag)
 		local sprite = owner:_owned(tag)
 		positive(index, "object order", true)
-		if index % 1 ~= 0 or index >= #self.state.members or not owner.added[tag] then fail("object order is outside the state") end
+		-- Psych clamps the requested order instead of throwing: mods routinely pass
+		-- an index computed from members that are not in the group yet.
+		local limit = #self.state.members
+		if limit == 0 then return end
+		if not owner.added[tag] then owner.added[tag] = true end
+		if self.state:indexOf(sprite) == 0 then self.state:add(sprite); limit = #self.state.members end
+		index = math.min(math.floor(index), limit - 1)
+		if index < 0 then index = 0 end
+		if self.state:indexOf(sprite) == index + 1 then return end
 		self.state:remove(sprite); self.state:insert(index + 1, sprite)
 	end
 	api.setObjectCamera = function(tag, camera)
@@ -621,15 +629,19 @@ function Compat.new(state, script, psych)
 	end
 	if psych then
 		local Reflection = require("funkin.backend.scripts.psych.reflection")
+		-- Psych scripts must survive an unsupported call. Psych Engine itself only
+		-- traces the Lua error and returns to the caller, so a missing property must
+		-- never reach Script:call: that path marks the callback failed and the script
+		-- stays dead for the rest of the song. Every compatibility entry point
+		-- therefore downgrades errors to a warning and returns a neutral value.
 		for name, fn in pairs(api) do
 			if type(fn) == "function" and not name:match("^psych") then
 				local operation = fn
 				api[name] = function(...)
 					local results = pack(pcall(operation, ...))
 					if results[1] then return unpack(results, 2, results.n) end
-					local message = tostring(results[2])
-					if not message:find("[Lua compatibility]", 1, true) then error(results[2], 0) end
-					Reflection.warn(message:gsub("^%[Lua compatibility%] ", ""))
+					Reflection.warn(("%s degraded: %s"):format(
+						name, tostring(results[2]):gsub("^%[Lua compatibility%] ", "")))
 					return false
 				end
 			end

@@ -1,12 +1,39 @@
 local Shaders = {}
 local attachments = setmetatable({}, {__mode = "k"})
 
+-- love's shader prelude already defines the GLSL2/GLSL3 compatibility macros
+-- (texture, texture2D, attribute, varying, ...). Psych mods ship their own
+-- copies, which makes the driver abort with
+--   ERROR: '#define' : Macro redefined; different substitutions: texture
+-- Dropping the duplicates and rewriting the call sites to love's `Texel` keeps
+-- the shader compiling with identical behaviour.
+local PRELUDE_MACROS = {
+	texture = true, texture2D = true, textureLod = true, textureProj = true,
+	attribute = true, varying = true, gl_FragColor = true, gl_FragData = true,
+}
+
+local function stripDuplicateMacros(source)
+	local seen, kept = {}, {}
+	for line in (source .. "\n"):gmatch("([^\n]*)\n") do
+		local macro = line:match("^%s*#%s*define%s+([%w_]+)")
+		local duplicate = macro and (seen[macro] or PRELUDE_MACROS[macro])
+		if not duplicate then
+			if macro then seen[macro] = true end
+			kept[#kept + 1] = line
+		end
+	end
+	return table.concat(kept, "\n")
+end
+
 local function translate(source, vertex)
 	if source:find("vec4%s+effect%s*%(") then return source end
 	source = source:gsub("#pragma%s+header[^\n]*", "")
 	source = source:gsub("#version[^\n]*", "")
+	source = stripDuplicateMacros(source)
 	source = source:gsub("%f[%w_]flixel_texture2D%f[^%w_]", "Texel")
 	source = source:gsub("%f[%w_]texture2D%f[^%w_]", "Texel")
+	-- A bare `texture(...)` call (GLSL3 spelling) must reach love's Texel too.
+	source = source:gsub("%f[%w_]texture%s*%(", "Texel(")
 	source = source:gsub("%f[%w_]gl_FragColor%f[^%w_]", "psychOutput")
 	local rewritten, mains = source:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain() {")
 	if mains ~= 1 then error("Psych fragment shader must declare one void main()", 2) end
@@ -15,7 +42,6 @@ local function translate(source, vertex)
 extern vec2 openfl_TextureSize;
 vec2 openfl_TextureCoordv;
 vec4 psychOutput;
-#define bitmap MainTex
 ]] .. rewritten .. [[
 
 vec4 effect(vec4 color, Image image, vec2 uv, vec2 screen) {
@@ -82,7 +108,11 @@ function Shaders.install(compat, api)
 
 	api.initLuaShader = function(name)
 		compat:_active()
-		assert(type(name) == "string" and name:match("^[%w_%-]+$"), "Invalid Psych shader name")
+		if type(name) ~= "string" or not name:match("^[%w_%-]+$") then
+			require("funkin.backend.scripts.psych.reflection").warn(
+				"initLuaShader skipped: invalid shader name " .. tostring(name))
+			return false
+		end
 		if ClientPrefs.data.shader == false then return false end
 		local fragment = paths.getMods("shaders/" .. name .. ".frag")
 		local vertex = paths.getMods("shaders/" .. name .. ".vert")
@@ -94,7 +124,11 @@ function Shaders.install(compat, api)
 		if not source and vertexSource then
 			source = "void main() { gl_FragColor = flixel_texture2D(bitmap, openfl_TextureCoordv); }"
 		end
-		if not source then error("Cannot read Psych shader " .. name .. ": " .. tostring(message), 2) end
+		if not source then
+			require("funkin.backend.scripts.psych.reflection").warn(
+				"Cannot read Psych shader " .. tostring(name) .. ": " .. tostring(message))
+			return false
+		end
 		sources[name] = {pixel = translate(source, useVarying), vertex = vertexSource}
 		return true
 	end
@@ -128,7 +162,15 @@ function Shaders.install(compat, api)
 	api.setSpriteShader = function(tag, name)
 		compat:_active()
 		local object = compat:_object(tag)
-		local shader = compile(name)
+		if not object then return false end
+		-- A shader that fails to compile must not take the whole script with it:
+		-- Psych mods attach optional effects and only need the sprite to keep drawing.
+		local ok, shader = pcall(compile, name)
+		if not ok then
+			require("funkin.backend.scripts.psych.reflection").warn(
+				"shader " .. tostring(name) .. " skipped: " .. tostring(shader))
+			return false
+		end
 		if not shader then return false end
 		attach(tag, object, shader, true)
 		return true

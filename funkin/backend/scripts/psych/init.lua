@@ -505,7 +505,11 @@ function HScript.install(compat, api)
 			getSession()
 			return true
 		end
-		error("HScript class unavailable: " .. tostring(name), 2)
+		-- Psych mods call addHaxeLibrary for classes they only touch defensively
+		-- (Assets, File, Type). Psych traces the miss and keeps the script alive, so
+		-- do the same instead of aborting onCreate.
+		Reflection.warn("addHaxeLibrary(" .. tostring(name) .. ") is not available; the script keeps running")
+		return false
 	end
 
 	return function(source)

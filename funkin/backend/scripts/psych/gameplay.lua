@@ -155,15 +155,23 @@ function Gameplay.bind(interpreter, compat, api, gameProxy)
 			end
 		})
 	end
+	local psychExtras = {}
 	setmetatable(gameProxy, {
 		__index = function(_, key)
 			local field = stateFields[key]
 			if field then return state[field] end
 			if characters[key] and state[aliases[key]] then return characters[key] end
+			return psychExtras[key]
 		end,
 		__newindex = function(_, key, value)
 			local field = stateFields[key]
-			assert(field, "Unsupported Psych PlayState field: " .. tostring(key))
+			if not field then
+				-- Psych scripts stash their own state on `game` (animation flags,
+				-- counters, saved positions). Refusing the write killed onCreate for
+				-- otherwise working mods, so unknown fields are kept locally.
+				psychExtras[key] = value
+				return
+			end
 			api.setProperty(field, value)
 		end
 	})

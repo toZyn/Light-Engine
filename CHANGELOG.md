@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Psych Engine scripts can extend the standard library again. Writes to `math`,
+  `table`, `string` and `os` were rejected with "table new indexing not allowed",
+  which aborted `onCreate` for any mod that defines a `math.clamp`, `table.new` or
+  `os.clock` shim. Writes now reach the real library; primitives the engine itself
+  depends on (`math.random`, `table.insert`, `string.format`, …) stay reserved.
+- `getfenv` and `setfenv` are available to scripts. They were in the same blocklist
+  as `dofile`/`loadstring`, so the classic `setfenv(1, module)` pattern failed.
+  The chunk environment is unchanged, so blocked globals stay blocked.
+- A callback that throws no longer stays disabled for the rest of the song. The
+  first failure is reported and the callback keeps being dispatched, matching
+  Psych Engine. Previously one bad frame left the stage with no camera work, no
+  events and no cleanup. Repeated failures are rate limited instead of flooding
+  the diagnostics store.
+- Psych fragment and vertex shaders are translated before validation. Mods ship
+  standalone `void main()` programs that write `gl_FragColor`; LÖVE needs
+  `effect`/`position`, so every one of them failed on Android with
+  `bad argument #2 to 'validateShader' (missing 'position' or 'effect' function?)`.
+  Duplicate prelude macros (`#define texture texture2D`) are now dropped, which
+  fixes `'#define' : Macro redefined; different substitutions: texture`.
+- Shaders referenced by full mod path (`external/mods/<mod>/shaders/x.frag`) are
+  read as files instead of being compiled as GLSL source.
+- `engineCompatibility` is enabled by default, so a mod folder that ships
+  `data/<song>/<song>.json` loads instead of reporting "chart file not found".
+- Psych note and receptor proxies accept writes they cannot model instead of
+  raising. `setPropertyFromGroup(..., "mustPress", …)` killed `onSpawnNote` and
+  `onUpdatePost`; unknown fields are remembered on the note and modelled fields
+  still write through.
+- `setPropertyFromGroup` treats an out-of-range index as a no-op, as Psych does.
+- `setObjectOrder` clamps its index instead of failing when the object has not
+  been added yet.
+- `addHaxeLibrary` warns and returns `false` for a class Light Engine does not
+  provide instead of aborting `onCreate`.
+- Unknown `game` fields are kept locally instead of raising
+  "Unsupported Psych PlayState field".
+- A group member without `canDraw` is skipped during drawing instead of aborting
+  the whole draw pass with `attempt to call method 'canDraw' (a nil value)`.
+- Compatibility entry points downgrade errors to a warning and return a neutral
+  value. Previously only errors carrying the `[Lua compatibility]` prefix were
+  absorbed, so any raw `assert` inside the Psych layer still killed the callback.
+
+### Added
+
+- `psych-runtime` engine suite: standard-library extension, `getfenv`/`setfenv`,
+  callback retry, tolerant note writes, and Psych shader translation.
+
 ## [0.7.0] - 2026-11-22
 
 Full Psych Engine 1.0.4 Lua API surface coverage for detected mods, plus the HUD

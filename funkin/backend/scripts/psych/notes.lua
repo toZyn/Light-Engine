@@ -14,7 +14,11 @@ local editable = {
 local defaults = {hitHealth = 0.023, missHealth = 0.0475, hitCausesMiss = false, noMissAnimation = false, gfNote = false}
 
 function Notes.note(note, playerField, state)
-	return setmetatable({}, {
+	-- Writes the native Note cannot model are remembered here and replayed by
+	-- Notes.replay when the note object is replaced (skin change, respawn).
+	local extra = {}
+	local proxy
+	proxy = setmetatable({}, {
 		__index = function(_, key)
 			if key == "texture" then return note.skin.psychTexture or (state and state.psychArrowSkin) or "" end
 			if key == "strumTime" then return note.time * 1000 end
@@ -22,12 +26,14 @@ function Notes.note(note, playerField, state)
 			if key == "mustPress" then return note.parent == playerField end
 			if key == "isSustainNote" then return false end
 			if key == "noteType" then return note.type or "" end
+			if key == "extraParams" then return extra end
 			local native = noteFields[key]
 			if native then
 				local value = note[native]
 				if value ~= nil then return value end
 				return defaults[key]
 			end
+			return extra[key]
 		end,
 		__newindex = function(_, key, value)
 			if key == "texture" and state then
@@ -39,14 +45,21 @@ function Notes.note(note, playerField, state)
 				end
 				return
 			end
-			assert(editable[key], "Psych note property unavailable for writing: " .. tostring(key))
+			local native = noteFields[key]
+			if not editable[key] and not (native and editable[native]) then
+				-- Psych lets mods stash anything on a note (onSpawnNote callbacks are
+				-- the usual place). Remember it and keep the callback alive.
+				extra[key] = value
+				return
+			end
 			if key == "ignoreNote" then note.psychIgnoreNote = true end
 			if key == "hitHealth" or key == "missHealth" then
-				value = assert(tonumber(value), "Psych note health must be numeric")
+				value = tonumber(value) or value
 			end
-			note[noteFields[key]] = value
+			note[native or key] = value
 		end
 	})
+	return proxy
 end
 
 local function receptor(field, index)
@@ -72,10 +85,15 @@ local function receptor(field, index)
 			if receptorFields[key] then return object[key] end
 		end,
 		__newindex = function(_, key, value)
-			assert(receptorFields[key], "Psych receptor property unavailable for writing: " .. tostring(key))
+			if not receptorFields[key] then
+				-- Receptors answer extra reads from the native object; writes the engine
+				-- cannot model land there directly instead of killing the callback.
+				pcall(function() object[key] = value end)
+				return
+			end
 			if key == "x" or key == "y" then
 				local scale, offset = transform(key)
-				assert(scale ~= 0, "Cannot move a receptor on a zero-scale axis")
+				if scale == 0 then return end
 				value = (value - offset) / scale
 			end
 			if key == "direction" then object.directions.z = value - 90
@@ -118,7 +136,11 @@ function Notes.install(compat, api)
 	end
 	api.setPropertyFromGroup = function(group, index, property, value)
 		if not groups[group] then return set(group, index, property, value) end
-		assert(member(group, index), "Psych group index out of range")[property] = value
+		local object = member(group, index)
+		-- Psych indexes group members with #group at the boundary; a miss is a no-op
+		-- in Psych, not a script failure. Out-of-range writes are dropped.
+		if not object then return false end
+		object[property] = value
 		return true
 	end
 	local getProperty = api.getProperty

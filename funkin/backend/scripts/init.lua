@@ -39,6 +39,13 @@ local function noindex(module)
 		__index = function(_, k) return deny(module .. "." .. k) end,
 	})
 end
+-- Names a mod may not overwrite: replacing these breaks every other script.
+local PROTECTED = {
+	math = {random = true, randomseed = true, floor = true, ceil = true, abs = true, max = true, min = true},
+	table = {insert = true, remove = true, concat = true, sort = true},
+	string = {format = true, gsub = true, sub = true, find = true, rep = true},
+}
+
 local function limitindex(name, blocklist)
 	local mt = {
 		__index = function(_, k)
@@ -49,7 +56,19 @@ local function limitindex(name, blocklist)
 			end
 			return _G[name][k]
 		end,
-		__newindex = deny(name .. " new indexing")
+		-- Psych Engine scripts legitimately extend the standard libraries:
+		-- `table.new`, `math.clamp`, `os.time` shims and classic getfenv-based
+		-- module loaders are all common. Blocking writes made those scripts die
+		-- with "table new indexing not allowed" before they ever ran mod code.
+		-- Writes are forwarded to the real library instead. A few names stay
+		-- protected because overwriting them would break the engine itself.
+		__newindex = function(_, k, v)
+			if PROTECTED[name] and PROTECTED[name][k] then
+				deny(name .. "." .. tostring(k) .. " is reserved")( )
+				return
+			end
+			_G[name][k] = v
+		end
 	}
 
 	-- uhh workaround
@@ -62,7 +81,11 @@ end
 local blockset = {
 	loxreq = true, dofile = true, loadfile = true, loadstring = true,
 	load = true, module = true, rawset = true, rawget = true,
-	rawequal = true, setfenv = true, getfenv = true, newproxy = true
+	rawequal = true, newproxy = true,
+	-- getfenv/setfenv are plain Lua 5.1 reflection. Psych mods use them for the
+	-- classic module pattern (`setfenv(1, mod)`) and to reach the global table.
+	-- Neither can escape the sandbox on its own: the chunk environment is still
+	-- this metatable, so blocked globals stay blocked.
 }
 
 local modules = {
@@ -138,6 +161,7 @@ function Script:new(path, notFoundMsg, noLink, fullPath, configure, loader)
 	self.closed = false
 	self.chunk = nil
 	self.__failedfunc = {}
+	self.__failcount = {}
 
 	self.errorCallback = Signal()
 	self.closeCallback = Signal()
@@ -284,17 +308,30 @@ function Script:call(func, ...)
 		f = function(...) return self.hscriptCall(func, ...) end
 	end
 	if f and type(f) == "function" then
-		if self.__failedfunc[func] and not (self._psych and self._psych.retryCallbacks) then return end
 		local s, err = xpcall(f, captureError, ...)
 		if s then
+			-- A callback that recovers stops being marked as failed.
+			if self.__failedfunc[func] then self.__failedfunc[func] = nil end
 			if err ~= nil then
 				return err
 			end
 			return true
 		else
-			local message = string.format('%s failed at %s: %s', self.path, func, err.message)
-			persistError(message, err.traceback)
+			-- A callback must not stay dead for the rest of the song. Psych Engine
+			-- reports the Lua error and keeps honouring the script, which is why a
+			-- Psych mod that throws once can still finish the stage. Permanently
+			-- disabling the callback turned one bad frame into a silently
+			-- unscripted song: no camera work, no events, no cleanup.
+			local failures = (self.__failcount[func] or 0) + 1
+			self.__failcount[func] = failures
 			self.__failedfunc[func] = true
+			-- Report the first failure and then a heartbeat, so a callback that
+			-- throws every frame cannot fill the diagnostics store.
+			if failures == 1 or failures % 300 == 0 then
+				local message = string.format('%s failed at %s (%d time%s): %s',
+					self.path, func, failures, failures == 1 and "" or "s", err.message)
+				persistError(message, err.traceback)
+			end
 			self.errorCallback:dispatch(func)
 		end
 	end

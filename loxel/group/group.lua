@@ -78,10 +78,15 @@ function Group:draw()
 	local oldDefaultCameras = Camera.__defaultCameras
 	if self.cameras then Camera.__defaultCameras = self.cameras end
 
+	-- Psych mods insert plain tables / bare Object()) values into HUD and gameplay
+	-- groups. Those have no canDraw method, and a nil call here aborted the whole
+	-- draw pass (black screen) rather than skipping one member.
 	for _, member in ipairs(self.members) do
-		if member:canDraw() then
-			member:draw()
-		end
+		local memberCanDraw = member.canDraw
+		local visible = memberCanDraw and memberCanDraw(member)
+			or (member.visible ~= false and member.exists ~= false)
+		local memberDraw = member.draw
+		if visible and memberDraw then memberDraw(member) end
 	end
 
 	Camera.__defaultCameras = oldDefaultCameras
