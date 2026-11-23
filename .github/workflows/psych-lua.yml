@@ -1,0 +1,96 @@
+name: Psych Lua shim
+
+# Compiles Psych Engine's own Lua layer (source/psychlua/*.hx) to Lua, so the
+# engine can run Psych's real functions instead of a hand-written port of them.
+#
+# This job is deliberately standalone: it downloads Haxe and a Psych 1.0.4
+# checkout itself, so its failure tells you something about the shim and never
+# about the game build.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/psych-externs/**'
+      - 'tools/build_psych_lua.py'
+      - '.github/workflows/psych-lua.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools/psych-externs/**'
+      - 'tools/build_psych_lua.py'
+
+permissions:
+  contents: read
+
+env:
+  HAXE_VERSION: '4.3.7'
+  PSYCH_REF: '1.0.4'
+
+jobs:
+  compile:
+    name: Compile Psych 1.0.4 Lua layer to Lua
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Haxe
+        run: |
+          set -euo pipefail
+          url="https://github.com/HaxeFoundation/haxe/releases/download/${HAXE_VERSION}/haxe-${HAXE_VERSION}-linux64.tar.gz"
+          curl -fsSL "$url" -o /tmp/haxe.tar.gz
+          mkdir -p "$HOME/haxe"
+          tar -xzf /tmp/haxe.tar.gz -C "$HOME/haxe" --strip-components=1
+          echo "$HOME/haxe" >> "$GITHUB_PATH"
+          "$HOME/haxe/haxe" --version
+
+      - name: Fetch Psych ${{ env.PSYCH_REF }} sources
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            "https://codeload.github.com/ShadowMario/FNF-PsychEngine/tar.gz/refs/tags/${PSYCH_REF}" \
+            -o /tmp/psych.tar.gz
+          mkdir -p /tmp/psych
+          tar -xzf /tmp/psych.tar.gz -C /tmp/psych --strip-components=1
+          ls /tmp/psych/source/psychlua | head
+
+      - name: Compile the shim
+        # A failing compile is a result, not noise: the error list is the exact
+        # set of engine surfaces that still have to be declared in
+        # tools/psych-externs/. The artifact is uploaded either way.
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          python3 tools/build_psych_lua.py --source /tmp/psych --out build/psych-lua \
+            2>&1 | tee build/psych-lua.log
+        continue-on-error: true
+
+      - name: Check the output is loadable Lua
+        id: verify
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, sys, pathlib
+          src = pathlib.Path('build/psych-lua/psych-lua.lua').read_text()
+          assert 'lightPsychInstall' in src, 'bridge entry point missing'
+          registered = len(re.findall(r'add_callback', src))
+          print(f'compiled {len(src.splitlines())} lines, {registered} add_callback sites')
+          PY
+
+      - name: Upload shim and compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psych-lua-shim
+          path: |
+            build/psych-lua/psych-lua.lua
+            build/psych-lua.log
+          if-no-files-found: warn
+          retention-days: 14

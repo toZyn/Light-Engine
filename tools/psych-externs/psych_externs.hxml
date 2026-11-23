@@ -1,0 +1,19 @@
+# Psych Engine externs for the Haxe -> Lua shim
+
+`:psych_externs` describes the *outside world* that Psych's `source/psychlua/*.hx`
+talks to. Nothing here is an implementation: every class maps to something Light
+Engine already owns (camera, sprites, conductor, paths), so compiling Psych's own
+Lua layer produces code that calls into this engine.
+
+Everything is `extern`, so Haxe only type-checks against it and emits calls to
+the matching Lua globals. The Lua side is installed by
+`funkin/backend/scripts/psych/bridge.lua`.
+
+Inventory derived from Psych 1.0.4 `source/psychlua/*.hx`:
+  Paths            16 static members
+  LuaUtils         22 static members
+  FlxG             12 static members
+  PlayState         8 static members
+  plus Conductor, Mods, ClientPrefs, MusicBeatState, FlxTransitionableState,
+  Song, Note, Assets, FlxColor, FlxEase, FlxTween and the constructors
+  FlxText/FlxSprite/FlxSound/FlxTimer/FlxSave.
