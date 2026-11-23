@@ -75,13 +75,18 @@ vec4 position(mat4 transformProjection, vec4 vertexPosition) {
 	code = code:gsub("%f[%w_]gl_FragColor%f[^%w_]", "psychOutput")
 	local rewritten, count = code:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain() {")
 	if count ~= 1 then return code end
+	-- `bitmap` and `openfl_TextureCoordv` are Psych/OpenFL names for the sampled
+	-- image and its coordinates. They must exist in the generated wrapper or a
+	-- shader that only uses those names fails to compile with
+	-- "undeclared identifier bitmap".
 	return [[
 extern vec2 openfl_TextureSize;
 vec2 openfl_TextureCoordv;
 vec4 psychOutput;
 ]] .. rewritten .. [[
 
-vec4 effect(vec4 color, Image image, vec2 uv, vec2 screen) {
+vec4 effect(vec4 color, Image bitmap, vec2 uv, vec2 screen) {
+	openfl_TextureCoordv = uv;
 	psychOutput = vec4(0.0);
 	psychMain();
 	return psychOutput * color;
