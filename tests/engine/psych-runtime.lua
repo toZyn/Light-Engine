@@ -74,11 +74,11 @@ function flaky()
 end
 ]])
 	local flaky = Script('tests/engine/psych-retry.lua', true, true, true)
-	flaky:call('flaky')
-	assert(flaky.__failedfunc.flaky, 'first failure must be tracked')
-	flaky:call('flaky')
-	assert(flaky:call('flaky') == 'recovered', 'callback must recover after a transient failure')
-	assert(flaky.variables.attempts == 3, 'callback must run on every dispatch like Psych')
+	flaky:call('flaky')   -- attempt 1 throws
+	flaky:call('flaky')   -- attempt 2 throws
+	assert(flaky.variables.attempts == 2, 'a failed callback must be dispatched again, like Psych')
+	assert(flaky:call('flaky') == 'recovered', 'callback must recover once the transient failure clears')
+	assert(flaky.variables.attempts == 3, 'callback must run on every dispatch')
 	assert(not flaky.__failedfunc.flaky, 'recovered callback must clear its failure mark')
 	flaky:close()
 	love.filesystem.remove('tests/engine/psych-retry.lua')
