@@ -84,7 +84,18 @@ jobs:
             ' CHANGELOG.md
           }
 
+          # A -rN revision has no heading of its own; its content is whatever is
+          # still under [Unreleased]. Falling back to the base version published
+          # the previous release's notes again (0.7.0-r2 shipped 0.7.0 notes and
+          # never mentioned the fixes it actually contained).
           extract_section "$VERSION" > changelog-section.md
+          if [ ! -s changelog-section.md ] && [ "$VERSION" != "$BASE_VERSION" ]; then
+            awk '
+              /^## \[Unreleased\]/ { found = 1; next }
+              /^## \[/ && found { exit }
+              found { print }
+            ' CHANGELOG.md > changelog-section.md
+          fi
           if [ ! -s changelog-section.md ] && [ "$VERSION" != "$BASE_VERSION" ]; then
             extract_section "$BASE_VERSION" > changelog-section.md
           fi
