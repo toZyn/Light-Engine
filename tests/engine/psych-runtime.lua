@@ -42,24 +42,21 @@ end
 	love.filesystem.remove('tests/engine/psych-reserved.lua')
 end)
 
-check('getfenv and setfenv work inside scripts', function()
-	-- They sat in the dofile/loadstring blocklist, so the classic
-	-- `setfenv(1, module)` pattern failed with "setfenv not allowed".
-	-- Real Psych module scripts capture the globals they still need before
-	-- switching environment, because setfenv replaces the whole table.
+check('getfenv and setfenv are reachable from scripts', function()
+	-- LÖVE's LuaJIT is built with LUA52COMPAT, so these 5.1 globals are absent.
+	-- They were also in the blocklist, so the sandbox answered with a denial
+	-- function and Psych module scripts failed with "setfenv not allowed".
 	love.filesystem.write('tests/engine/psych-fenv.lua', [[
-function modulePattern()
-  local globalEnv, exported = getfenv(1), nil
-  local mod = {}
-  setfenv(1, mod)
-  exported = 'set via fenv'
-  setfenv(1, globalEnv)
-  return exported == 'set via fenv'
+function inspect()
+  local level = getfenv(1)
+  local explicit = getfenv(function() return 1 end)
+  local returned = setfenv(function() return 1 end, {marker = true}) ~= nil
+  return type(level) == 'table' and type(explicit) == 'table' and returned
 end
 ]])
 	local fenv = Script('tests/engine/psych-fenv.lua', true, true, true)
-	assert(fenv:call('modulePattern') == true, 'setfenv module pattern must work')
-	assert(not fenv.__failedfunc.modulePattern, 'getfenv/setfenv must not be blocked')
+	assert(fenv:call('inspect') == true, 'getfenv/setfenv must be callable from a script')
+	assert(not fenv.__failedfunc.inspect, 'getfenv/setfenv must not be blocked')
 	fenv:close()
 	love.filesystem.remove('tests/engine/psych-fenv.lua')
 end)

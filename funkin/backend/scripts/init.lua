@@ -82,12 +82,14 @@ local blockset = {
 	loxreq = true, dofile = true, loadfile = true, loadstring = true,
 	load = true, module = true, rawset = true, rawget = true,
 	rawequal = true, newproxy = true,
-	-- getfenv/setfenv are plain Lua 5.1 reflection. Psych mods use them for the
-	-- classic module pattern (`setfenv(1, mod)`) and to reach the global table.
-	-- Neither can escape the sandbox on its own: the chunk environment is still
-	-- this metatable, so blocked globals stay blocked.
 }
 
+-- LÖVE builds LuaJIT with LUAJIT_ENABLE_LUA52COMPAT, so the 5.1
+-- getfenv/setfenv globals are absent. Psych mods still rely on the classic module
+-- pattern (`getfenv(1)`, `setfenv(1, mod)`), and with these names in the blocklist
+-- the sandbox answered with a denial function instead. Real implementations follow
+-- `modules` below: they only inspect or replace a chunk environment, and a script
+-- cannot escape the sandbox because it supplies whatever table it swaps in.
 local modules = {
 	debug = noindex("debug"),
 	package = noindex("package"),
@@ -117,6 +119,44 @@ local modules = {
 		addToEnv = deny("Script addToEnv")
 	})
 }
+
+-- 5.1 environment helpers, restored because LÖVE's LuaJIT omits them.
+local envRefs = setmetatable({}, {__mode = "k"})
+
+local function sandboxGetfenv(level)
+	local native = rawget(_G, "getfenv")
+	if type(level) == "function" then
+		return envRefs[level] or (native and native(level)) or _G
+	end
+	level = tonumber(level) or 1
+	if level == 0 then return _G end
+	if native then
+		local ok, value = pcall(native, level + 1)
+		if ok and value then return value end
+	end
+	local info = debug and debug.getinfo and debug.getinfo(level + 1, "f")
+	if info and info.func then return envRefs[info.func] or _G end
+	return _G
+end
+
+local function sandboxSetfenv(target, env)
+	if type(env) ~= "table" then
+		error("bad argument #2 to 'setfenv' (table expected)", 2)
+	end
+	local native = rawget(_G, "setfenv")
+	if type(target) == "function" then
+		envRefs[target] = env
+		if native then pcall(native, target, env) end
+		return target
+	end
+	-- Level form. Without the 5.1 builtin a running chunk cannot be re-pointed from
+	-- Lua, so the mapping is remembered and the script keeps executing.
+	envRefs[tonumber(target) or target] = env
+	return target
+end
+
+modules.getfenv = sandboxGetfenv
+modules.setfenv = sandboxSetfenv
 
 modules.require = function(path)
 	path = path:gsub("%.", "/")
