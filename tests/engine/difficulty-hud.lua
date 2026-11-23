@@ -403,6 +403,13 @@ function onEvent(name:String, a:String, b:String) {
    state.health = 1
    local zoom = game.camera.zoom
    local members = #state.members
+   do
+    local tintSrc = love.filesystem.read('fixture-mods/psych/shaders/tint.frag')
+    local tintVert = love.filesystem.read('fixture-mods/psych/shaders/tint.vert')
+    local fSrc, vSrc = Shader.sanitizeGLSL(tintSrc, false), Shader.sanitizeGLSL(tintVert, true)
+    local okC, msgC = pcall(love.graphics.newShader, fSrc, vSrc)
+    assert(okC, 'DIAG shader compile failed: ' .. tostring(msgC) .. '\n--- frag ---\n' .. fSrc .. '\n--- vert ---\n' .. vSrc)
+   end
    local hxCreate = scripts.scripts[1] and scripts.scripts[1].variables.onCreate
    assert(type(hxCreate) == 'function', 'DIAG HScript onCreate is not exposed as a Lua function')
    scripts:call('create')
