@@ -126,6 +126,14 @@ void main() {
 ]]
 		local sanitizedVert = Shader.sanitizeGLSL(psychVert)
 		assert(sanitizedVert:find('vec4%s+position%s*%('), 'Psych vertex shader was not translated to position()')
+		-- A LÖVE-style vertex shader (`#pragma body`, no gl_Position) must not be
+		-- rewritten into an effect() shader: it is validated as a vertex program.
+		local loveVert = '#pragma header\nvoid main() {\n #pragma body\n}\n'
+		local sanitizedLoveVert = Shader.sanitizeGLSL(loveVert)
+		assert(sanitizedLoveVert:find('vec4%s+position%s*%('),
+			'LÖVE vertex shader without gl_Position was not translated to position()')
+		assert(not sanitizedLoveVert:find('vec4%s+effect%s*%('),
+			'LÖVE vertex shader was wrongly translated to effect()')
 		-- Already-valid LÖVE shaders must be left alone.
 		local native = [[
 vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {

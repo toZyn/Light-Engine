@@ -89,14 +89,25 @@ vec4 effect(vec4 color, Image image, vec2 uv, vec2 screen) {
 ]]
 end
 
-function Shader.sanitizeGLSL(code)
+-- `isVertex` tells the translator which LÖVE entry point to synthesise. File
+-- callers know the role from the extension; inline sources fall back to looking
+-- for gl_Position. Guessing matters: a LÖVE vertex shader written as
+-- `#pragma header / void main() { #pragma body }` has no gl_Position, and
+-- treating it as a fragment program produced an effect() shader that then failed
+-- validateShader as a vertex program.
+function Shader.sanitizeGLSL(code, isVertex)
 	if type(code) ~= "string" then return code end
 	code = stripRedefinedMacros(code)
 	-- Only rewrite standalone programs; already-valid LÖVE shaders are untouched.
 	if not code:find("vec4%s+effect%s*%(") and not code:find("vec4%s+position%s*%(")
 		and code:find("void%s+main%s*%(%s*%)") then
-		-- gl_Position identifies a vertex program; anything else writes gl_FragColor.
-		code = translatePsychMain(code, code:find("gl_Position", 1, true) ~= nil)
+		if isVertex == nil then
+			-- gl_Position, or a `#pragma body` (which LÖVE expands into the
+			-- gl_Position assignment), both identify a vertex program.
+			isVertex = code:find("gl_Position", 1, true) ~= nil
+				or code:find("#pragma%s+body") ~= nil
+		end
+		code = translatePsychMain(code, isVertex)
 	end
 	code = code:gsub("(#pragma%s+language%s+glsl3)%s*;", "%1")
 	-- Remove file-scope `precision highp float;` if `effect(` uses unqualified or mediump params
@@ -115,11 +126,11 @@ function Shader.sanitizeGLSL(code)
 	return code
 end
 
-local function readOrIdentity(path, exists)
+local function readOrIdentity(path, exists, isVertex)
 	if not exists then return nil end
 	local content = love.filesystem.read(path)
 	if type(content) == "string" then
-		return Shader.sanitizeGLSL(content)
+		return Shader.sanitizeGLSL(content, isVertex)
 	end
 	return path
 end
@@ -143,8 +154,8 @@ local function compile(source)
  local fragPath,fragExists=fileExists(tostring(source)..".frag")
  local vertPath,vertExists=fileExists(tostring(source)..".vert")
  local args={}
- if fragExists then args[#args+1]=readOrIdentity(fragPath,true) end
- if vertExists then args[#args+1]=readOrIdentity(vertPath,true) end
+ if fragExists then args[#args+1]=readOrIdentity(fragPath,true,false) end
+ if vertExists then args[#args+1]=readOrIdentity(vertPath,true,true) end
  if #args==0 then args[1]=type(source)=="string" and Shader.sanitizeGLSL(source) or source end
  local mobile=love.system.getOS()=="Android" or love.system.getOS()=="iOS"
  local ok,compiled=pcall(function()
