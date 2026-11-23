@@ -48,8 +48,9 @@ MODULES = [
     "FlxAnimateFunctions",
 ]
 
-# Globals Psych uses without an explicit import. The externs provide the types;
-# this list is what the compile has to be allowed to see.
+# Globals Psych uses without an explicit import. On HaxeFlixel these resolve
+# through the class path; Haxe 4 needs them imported, so the staged copy lists
+# them. Every one of these comes from the externs.
 IMPLICIT = [
     "Paths", "FlxG", "FlxCamera", "FlxObject", "FlxBasic", "FlxSprite", "FlxText",
     "FlxSound", "FlxTimer", "FlxTween", "FlxEase", "FlxColor", "FlxSave",
