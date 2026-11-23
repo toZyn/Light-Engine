@@ -95,9 +95,11 @@ def stage(source: Path, work: Path) -> None:
         body_lines = [l for l in lines
                       if not re.match(r"\s*import\s", l)
                       and not re.match(r"\s*package\s", l)]
+        # `import Paths;` inside `package psychlua` would resolve to
+        # psychlua.Paths; the leading `::` forces the root of the class path.
         header = [decl]
-        header += [f"import {n};" for n in IMPLICIT]
-        header.append("import FunkinLua;")
+        header += [f"import ::{n};" for n in IMPLICIT]
+        header.append("import ::FunkinLua;")
         header += [f"import {m};" for m in MODULES if m != name]
         package.joinpath(f"{name}.hx").write_text(
             "\n".join(header + body_lines), encoding="utf-8")
