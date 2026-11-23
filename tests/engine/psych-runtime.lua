@@ -4,6 +4,7 @@
 -- primitive or one dead callback left an entire song unscripted. These run
 -- through the suite runner's `check()`, so a failure reports its full message.
 
+print('BEGIN stdlib-extension')
 check('Psych scripts may extend the standard library', function()
 	-- `table.new`, `math.clamp` and `os.clock` shims are everywhere in Psych mods.
 	-- Blocking writes aborted onCreate with "table new indexing not allowed"
@@ -42,6 +43,7 @@ end
 	love.filesystem.remove('tests/engine/psych-reserved.lua')
 end)
 
+print('BEGIN fenv')
 check('getfenv and setfenv work inside scripts', function()
 	-- They sat in the dofile/loadstring blocklist, so the classic
 	-- `setfenv(1, module)` pattern failed with "setfenv not allowed".
@@ -61,6 +63,7 @@ end
 	love.filesystem.remove('tests/engine/psych-fenv.lua')
 end)
 
+print('BEGIN retry')
 check('a throwing callback stays callable and recovers', function()
 	-- Psych reports the Lua error and keeps dispatching. Permanently disabling the
 	-- callback turned one bad frame into a stage with no camera work, no events
