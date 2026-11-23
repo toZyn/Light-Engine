@@ -1,7 +1,3 @@
-/**
- * Psych's resource resolver. Every asset a Lua script names goes through here,
- * which is why the engine only has to answer "where is this file" once.
- */
 extern class Paths {
 	public static function image(key:String, ?allowGPU:Bool = true):Dynamic;
 	public static function sound(key:String, ?logError:Bool = true):Dynamic;
