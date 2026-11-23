@@ -634,8 +634,13 @@ function Compat.new(state, script, psych)
 		-- never reach Script:call: that path marks the callback failed and the script
 		-- stays dead for the rest of the song. Every compatibility entry point
 		-- therefore downgrades errors to a warning and returns a neutral value.
+		-- These two double as the HScript sandbox API: mods detect a blocked import
+		-- or an exhausted execution budget with `not pcall(runHaxeCode, ...)`, and
+		-- Psych throws in both cases. Downgrading them to a warning would silently
+		-- disable those protections, so they keep raising.
+		local hardFailures = {runHaxeCode = true, runHaxeFunction = true}
 		for name, fn in pairs(api) do
-			if type(fn) == "function" and not name:match("^psych") then
+			if type(fn) == "function" and not name:match("^psych") and not hardFailures[name] then
 				local operation = fn
 				api[name] = function(...)
 					local results = pack(pcall(operation, ...))

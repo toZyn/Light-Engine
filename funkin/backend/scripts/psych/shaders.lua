@@ -42,6 +42,9 @@ local function translate(source, vertex)
 	local rewritten, mains = source:gsub("void%s+main%s*%(%s*%)%s*{", "void psychMain(Image bitmap) {")
 	if mains ~= 1 then error("Psych fragment shader must declare one void main()", 2) end
 	local declaration = vertex and "varying vec2 psychUV;\n" or ""
+	-- `bitmap` is OpenFL's name for the sampled image. LÖVE only exposes it as
+	-- effect()'s Image parameter, so it is threaded into the body as an argument
+	-- (a top-level `Image bitmap;` global is not assignable in GLSL).
 	return declaration .. [[
 extern vec2 openfl_TextureSize;
 vec2 openfl_TextureCoordv;
