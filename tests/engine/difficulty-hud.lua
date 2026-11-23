@@ -403,7 +403,11 @@ function onEvent(name:String, a:String, b:String) {
    state.health = 1
    local zoom = game.camera.zoom
    local members = #state.members
+   local hxCreate = scripts.scripts[1] and scripts.scripts[1].variables.onCreate
+   assert(type(hxCreate) == 'function', 'DIAG HScript onCreate is not exposed as a Lua function')
    scripts:call('create')
+   assert(not scripts.scripts[1].__failedfunc.create,
+    'DIAG HScript onCreate failed: ' .. tostring(scripts.scripts[1].__failedfunc.create))
    assert(#state.members == members + 2)
    assert(state.members[members + 1].x == 24 and state.members[members + 2].members[1].content == 'HScript')
    local customCam = state.members[members + 1].cameras[1]
