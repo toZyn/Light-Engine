@@ -414,10 +414,15 @@ function onEvent(name:String, a:String, b:String) {
    assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
    assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3,
     ('zoom=%s groupSize=%s point=%s'):format(tostring(game.camera.zoom), tostring(state.psychVariables.groupSize), tostring(state.psychVariables.point)))
+   local hv = scripts.scripts[1].variables
+   local luaMisses = pcall(function() return hv.getMisses and hv.getMisses() end)
+   local luaSetVar = pcall(function() return hv.setVar and hv.setVar('probe', 7) end)
+   local luaSongSkin = pcall(function() return hv.getPropertyFromClass and hv.getPropertyFromClass('PlayState', 'SONG.arrowSkin') end)
    assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2,
-    ('DIAG arrowSkin=%q misses=%s psychArrowSkin=%q stateMisses=%s'):format(
+    ('DIAG arrowSkin=%s misses=%s psychArrowSkin=%s stateMisses=%s | getMisses=%s setVar=%s getProp=%s probe=%s'):format(
       tostring(state.psychVariables.hscriptArrowSkin), tostring(state.psychVariables.hscriptMisses),
-      tostring(state.psychArrowSkin), tostring(state.misses)))
+      tostring(state.psychArrowSkin), tostring(state.misses),
+      tostring(luaMisses), tostring(luaSetVar), tostring(luaSongSkin), tostring(state.psychVariables.probe)))
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
    local x = player.receptors[1].x
