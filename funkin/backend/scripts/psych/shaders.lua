@@ -177,8 +177,19 @@ function Shaders.install(compat, api)
 	end
 	compat.psychShaderBindings = {
 		create = function(name)
-			local shader = compile(name)
-			if shader then loose[shader] = true end
+			local ok, shader = pcall(compile, name)
+			if not ok then
+				-- A shader that fails to compile is a visual loss, not a script
+				-- failure. Psych's own shader helpers never abort the calling
+				-- callback; returning nil here let `shader.setFloat(...)` throw
+				-- inside the HScript interpreter, which swallowed the error and left
+				-- onCreate half-executed with no diagnostic.
+				require("funkin.backend.scripts.psych.reflection").warn(
+					"runtime shader " .. tostring(name) .. " unavailable: " .. tostring(shader))
+				return nil
+			end
+			if not shader then return nil end
+			loose[shader] = true
 			return shader
 		end,
 		attach = function(tag, object, shader)

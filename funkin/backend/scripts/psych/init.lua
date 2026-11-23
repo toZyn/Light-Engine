@@ -32,9 +32,18 @@ local function installRuntimeShaders(interpreter, compat, gameProxy)
 		local shader = runtimeShaders.create(name)
 		if not shader then return end
 		local proxy = {}
+		-- Uniform writes on a shader that never compiled must be no-ops: Psych
+		-- mods create the proxy and immediately send uniforms, and an error here
+		-- aborts onCreate inside the HScript interpreter, which swallows it and
+		-- leaves the rest of the script unexecuted.
 		local function send(_, uniform, value)
-			assert(shader:hasUniform(uniform), "Unknown HScript shader uniform: " .. tostring(uniform))
+			if not shader:hasUniform(uniform) then
+				require("funkin.backend.scripts.psych.reflection").warn(
+					"runtime shader uniform " .. tostring(uniform) .. " is not declared")
+				return false
+			end
 			shader:send(uniform, value)
+			return true
 		end
 		proxy.setFloat, proxy.setInt, proxy.setBool = send, send, send
 		proxies[proxy] = shader
@@ -57,8 +66,12 @@ local function installRuntimeShaders(interpreter, compat, gameProxy)
 		if not list or list.length == 0 then runtimeShaders.remove(tag); return end
 		local shaders = {}
 		for index = 0, list.length - 1 do
-			shaders[#shaders + 1] = assert(filters[list[index]], "Expected a Psych ShaderFilter")
+			local shader = filters[list[index]]
+			-- A filter built from a shader that never compiled is skipped instead of
+			-- aborting the callback that installed it.
+			if shader then shaders[#shaders + 1] = shader end
 		end
+		if #shaders == 0 then runtimeShaders.remove(tag); return end
 		runtimeShaders.filters(tag, object, shaders)
 	end, function(tag, object, proxy)
 		if not proxy then runtimeShaders.remove(tag); return end

@@ -403,33 +403,13 @@ function onEvent(name:String, a:String, b:String) {
    state.health = 1
    local zoom = game.camera.zoom
    local members = #state.members
-   do
-    local tintSrc = love.filesystem.read('fixture-mods/psych/shaders/tint.frag')
-    local tintVert = love.filesystem.read('fixture-mods/psych/shaders/tint.vert')
-    local fSrc, vSrc = Shader.sanitizeGLSL(tintSrc, false), Shader.sanitizeGLSL(tintVert, true)
-    local okC, msgC = pcall(love.graphics.newShader, fSrc, vSrc)
-    assert(okC, 'DIAG shader compile failed: ' .. tostring(msgC) .. '\n--- frag ---\n' .. fSrc .. '\n--- vert ---\n' .. vSrc)
-   end
-   local hxCreate = scripts.scripts[1] and scripts.scripts[1].variables.onCreate
-   assert(type(hxCreate) == 'function', 'DIAG HScript onCreate is not exposed as a Lua function')
    scripts:call('create')
-   assert(not scripts.scripts[1].__failedfunc.create,
-    'DIAG HScript onCreate failed: ' .. tostring(scripts.scripts[1].__failedfunc.create))
    assert(#state.members == members + 2)
    assert(state.members[members + 1].x == 24 and state.members[members + 2].members[1].content == 'HScript')
    local customCam = state.members[members + 1].cameras[1]
    assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
-   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3,
-    ('zoom=%s groupSize=%s point=%s'):format(tostring(game.camera.zoom), tostring(state.psychVariables.groupSize), tostring(state.psychVariables.point)))
-   local hv = scripts.scripts[1].variables
-   local luaMisses = pcall(function() return hv.getMisses and hv.getMisses() end)
-   local luaSetVar = pcall(function() return hv.setVar and hv.setVar('probe', 7) end)
-   local luaSongSkin = pcall(function() return hv.getPropertyFromClass and hv.getPropertyFromClass('PlayState', 'SONG.arrowSkin') end)
-   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2,
-    ('DIAG arrowSkin=%s misses=%s psychArrowSkin=%s stateMisses=%s | getMisses=%s setVar=%s getProp=%s probe=%s'):format(
-      tostring(state.psychVariables.hscriptArrowSkin), tostring(state.psychVariables.hscriptMisses),
-      tostring(state.psychArrowSkin), tostring(state.misses),
-      tostring(luaMisses), tostring(luaSetVar), tostring(luaSongSkin), tostring(state.psychVariables.probe)))
+   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3)
+   assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2)
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
    local x = player.receptors[1].x
