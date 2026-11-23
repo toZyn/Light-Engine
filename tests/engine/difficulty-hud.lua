@@ -408,7 +408,8 @@ function onEvent(name:String, a:String, b:String) {
    assert(state.members[members + 1].x == 24 and state.members[members + 2].members[1].content == 'HScript')
    local customCam = state.members[members + 1].cameras[1]
    assert(table.find(game.cameras.list, customCam) and customCam.bgColor[4] == 0)
-   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3)
+   assert(game.camera.zoom == 1.25 and state.psychVariables.groupSize == 1 and state.psychVariables.point == 3,
+    ('zoom=%s groupSize=%s point=%s'):format(tostring(game.camera.zoom), tostring(state.psychVariables.groupSize), tostring(state.psychVariables.point)))
    assert(state.psychVariables.hscriptArrowSkin == 'note-style' and state.psychVariables.hscriptMisses == 2)
    assert(state.members[members + 2].members[1].x == 11)
    scripts:set('curBeat', 18)
