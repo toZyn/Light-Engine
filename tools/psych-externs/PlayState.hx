@@ -88,7 +88,7 @@ extern class PlayState extends MusicBeatState {
 	public function startCountdown():Void;
 	public function endSong():Void;
 	public function startDialogue(dialogueFile:DialogueFile, ?song:String = null):Void;
-	public function startVideo(name:String, forMidSong:Bool = false, canSkip:Bool = true, loop:Bool = false, playOnLoad:Bool = true):Bool;
+	public function startVideo(name:String, forMidSong:Bool = false, canSkip:Bool = true, loop:Bool = false, playOnLoad:Bool = true):VideoSprite;
 	public function initHScript(file:String):Void;
 	public function callOnLuas(funcToCall:String, args:Array<Dynamic> = null, ignoreStops:Bool = false, exclusions:Array<String> = null, excludeValues:Array<Dynamic> = null):Dynamic;
 	public function callOnHScript(funcToCall:String, args:Array<Dynamic> = null, ?ignoreStops:Bool = false, exclusions:Array<String> = null, excludeValues:Array<Dynamic> = null):Dynamic;
