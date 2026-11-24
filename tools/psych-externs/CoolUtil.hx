@@ -4,6 +4,7 @@
  */
 extern class CoolUtil {
 	public static function colorFromString(color:String):Int;
+	public static function getSavePath():String;
 	public static function setTextBorderFromString(text:FlxText, border:String):Void;
 	public static function parseSpeed(speed:Float):String;
 	public static function dashToSpace(string:String):String;
