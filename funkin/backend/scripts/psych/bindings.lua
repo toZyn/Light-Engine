@@ -333,6 +333,29 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		end
 	end
 
+	-- Haxe's package namespace. The compiled output registers every class by its
+	-- dotted name in `_hxClasses` (psychlua.FunkinLua, psychlua.HScript, ...) but
+	-- also indexes them through the package table `psychlua.HScript.implement(...)`.
+	-- In Haxe that package is part of the runtime; in flat Lua it is nil, so the
+	-- constructor dies on its last few lines after doing all its real work.
+	--
+	-- Exposing it as a view of `_hxClasses` keeps one registration list instead of
+	-- a second one that can disagree with it.
+	local packageClasses = shared._hxClasses
+	if type(packageClasses) == "table" then
+		-- Merging in now, while they are known; the rest resolve later.
+		local psychluaPackage = {}
+		local naming = setmetatable({}, {
+			__index = function(_, name)
+				local class = packageClasses["psychlua." .. name]
+				psychluaPackage[name] = class
+				return class
+			end,
+		})
+		shared.psychlua = psychluaPackage
+		setmetatable(psychluaPackage, naming)
+	end
+
 	loaded = {
 		install = scope.lightPsychInstall,
 		createScript = scope.lightPsychCreateScript,
@@ -371,6 +394,15 @@ function PsychBindings.runScript(compat, source, name)
 	end
 	if script == nil then
 		return nil, "Psych script did not build"
+	end
+	-- PsychBridge.install is what gives a script object its helper functions; a
+	-- script that is never installed has the 128 callbacks from its constructor and
+	-- none of the functions those callbacks use. The engine never called it.
+	if type(shim.install) == "function" then
+		local okInstall, installError = pcall(shim.install, script)
+		if not okInstall then
+			return nil, "Psych helpers could not be installed: " .. tostring(installError)
+		end
 	end
 	return script
 end
