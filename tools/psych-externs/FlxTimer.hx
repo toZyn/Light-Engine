@@ -9,6 +9,6 @@ extern class FlxTimer extends FlxBasic {
 	public var loops:Int;
 	public var loopsLeft:Int;
 	public var time:Float;
-	public function start(?time:Float = 1, ?onComplete:Dynamic):Void;
+	public function start(?time:Float = 1, ?loops:Int = 1, ?onComplete:Dynamic):Void;
 	public function cancel():Void;
 }
