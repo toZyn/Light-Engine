@@ -11,11 +11,13 @@ extern abstract FlxColor(Int) from Int to Int {
 	public static function fromHSV(hue:Float, saturation:Float, brightness:Float):FlxColor;
 	public static function getColor32(alpha:Int, red:Int, green:Int, blue:Int):FlxColor;
 
-	public var red(get, set):Int;
-	public var green(get, set):Int;
-	public var blue(get, set):Int;
-	public var alpha(get, never):Int;
-	public var alphaFloat(get, set):Float;
+	// Declared as plain fields: an extern abstract cannot carry accessor bodies,
+	// and these are only ever read or assigned by Psych.
+	public var red:Int;
+	public var green:Int;
+	public var blue:Int;
+	public var alpha:Int;
+	public var alphaFloat:Float;
 
 	public static inline var WHITE:FlxColor = 0xFFFFFFFF;
 	public static inline var BLACK:FlxColor = 0xFF000000;
