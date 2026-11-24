@@ -209,3 +209,83 @@ function PsychBindings.installLuaApi(scope, onMissing)
 end
 
 return PsychBindings
+
+--- Loads Psych's compiled layer and returns its factory.
+--
+-- The generated file is a Lua port of Psych's entire `psychlua` package. It
+-- assigns two globals: `lightPsychInstall(host)` for the 94 callbacks in the
+-- helper classes, and `lightPsychCreateScript(source)` for the other 128 plus
+-- the actual script run.
+--
+-- Loading is lazy and once per process: the chunk is ~6,300 lines of table
+-- construction and there is no reason to pay for it twice or for a session that
+-- never plays a Psych mod.
+local loaded
+
+function PsychBindings.loadShim(compat)
+	if loaded then return loaded end
+
+	local source = compat and compat.psychShimSource or nil
+	if not source then
+		local path = "funkin/backend/scripts/psych/shim.lua"
+		local handle = io and io.open and io.open(path, "r")
+		if not handle then
+			loaded = false
+			return nil
+		end
+		source = handle:read("*a")
+		handle:close()
+	end
+
+	-- The shim gets its own environment, the way the engine runs a script: what
+	-- it assigns stays local to it, everything else falls through to the real
+	-- globals. Without the fallback `setmetatable` is nil and the compiled
+	-- layer dies on its first line.
+	local scope = setmetatable({}, {__index = _G})
+	scope._G = scope
+	PsychBindings.installLuaApi(scope)
+
+	local chunk = loadstring and loadstring(source) or load(source, "=psych-shim")
+	if not chunk then
+		loaded = false
+		return nil
+	end
+	if setfenv then setfenv(chunk, scope) end
+
+	local ok, err = pcall(chunk)
+	if not ok then
+		loaded = false
+		if compat and compat.psychWarn then
+			compat:psychWarn("Psych shim failed to load: " .. tostring(err))
+		end
+		return nil
+	end
+
+	loaded = {
+		install = scope.lightPsychInstall,
+		createScript = scope.lightPsychCreateScript,
+		scope = scope,
+	}
+	return loaded
+end
+
+--- Runs `source` as a Psych script.
+--
+-- Returns the script object on success. The caller owns it and must keep it
+-- alive: the 128 callbacks registered during construction live on it.
+function PsychBindings.runScript(compat, source)
+	local shim = PsychBindings.loadShim(compat)
+	if not shim or not shim.createScript then
+		return nil, "Psych shim unavailable"
+	end
+	local ok, script = pcall(shim.createScript, source)
+	if not ok then
+		return nil, tostring(script)
+	end
+	if script == nil then
+		return nil, "Psych script did not build"
+	end
+	return script
+end
+
+return PsychBindings

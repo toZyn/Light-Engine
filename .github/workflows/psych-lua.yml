@@ -76,44 +76,62 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PYEOF'
-          import pathlib, re, sys
+          import pathlib, subprocess, sys, textwrap
 
-          src = pathlib.Path('build/psych-lua/psych-lua.lua').read_text()
-          staged = sorted(pathlib.Path('build/psych-lua/src/psychlua').glob('*.hx'))
+          shim = pathlib.Path('build/psych-lua/psych-lua.lua')
+          harness = pathlib.Path('build/harness.lua')
+          harness.write_text(textwrap.dedent(f"""
+            package.path = './?.lua;' .. package.path
+            local Bindings = require('funkin.backend.scripts.psych.bindings')
+            local bridge = Bindings.installLuaApi(setmetatable({{}}, {{__index = _G}}))
 
-          expected = set()
-          for f in staged:
-              text = f.read_text(encoding='utf-8', errors='replace')
-              expected |= set(re.findall(r'add_callback\(\s*lua\s*,\s*["\']([A-Za-z0-9_]+)["\']', text))
-              expected |= set(re.findall(r'add_callback\(\s*["\']([A-Za-z0-9_]+)["\']', text))
-              expected |= set(re.findall(r'addLocalCallback\(\s*["\']([A-Za-z0-9_]+)["\']', text))
+            -- The shim, loaded the way the engine loads it. Checking it parses is
+            -- what tells "compiled" apart from "runnable".
+            local chunk = assert(loadfile('{shim}'))
+            local scope = setmetatable({{}}, {{__index = _G}})
+            scope._G = scope
+            Bindings.installLuaApi(scope)
+            if setfenv then setfenv(chunk, scope) end
+            chunk()
 
-          missing = sorted(n for n in expected if n not in src)
-          carried = len(expected) - len(missing)
+            -- install(): the 94 callbacks in the helper classes. This works
+            -- without a song, because those classes only need a FunkinLua object.
+            local state = scope.LuaL.newstate()
+            local host = {{lua = state, callbacks = {{}}, customFunctions = {{}}}}
+            host.addLocalCallback = function(_, name, fn)
+              scope.Lua_helper.add_callback(state, name, fn)
+            end
+            host.initLuaShader = function() return false end
 
-          print(f'compiled {len(src.splitlines())} lines of Lua')
-          print(f'{len(expected)} callbacks registered across {len(staged)} sources')
-          print(f'{carried} carried into the output')
+            scope.lightPsychInstall(host)
+            local helperCount = 0
+            for _ in pairs(bridge.registryFor(state).callbacks) do
+              helperCount = helperCount + 1
+            end
+            print('install registered ' .. helperCount .. ' callbacks')
+            assert(helperCount >= 90,
+                   'helper surface incomplete: ' .. helperCount)
+            assert(bridge.registryFor(state).callbacks.setProperty,
+                   'setProperty not registered by install')
 
-          assert 'lightPsychInstall' in src, 'bridge entry point missing'
+            -- createScript() is the song-time path: FunkinLua.new() registers the
+            -- other 128 and then runs the source. It cannot be exercised without
+            -- a song, so what is checked here is that the entry point exists --
+            -- the live path is covered by tests/engine/psych-bindings.lua.
+            assert(type(scope.lightPsychCreateScript) == 'function',
+                   'the shim never exposed lightPsychCreateScript')
+            print('SHIM RAN OK')
+          """))
 
-          # Show a compiled callback body, not just a count. If Psych's own code
-          # survives the translation it is visible here, in the Lua.
-          sample = re.search(r'function\s*\([^)]*\)\s*\n?[\s\S]{0,700}?end', src)
-          print("::notice title=sample::" + (sample.group(0)[:900].replace(chr(10), ' | ') if sample else 'none'))
-
-          # Psych's callbacks are registered by name; confirm a few are present
-          # verbatim so the output is recognisably its source.
-          for known in ('setProperty', 'getProperty', 'makeLuaSprite', 'playSound', 'callScript', 'loadGraphic'):
-              if known in src:
-                  print(f"::notice title=callback::{known} present")
-              else:
-                  print(f"::warning title=callback::{known} missing")
-
-          print(f"::notice title=shim::{len(src.splitlines())} lines, "
-                f"{carried}/{len(expected)} callbacks carried")
-          if missing:
-              print(f"::error title=callbacks dropped ({len(missing)})::{', '.join(missing[:60])}")
+          result = subprocess.run(['lua5.1', str(harness)], text=True,
+                                  capture_output=True)
+          print(result.stdout)
+          if result.returncode != 0:
+              print(result.stderr, file=sys.stderr)
+              lines = [l for l in result.stderr.splitlines() if l.strip()]
+              for i in range(0, min(len(lines), 12), 4):
+                  print("::error title=shim trace %d::" % i
+                        + " / ".join(lines[i:i+4])[:1200])
               sys.exit(1)
           PYEOF
 
