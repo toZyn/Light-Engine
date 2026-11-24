@@ -5,7 +5,7 @@
 extern class Song {
 	public static var chartPath:String;
 	public static var loadedSongName:String;
-	public static function loadFromJson(json:Dynamic):Dynamic;
+	public static function loadFromJson(jsonInput:String, ?folder:String):Song;
 
 	public var song:String;
 	public var stage:String;
