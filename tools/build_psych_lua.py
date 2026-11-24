@@ -61,7 +61,9 @@ def check_haxe(haxe: str) -> str:
 
 
 # Imports that resolve against Haxe's stdlib or the externs, not the engine.
-ENGINE_FREE_IMPORT = re.compile(r"\s*import\s+(haxe\.|Type\.|Std\.)")
+# Imports that resolve without the engine: Haxe's stdlib, and Psych's own
+# psychlua siblings (which are staged alongside this file).
+ENGINE_FREE_IMPORT = re.compile(r"\s*import\s+(haxe\.|Type\.|Std\.|psychlua\.)")
 
 
 def stage(source: Path, work: Path) -> None:
