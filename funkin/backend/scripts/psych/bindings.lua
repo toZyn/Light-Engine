@@ -308,10 +308,22 @@ function PsychBindings.runShim(compat, chunkOrSource)
 	local ok, err = pcall(chunk)
 	if not ok then
 		loaded = false
-		if compat and compat.psychWarn then
+			if compat and compat.psychWarn then
 			compat:psychWarn("Psych shim failed to load: " .. tostring(err))
 		end
+		-- Not memoised: a load that failed for want of the engine's globals should
+		-- be retried once those exist, instead of latching the failure per process.
 		return nil
+	end
+
+	-- The shim is loaded before any script runs, so an early miss (a caller that
+	-- only had the source) does not cost the later, fully set-up one.
+	if compat and not compat.psychShimSource then
+		local retry = compat.psychShimSourceFor and compat.psychShimSourceFor() or nil
+		if retry then
+			loaded = nil
+			return PsychBindings.runShim(compat, retry)
+		end
 	end
 
 	loaded = {

@@ -25,8 +25,11 @@ HARNESS = textwrap.dedent("""\
     -- Load the shim through the engine's own loader, not a copy of it. A harness
     -- that reimplements the loader tests the harness: the first version set its
     -- own environment and the compiled layer could not see setmetatable.
-    local source = assert(io.open('{shim}', 'r')):read('*a')
-    local shim = Bindings.loadShim({{psychShimSource = source}})
+    local compat = {{}}
+    compat.psychShimSourceFor = function()
+      return assert(io.open('{shim}', 'r')):read('*a')
+    end
+    local shim = Bindings.loadShim(compat)
     assert(shim, 'the shim did not load')
 
     -- install() registers the six helper classes. It needs no song, because
