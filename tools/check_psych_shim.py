@@ -22,27 +22,25 @@ HARNESS = textwrap.dedent("""\
     package.path = './?.lua;' .. package.path
     local Bindings = require('funkin.backend.scripts.psych.bindings')
 
-    -- Load the shim the way the engine does: its own environment, falling back
-    -- to the real globals. Parsing it is what tells "compiled" from "runnable".
-    local chunk = assert(loadfile('{shim}'))
-    local scope = setmetatable({{}}, {{__index = _G}})
-    scope._G = scope
-    local bridge = Bindings.installLuaApi(scope)
-    if setfenv then setfenv(chunk, scope) end
-    chunk()
+    -- Load the shim through the engine's own loader, not a copy of it. A harness
+    -- that reimplements the loader tests the harness: the first version set its
+    -- own environment and the compiled layer could not see setmetatable.
+    local source = assert(io.open('{shim}', 'r')):read('*a')
+    local shim = Bindings.loadShim({{psychShimSource = source}})
+    assert(shim, 'the shim did not load')
 
     -- install() registers the six helper classes. It needs no song, because
     -- those classes only use a FunkinLua object.
-    local state = scope.LuaL.newstate()
+    local state = shim.scope.LuaL.newstate()
     local host = {{lua = state, callbacks = {{}}, customFunctions = {{}}}}
     host.addLocalCallback = function(_, name, fn)
-      scope.Lua_helper.add_callback(state, name, fn)
+      shim.scope.Lua_helper.add_callback(state, name, fn)
     end
     host.initLuaShader = function() return false end
 
-    scope.lightPsychInstall(host)
+    shim.install(host)
 
-    local registered = bridge.registryFor(state).callbacks
+    local registered = shim.bridge.registryFor(state).callbacks
     local count = 0
     for _ in pairs(registered) do count = count + 1 end
     print('install registered ' .. count .. ' callbacks')
