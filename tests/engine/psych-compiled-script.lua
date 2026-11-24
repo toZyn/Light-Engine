@@ -47,24 +47,33 @@ check('a Psych script runs through the compiled layer', function()
   local Psych=require('funkin.backend.modding.psych')
   assert(Psych.usesRuntime(),'the compiled path is not the default')
 
-  -- Built the way the engine builds a Psych mod script: globals published onto it,
-  -- then a compatibility context attached.
+  -- The script the engine is loading: its path is what Psych records as scriptName,
+  -- so this one has to be a real file in a real directory layout.
+  local path='tests/engine/compat-fixture.lua'
   local globals=require('funkin.backend.scripts.psych.globals')
-  local script=Script('tests/engine/compat-fixture.lua',false,true,true,function(instance)
-   instance.psychValues=globals.initial(state,PlayState.SONG,'tests/engine/compat-fixture.lua')
+  -- Script's configure hook only runs when the chunk loads. The compiled layer is
+  -- the loader for this script, so without a real file there is no context at all
+  -- -- which is exactly how this test failed before, with "no compatibility context".
+  local script=Script(path,false,true,true,function(instance)
+   instance.psychValues=globals.initial(state,PlayState.SONG,path)
    for key,value in pairs(instance.psychValues) do instance:set(key,value) end
    instance._psych=require('funkin.backend.scripts.compat').new(state,instance,true)
+  end,function(_,instance)
+   -- What loadPsychScript does: hand the source to Psych's own runtime. Returning an
+   -- empty chunk keeps Script from interpreting the file a second time.
+   local built,buildError=instance._psych.psychRuntime(SOURCE,instance)
+   if not built then error('compiled layer refused the script: '..tostring(buildError),0) end
+   return function() end
   end)
+  assert(script._psych,'the compiled loader never ran: the file did not load')
   state.scripts:add(script)
   state.psychVariables=script.psychValues
   local compat=script._psych
   assert(compat,'no compatibility context')
 
-  -- Build Psych's script object the way loadPsychScript does, so a failure reports
-  -- what is missing rather than being swallowed by the engine's script harness.
-  local built,buildError=compat.psychRuntime(SOURCE,script)
+  local built=script.psychScript
   if not built then
-   error('the compiled layer could not run a Psych script: '..tostring(buildError))
+   error('the compiled layer could not run a Psych script: '..tostring(script.psychError))
   end
 
   -- The constructor must have seen a live song. When it does not, it skips the

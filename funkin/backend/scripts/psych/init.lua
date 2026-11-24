@@ -559,7 +559,10 @@ function HScript.install(compat, api)
 		if not psychScript and compat.psychWarn then
 			compat:psychWarn("Psych script failed: " .. tostring(err))
 		end
-		if script and psychScript then script.psychScript = psychScript end
+		if script then
+			script.psychScript = psychScript
+			script.psychError = psychScript and nil or err
+		end
 		return psychScript, err
 	end
 
