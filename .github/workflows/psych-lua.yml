@@ -249,9 +249,7 @@ jobs:
           fi
           git config user.name 'psych-lua shim'
           git config user.email 'actions@github.com'
-          git commit -q -m "Regenerate the Psych Lua shim
-
-          Built from Psych ${{ env.PSYCH_REF }} source/psychlua by this workflow."
+          git commit -q -m "Regenerate the Psych Lua shim"
           git push origin "HEAD:${BRANCH}"
           echo "::notice title=shim::committed $(git rev-parse --short HEAD)"
 
