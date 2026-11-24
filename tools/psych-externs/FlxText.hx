@@ -3,7 +3,7 @@ extern class FlxText extends FlxSprite {
 	public var text:String;
 	public var size:Int;
 	public var font:String;
-	public var borderSize:Int;
+	public var borderSize:Float;
 	public var borderColor:Int;
 	public var borderStyle:Dynamic;
 	public var alignment:Dynamic;
