@@ -372,6 +372,53 @@ function PsychBindings.runScript(compat, source)
 end
 
 
+--- Points the compiled layer's globals at the live game.
+--
+-- The shim runs in its own environment, so the Haxe globals Psych's constructor
+-- reads (PlayState, Conductor, FlxG, Mods, ...) are not visible to it. Without
+-- this it sees `PlayState.instance == nil` and silently skips the song-time half
+-- of its own setup: no luaArray registration, no curBeat/curSection publishing,
+-- no resetting of the per-song globals. The script still "works", which is the
+-- worst part -- it just does not see the song.
+--
+-- Values are copied by reference, so they stay live: the shim holds the same
+-- table the engine mutates, not a snapshot.
+local LIVE_GLOBALS = {
+	"PlayState", "Conductor", "FlxG", "Paths", "Mods", "Song", "WeekData",
+	"Difficulty", "LuaUtils", "MainMenuState", "MusicBeatState", "HScript",
+	"CustomSubstate", "ClientPrefs", "Character", "Note", "FlxColor", "FlxMath",
+	"StringTools", "Std", "FileSystem", "GameOverSubstate", "LoadingState",
+	"ShaderFilter", "FlxRuntimeShader", "ModchartSprite", "ModchartText",
+	"ModchartAnimateSprite", "LuaL"
+}
+
+function PsychBindings.exposeGame(compat)
+	local shim = PsychBindings.loadShim(compat)
+	if not shim then return nil end
+	local globals = shim.globals
+	for _, name in ipairs(LIVE_GLOBALS) do
+		local value = rawget(_G, name)
+		if value ~= nil then globals[name] = value end
+	end
+	-- The constructor calls `game.luaArray:push(self)`; Psych's PlayState owns that
+	-- array, and the engine's state has no equivalent, so it is provided here
+	-- rather than making the shim special-case a nil.
+	local state = compat and compat.state
+	local play = globals.PlayState
+	if type(play) == "table" then
+		if play.instance == nil then play.instance = state end
+		if play.luaArray == nil then
+			play.luaArray = {push = function(_, value) return value end}
+		end
+	end
+	-- `game.luaArray` above and `PlayState.instance.luaArray` in helpers must be the
+	-- same object, or a script registered one way is invisible the other.
+	if type(state) == "table" and type(play) == "table" and state.luaArray == nil then
+		state.luaArray = play.luaArray
+	end
+	return shim
+end
+
 --- Builds the loader Script:new should use for a Psych `.lua` script.
 --
 -- The engine's load order is fixed: loader -> setfenv -> configure -> chunk().

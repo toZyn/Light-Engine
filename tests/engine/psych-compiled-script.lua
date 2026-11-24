@@ -62,10 +62,23 @@ function love.load()
    error('the compiled layer could not run a Psych script: '..tostring(buildError))
   end
 
+  -- The constructor must have seen a live song. When it does not, it skips the
+  -- song-time half of its setup in silence and the script merely looks fine --
+  -- which is how a whole class of "the mod loads but nothing happens" bugs hides.
+  local runtime=require('funkin.backend.scripts.psych.bindings')
+  local shim=runtime.loadShim(compat)
+  assert(shim,'the shim did not load')
+  -- PlayState.instance is what FunkinLua.new() tests to decide whether a song is
+  -- running. It must be this state, not nil.
+  assert(shim.globals.PlayState ~= nil,'Psych cannot see PlayState at all')
+  assert(shim.globals.PlayState.instance==state,
+    'FunkinLua.new() saw no live song, so it skipped its song-time setup')
+  assert(shim.globals.PlayState.luaArray~=nil,
+    'game.luaArray is missing, so Psych cannot register the script with the song')
+
   -- The callbacks Psych registered must be reachable from the script it built.
   local variables=script.psychScript and script.psychScript.lua
   assert(variables,'no Lua state on the built script')
-  local runtime=require('funkin.backend.scripts.psych.bindings')
   local registered=runtime.registryFor(variables).callbacks
   assert(type(registered)=='table','no callback registry')
 

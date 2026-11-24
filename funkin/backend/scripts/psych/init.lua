@@ -548,6 +548,10 @@ function HScript.install(compat, api)
 	-- the callbacks it registered.
 	compat.psychRuntime = function(source, script)
 		local bindings = psychBindings()
+		-- Hand the compiled layer the live game first: it runs in its own
+		-- environment, and without this it sees no PlayState and skips the whole
+		-- song-time half of its setup without saying so.
+		bindings.exposeGame(compat)
 		local psychScript, err = bindings.runScript(compat, source)
 		if not psychScript and compat.psychWarn then
 			compat:psychWarn("Psych script failed: " .. tostring(err))
