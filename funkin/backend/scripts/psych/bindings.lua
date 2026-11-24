@@ -413,6 +413,40 @@ local MAINMENU_FIELDS = {
 	psychEngineVersion = "1.0.4",
 }
 
+--- Identity classes Psych's constructor publishes as globals.
+--
+-- `Song`, `Difficulty` and `WeekData` are Haxe classes with static state. The engine
+-- keeps the same information on `PlayState` (`songDifficulty`, `storyWeek`,
+-- `seenCutscene`) and in its chart, so these are read-through views rather than
+-- copies: a value the engine changes later is still visible, and nothing here can
+-- drift from what the state actually holds.
+local function psychIdentity(state)
+	local song = state and state.SONG or (rawget(_G, "PlayState") or {}).SONG
+	local difficulty = (rawget(_G, "PlayState") or {}).songDifficulty
+	local names = { easy = "Easy", normal = "Normal", hard = "Hard" }
+	local function difficultyName()
+		local raw = tostring(difficulty or "normal")
+		return names[raw] or (raw:gsub("^%l", string.upper))
+	end
+	return {
+		Song = {
+			-- Haxe calls this the loaded song; for a running state that is the song
+			-- in the chart.
+			loadedSongName = song and (song.song or song.name) or nil,
+			chartPath = state and state.psychChartPath or nil,
+			loadFromJson = function(name) return song end,
+		},
+		Difficulty = {
+			getString = function(translated) return difficultyName() end,
+			getFilePath = function() return tostring(difficulty or "normal") end,
+		},
+		-- Psych indexes this by PlayState.storyWeek, which is a number there and a
+		-- string here; week-end songs are the only case that matters and the engine
+		-- has no list for them yet, so it is an empty list rather than a wrong one.
+		WeekData = { weeksList = {} },
+	}
+end
+
 --- Builds the `FlxG` surface Psych's constructor and helpers read.
 --
 -- Flixel's global game state is not a thing this engine has: there is no FlxG table,
@@ -502,6 +536,10 @@ function PsychBindings.exposeGame(compat)
 	for psychName, engineName in pairs(LIVE_GLOBALS) do
 		local value = rawget(_G, engineName)
 		if value ~= nil then globals[psychName] = value end
+	end
+	-- Class-standing-in-for-a-Haxe-class surface.
+	for name, value in pairs(psychIdentity(compat and compat.state)) do
+		if globals[name] == nil then globals[name] = value end
 	end
 	-- Flixel's global surface, built per call because it points at live objects.
 	local state = compat and compat.state
