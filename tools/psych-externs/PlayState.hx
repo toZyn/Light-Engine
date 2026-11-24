@@ -17,4 +17,10 @@ extern class PlayState {
 	public var gf:Dynamic;
 	public var dad:Dynamic;
 	public var curStage:String;
+	public var stage:Stage;
+	public var camGame:FlxCamera;
+	public var camHUD:FlxCamera;
+	public var camOther:FlxCamera;
+	public var controls:Dynamic;
+	public function getLuaObject(tag:String, ?checkForTextsToo:Bool = true):Dynamic;
 }

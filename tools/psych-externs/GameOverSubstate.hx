@@ -3,7 +3,7 @@
  */
 extern class GameOverSubstate {
 	public static var characterName:String;
-	public static var instance:Dynamic;
+	public static var instance:FlxState;
 	public static var loopSoundName:String;
 	public static var endSoundName:String;
 }
