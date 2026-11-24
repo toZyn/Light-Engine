@@ -225,7 +225,18 @@ function PsychBindings.loadShim(compat)
 
 	local source = compat and compat.psychShimSource or nil
 	if not source then
+		-- Same loader the engine uses for its own compiled runtime, so a packaged
+		-- build and a source checkout both find the file.
 		local path = "funkin/backend/scripts/psych/shim.lua"
+		local chunkLoader = love and love.filesystem and love.filesystem.load
+		if chunkLoader then
+			local chunk = chunkLoader(path)
+			if not chunk then
+				loaded = false
+				return nil
+			end
+			return PsychBindings.runShim(compat, chunk)
+		end
 		local handle = io and io.open and io.open(path, "r")
 		if not handle then
 			loaded = false
@@ -234,6 +245,13 @@ function PsychBindings.loadShim(compat)
 		source = handle:read("*a")
 		handle:close()
 	end
+	return PsychBindings.runShim(compat, source)
+end
+
+--- Runs an already-obtained shim chunk or source and returns its entry points.
+function PsychBindings.runShim(compat, chunkOrSource)
+	if loaded then return loaded end
+	local source = chunkOrSource
 
 	-- The shim gets its own environment, the way the engine runs a script: what
 	-- it assigns stays local to it, everything else falls through to the real
@@ -243,7 +261,10 @@ function PsychBindings.loadShim(compat)
 	scope._G = scope
 	PsychBindings.installLuaApi(scope)
 
-	local chunk = loadstring and loadstring(source) or load(source, "=psych-shim")
+	local chunk = source
+	if type(source) == "string" then
+		chunk = loadstring and loadstring(source) or load(source, "=psych-shim")
+	end
 	if not chunk then
 		loaded = false
 		return nil

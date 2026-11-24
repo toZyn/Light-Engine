@@ -20,7 +20,7 @@ on:
       - 'tools/build_psych_lua.py'
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   HAXE_VERSION: '4.3.7'
@@ -220,6 +220,31 @@ jobs:
                   print("::error title=shim trace %d::" % i
                         + " / ".join(lines[i:i+4])[:1200])
               sys.exit(1)
+
+      - name: Put the shim where the engine loads it
+        # The engine resolves funkin/backend/scripts/psych/shim.lua at runtime,
+        # beside its other compiled layer (runtime.lua). The shim is generated
+        # from Haxe, so it cannot be hand-maintained: the job writes it back to
+        # the branch, which is what makes the binding reachable at all. An
+        # artifact nobody commits is a build output, not a feature.
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          target=funkin/backend/scripts/psych/shim.lua
+          cp build/psych-lua/psych-lua.lua "$target"
+          echo "shim: $(wc -l < "$target") lines"
+          if git diff --quiet -- "$target"; then
+            echo "::notice title=shim::already current"
+            exit 0
+          fi
+          git config user.name 'psych-lua shim'
+          git config user.email 'actions@github.com'
+          git add "$target"
+          git commit -q -m "Regenerate the Psych Lua shim
+
+          Built from Psych ${{ env.PSYCH_REF }} source/psychlua by this workflow."
+          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+          echo "::notice title=shim::regenerated and committed"
 
       - name: Upload shim and compiler log
         if: always()
