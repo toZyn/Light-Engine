@@ -34,6 +34,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Check out the branch itself, not the merge ref. On pull_request the
+          # default checkout puts HEAD on refs/pull/N/merge, which is not an
+          # ancestor of the branch, so the shim commit could not be pushed.
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
