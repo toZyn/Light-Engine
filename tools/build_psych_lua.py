@@ -193,7 +193,11 @@ def run(args) -> int:
         annotate(f"compile failed ({len(first)} errors)", first[0] if first else output)
         return 1
 
-    print(f"\ncompiled -> {target.relative_to(ROOT)} ({target.stat().st_size} bytes)")
+    try:
+        shown = target.resolve().relative_to(ROOT)
+    except ValueError:
+        shown = target
+    print(f"\ncompiled -> {shown} ({target.stat().st_size} bytes)")
     return 0
 
 
