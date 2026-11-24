@@ -1,11 +1,12 @@
--- Run as main.lua in a temporary LÖVE checkout runner.
+-- Run as main.lua of an isolated LÖVE test directory. ENGINE_ROOT names the checkout.
 --
 -- The compiled Psych layer talks to four Lua API modules: Lua_helper, Lua, LuaL
 -- and Convert. This exercises the bridge that implements them, following the
 -- exact call sequence FunkinLua.hx uses, so a change in the bridge shows up here
 -- instead of as a silent dead callback in someone's mod.
-require 'loxel'
-require 'funkin'
+local root = os.getenv('ENGINE_ROOT') or '/workspace/Light-Engine-advanced'
+package.path = root .. '/?.lua;' .. root .. '/?/init.lua;' .. package.path
+
 function love.load()
  local ok,err=xpcall(function()
   local Bindings=require('funkin.backend.scripts.psych.bindings')
