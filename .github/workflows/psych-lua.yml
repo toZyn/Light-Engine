@@ -172,7 +172,11 @@ jobs:
           harness.write_text(textwrap.dedent(f"""
             package.path = './?.lua;' .. package.path
             local Bindings = require('funkin.backend.scripts.psych.bindings')
-            local scope = {{}}
+            -- The shim runs in its own environment, the way the engine runs it:
+            -- globals it assigns stay in scope, everything else falls through to
+            -- the real ones (setmetatable, pcall, string, ...).
+            local scope = setmetatable({{}}, {{__index = _G}})
+            scope._G = scope
             local bridge = Bindings.installLuaApi(scope)
 
             -- Psych's compiled layer, loaded the way the engine loads it.
