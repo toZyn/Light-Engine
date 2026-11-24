@@ -59,11 +59,13 @@ check('a Psych script runs through the compiled layer', function()
    for key,value in pairs(instance.psychValues) do instance:set(key,value) end
    instance._psych=require('funkin.backend.scripts.compat').new(state,instance,true)
   end,function(_,instance)
-   -- What loadPsychScript does: hand the source to Psych's own runtime. Returning an
-   -- empty chunk keeps Script from interpreting the file a second time.
-   local built,buildError=instance._psych.psychRuntime(SOURCE,instance)
-   if not built then error('compiled layer refused the script: '..tostring(buildError),0) end
-   return function() end
+   -- What loadPsychScript does: return the chunk the engine will run once configure
+   -- has attached the context. The loader itself runs first, before configure, so
+   -- touching instance._psych here would be reaching for something not built yet.
+   return function()
+    local built,buildError=instance._psych.psychRuntime(SOURCE,instance)
+    if not built then error('compiled layer refused the script: '..tostring(buildError),0) end
+   end
   end)
   assert(script._psych,'the compiled loader never ran: the file did not load')
   state.scripts:add(script)
