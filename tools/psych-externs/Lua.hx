@@ -16,4 +16,19 @@ extern class Lua {
 	public static inline var LUA_TFUNCTION:Int = 6;
 	public static inline var LUA_TUSERDATA:Int = 7;
 	public static inline var LUA_TTHREAD:Int = 8;
+
+	public static inline var LUA_OK:Int = 0;
+	public static inline var LUA_YIELD:Int = 1;
+	public static inline var LUA_ERRRUN:Int = 2;
+	public static inline var LUA_ERRSYNTAX:Int = 3;
+	public static inline var LUA_ERRMEM:Int = 4;
+	public static inline var LUA_ERRERR:Int = 5;
+
+	public static function type(lua:State, index:Int):Int;
+	public static function tostring(lua:State, index:Int):String;
+	public static function getglobal(lua:State, name:String):Int;
+	public static function setglobal(lua:State, name:String):Void;
+	public static function pcall(lua:State, nargs:Int, nresults:Int, errfunc:Int):Int;
+	public static function pop(lua:State, n:Int):Void;
+	public static function close(lua:State):Void;
 }

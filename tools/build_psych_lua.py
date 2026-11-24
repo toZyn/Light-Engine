@@ -36,9 +36,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PSYCH_REF = "1.0.4"
 EXPECTED_HAXE = "4.3.7"
 
-# psychlua files that only contain Lua callbacks. FunkinLua.hx itself is the
-# host class (it owns the lua_State) and is not part of the shim.
+# Every psychlua file that registers Lua callbacks.
+#
+# `FunkinLua` is the host class: it owns the lua_State. It is here because 123 of
+# its 128 callbacks never touch the Lua stack at all -- they are plain
+# registrations of engine operations, and compiling them gives those functions
+# Psych's own behaviour instead of a rewrite.
 MODULES = [
+    "FunkinLua",
     "ExtraFunctions",
     "ReflectionFunctions",
     "ShaderFunctions",

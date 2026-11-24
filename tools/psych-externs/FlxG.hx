@@ -6,7 +6,7 @@ extern class FlxG {
 	public static var keys:Dynamic;
 	public static var mouse:Dynamic;
 	public static var gamepads:Dynamic;
-	public static var sound:Dynamic;
+	public static var sound:FlxSoundManager;
 	public static var save:FlxSave;
 	public static function log(data:Dynamic):Void;
 	public static var random:FlxRandom;
