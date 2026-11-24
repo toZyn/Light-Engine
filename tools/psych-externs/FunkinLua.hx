@@ -8,7 +8,7 @@
  */
 extern class FunkinLua {
 	public var lua:State;
-	public var runtimeShaders:Map<String, FlxRuntimeShader>;
+	public var runtimeShaders:Map<String, Array<String>>;
 	public function addLocalCallback(name:String, myFunction:Dynamic):Void;
 	public function initLuaShader(name:String):Bool;
 	public static function luaTrace(text:String, ?ignoreCheck:Bool = false, ?ignoreDisabled:Bool = false, ?color:Int = 0):Void;
