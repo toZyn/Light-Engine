@@ -207,8 +207,12 @@ jobs:
           print(result.stdout)
           if result.returncode != 0:
               print(result.stderr, file=sys.stderr)
-              print("::error title=shim does not run::" +
-                    (result.stderr.strip().splitlines() or ['unknown'])[-1][:900])
+              # The whole traceback, split across annotations: the last line is
+              # usually just "[C]: ?" and says nothing.
+              lines = [l for l in result.stderr.splitlines() if l.strip()]
+              for i in range(0, min(len(lines), 12), 4):
+                  print("::error title=shim trace %d::" % i
+                        + " / ".join(lines[i:i+4])[:1200])
               sys.exit(1)
           PYEOF
 
