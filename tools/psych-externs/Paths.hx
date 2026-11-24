@@ -4,7 +4,7 @@ extern class Paths {
 	public static function music(key:String, ?logError:Bool = true):Dynamic;
 	public static function video(key:String, ?library:String):Dynamic;
 	public static function font(key:String):String;
-	public static function getPath(file:String, ?library:String, ?modsAllowed:Bool = true):String;
+	public static function getPath(file:String, ?type:AssetType = TEXT, ?parentfolder:String, ?modsAllowed:Bool = true):String;
 	public static function getSharedPath(file:String):String;
 	public static function mods(key:String):String;
 	public static function formatToSongPath(path:String):String;
@@ -15,4 +15,5 @@ extern class Paths {
 	public static function getMultiAtlas(keys:Array<String>, ?library:String):Dynamic;
 	public static function loadAnimateAtlas(sprite:Dynamic, folder:String, ?sprite:String, ?animation:String):Dynamic;
 	public static function getTextFromFile(key:String, ?ignoreMods:Bool = false, ?ignoredFolders:Array<String> = null):String;
+	public static function getPreloadPath(file:String):String;
 }
