@@ -1,4 +1,5 @@
--- Run as main.lua of an isolated LÖVE test directory. ENGINE_ROOT names the checkout.
+-- Run by the engine harness (BOOT fixture): the engine is already loaded, so a
+-- real PlayState can be built.
 --
 -- Runs a Psych `.lua` through Psych's own compiled layer inside a real PlayState.
 --
@@ -7,9 +8,6 @@
 -- whether a mod could run: FunkinLua.new() reads a live song, and no test had one.
 -- If this passes, the compiled path is real. If it fails, the failure names the
 -- global the engine still has to provide.
-local root = os.getenv('ENGINE_ROOT') or '/workspace/Light-Engine-advanced'
-package.path = root .. '/?.lua;' .. root .. '/?/init.lua;' .. package.path
-
 -- A Psych script of the shape mods actually ship: glues to the lifecycle, reads a
 -- per-frame global, and touches the score.
 local SOURCE = [[
@@ -39,8 +37,7 @@ function onSectionHit()
 end
 ]]
 
-function love.load()
- local ok,err=xpcall(function()
+check('a Psych script runs through the compiled layer', function()
   local state=PlayState(false,'bopeebo','normal')
   state:preload()
   require('funkin.backend.paths').async.stop()
@@ -108,8 +105,4 @@ function love.load()
   -- The engine's own section signal has to reach the script too.
   compat:forward('section')
   assert(ran('sections')==1,'onSectionHit did not run')
- end,debug.traceback)
- if not ok then print(err) love.event.quit(1) return end
- print('PSYCH COMPILED SCRIPT PASSED:')
- love.event.quit(0)
-end
+end)

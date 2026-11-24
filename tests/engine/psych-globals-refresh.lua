@@ -1,4 +1,5 @@
--- Run as main.lua of an isolated LÖVE test directory. ENGINE_ROOT names the checkout.
+-- Run by the engine harness (BOOT fixture): the engine is already loaded, so a
+-- real PlayState can be built.
 --
 -- Psych's globals are written once, when a script is created. Everything that
 -- moves during a song -- the playhead, the score, the section flags -- used to
@@ -9,11 +10,7 @@
 -- This drives a real PlayState rather than a hand-built table, because the bug
 -- lived in the hand-off between the state and the script: both sides were fine on
 -- their own.
-local root = os.getenv('ENGINE_ROOT') or '/workspace/Light-Engine-advanced'
-package.path = root .. '/?.lua;' .. root .. '/?/init.lua;' .. package.path
-
-function love.load()
- local ok,err=xpcall(function()
+check('Psych globals follow the song', function()
   local state=PlayState(false,'bopeebo','normal')
   state:preload()
   require('funkin.backend.paths').async.stop()
@@ -93,8 +90,4 @@ function love.load()
   assert(survived,'a frame refresh raised with no conductor')
 
   script:close()
- end,debug.traceback)
- if not ok then print(err) love.event.quit(1) return end
- print('PSYCH GLOBALS REFRESH PASSED:')
- love.event.quit(0)
-end
+end)
