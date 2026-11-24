@@ -31,7 +31,7 @@ HARNESS = textwrap.dedent("""\
 
     -- install() registers the six helper classes. It needs no song, because
     -- those classes only use a FunkinLua object.
-    local state = shim.scope.LuaL.newstate()
+    local state = shim.state()
     local host = {{lua = state, callbacks = {{}}, customFunctions = {{}}}}
     host.addLocalCallback = function(_, name, fn)
       shim.scope.Lua_helper.add_callback(state, name, fn)

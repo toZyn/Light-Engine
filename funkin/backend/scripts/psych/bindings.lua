@@ -29,6 +29,10 @@ local registries = setmetatable({}, {__mode = "k"})
 -- Values Psych pushes as globals through `set`. They behave like Lua globals, so
 -- they live in a table that `Lua.getglobal` consults after the registry.
 local function registryFor(state)
+	-- A nil state means the caller passed a host without a Lua handle. Left to
+	-- itself, `registries[nil] = registry` raises "table index is nil" with no
+	-- mention of which callback or which script did it.
+	assert(state ~= nil, "Psych registry: no Lua state (a callback was registered without one)")
 	local registry = registries[state]
 	if registry then return registry end
 	-- `globals` is the script's environment, not a side table. In Psych the
@@ -319,6 +323,13 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		bridge = PsychBindings.installLuaApi(scope),
 		globals = shared,
 	}
+
+	-- The shim's own state factory. Psych asks `LuaL.newstate()` in the shared
+	-- globals; going through it here keeps the caller and the compiled layer on
+	-- the same implementation, including when the globals have been swapped.
+	function loaded.state()
+		return shared.LuaL.newstate()
+	end
 	return loaded
 end
 
