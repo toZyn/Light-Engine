@@ -155,6 +155,63 @@ jobs:
               print(f"::error title=first errors::\n".join(errors[:25])[:6000])
           PYEOF
 
+      - name: Run the shim against the bridge
+        # Compiling proves Psych's source is expressible in Lua. This proves the
+        # result actually runs: the generated file is loaded, its callbacks are
+        # registered through the bridge, and one is invoked the way FunkinLua
+        # does. A shim that compiles but cannot execute is not support.
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+          python3 - <<'PYEOF'
+          import pathlib, subprocess, sys, textwrap
+
+          shim = pathlib.Path('build/psych-lua/psych-lua.lua')
+          harness = pathlib.Path('build/harness.lua')
+          harness.write_text(textwrap.dedent(f"""
+            package.path = './?.lua;' .. package.path
+            local Bindings = require('funkin.backend.scripts.psych.bindings')
+            local scope = {{}}
+            local bridge = Bindings.installLuaApi(scope)
+
+            -- Psych's compiled layer, loaded the way the engine loads it.
+            local chunk = assert(loadfile('{shim}'))
+            setfenv(chunk, scope)
+            chunk()
+
+            assert(type(scope.lightPsychInstall) == 'function',
+                   'the shim never exposed lightPsychInstall')
+
+            local state = scope.LuaL.newstate()
+            local host = {{lua = state, callbacks = {{}}, runtimeShaders = {{}}}}
+            host.addLocalCallback = function(_, name, fn)
+              scope.Lua_helper.add_callback(state, name, fn)
+            end
+            host.initLuaShader = function() return false end
+
+            scope.lightPsychInstall(host)
+
+            local callbacks = bridge.registryFor(state).callbacks
+            local count = 0
+            for _ in pairs(callbacks) do count = count + 1 end
+            print('registered ' .. count .. ' callbacks from the shim')
+            assert(count >= 200, 'expected the full Psych surface, got ' .. count)
+            assert(callbacks.setProperty, 'setProperty not registered')
+            assert(callbacks.makeLuaSprite, 'makeLuaSprite not registered')
+            print('SHIM RAN OK')
+          """))
+
+          result = subprocess.run(['lua5.1', str(harness)], text=True,
+                                  capture_output=True)
+          print(result.stdout)
+          if result.returncode != 0:
+              print(result.stderr, file=sys.stderr)
+              print("::error title=shim does not run::" +
+                    (result.stderr.strip().splitlines() or ['unknown'])[-1][:900])
+              sys.exit(1)
+          PYEOF
+
       - name: Upload shim and compiler log
         if: always()
         uses: actions/upload-artifact@v4
