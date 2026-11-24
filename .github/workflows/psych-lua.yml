@@ -104,7 +104,7 @@ jobs:
 
           # Psych's callbacks are registered by name; confirm a few are present
           # verbatim so the output is recognisably its source.
-          for known in ('setProperty', 'getProperty', 'makeLuaSprite', 'playSound', 'addHaxeLibrary'):
+          for known in ('setProperty', 'getProperty', 'makeLuaSprite', 'playSound', 'callScript', 'loadGraphic'):
               if known in src:
                   print(f"::notice title=callback::{known} present")
               else:
