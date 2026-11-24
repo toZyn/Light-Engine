@@ -233,18 +233,21 @@ jobs:
           target=funkin/backend/scripts/psych/shim.lua
           cp build/psych-lua/psych-lua.lua "$target"
           echo "shim: $(wc -l < "$target") lines"
-          if git diff --quiet -- "$target"; then
+          # Stage first: `git diff` says nothing about an untracked file, which is
+          # exactly the case the first time the shim is added -- and it reported
+          # "already current" while the file was absent from the tree.
+          git add "$target"
+          if git diff --cached --quiet -- "$target"; then
             echo "::notice title=shim::already current"
             exit 0
           fi
           git config user.name 'psych-lua shim'
           git config user.email 'actions@github.com'
-          git add "$target"
           git commit -q -m "Regenerate the Psych Lua shim
 
           Built from Psych ${{ env.PSYCH_REF }} source/psychlua by this workflow."
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
-          echo "::notice title=shim::regenerated and committed"
+          echo "::notice title=shim::committed $(git rev-parse --short HEAD)"
 
       - name: Upload shim and compiler log
         if: always()
