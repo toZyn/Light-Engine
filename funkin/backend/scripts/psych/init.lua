@@ -543,9 +543,17 @@ function HScript.install(compat, api)
 		return require("funkin.backend.scripts.psych.bindings")
 	end
 
-	compat.psychRuntime = function(source)
+	-- Runs `source` as a Psych script. `script` is the engine's Script object,
+	-- when there is one; the Psych object is kept on it so the engine can reach
+	-- the callbacks it registered.
+	compat.psychRuntime = function(source, script)
 		local bindings = psychBindings()
-		return bindings.runScript(compat, source)
+		local psychScript, err = bindings.runScript(compat, source)
+		if not psychScript and compat.psychWarn then
+			compat:psychWarn("Psych script failed: " .. tostring(err))
+		end
+		if script and psychScript then script.psychScript = psychScript end
+		return psychScript, err
 	end
 
 	compat.psychInstall = function(host)

@@ -31,7 +31,15 @@ local registries = setmetatable({}, {__mode = "k"})
 local function registryFor(state)
 	local registry = registries[state]
 	if registry then return registry end
-	registry = {callbacks = {}, globals = {}, stack = {}}
+	-- `globals` is the script's environment, not a side table. In Psych the
+	-- script's own `function onCreate()` and Psych's `set('curBeat', 4)` share one
+	-- Lua state, so a script can read what Psych set and Psych can call what the
+	-- script defined. One table with a fallback to the real globals reproduces it.
+	registry = {
+		callbacks = {},
+		globals = setmetatable({}, {__index = _G}),
+		stack = {},
+	}
 	registries[state] = registry
 	return registry
 end
@@ -154,12 +162,13 @@ function PsychBindings.installLuaApi(scope, onMissing)
 	end
 	LuaL.openlibs = function() end
 	LuaL.dostring = function(state, source)
-		local chunk, err = loadstring or load, nil
+		local env = registryFor(state).globals
 		local fn, problem
-		if _VERSION == "Lua 5.1" then
+		if loadstring then
 			fn, problem = loadstring(source)
+			if fn and setfenv then setfenv(fn, env) end
 		else
-			fn, problem = load(source, "=psych")
+			fn, problem = load(source, "=psych", "t", env)
 		end
 		if not fn then
 			registryFor(state).error = problem
@@ -257,13 +266,32 @@ function PsychBindings.runShim(compat, chunkOrSource)
 	-- it assigns stays local to it, everything else falls through to the real
 	-- globals. Without the fallback `setmetatable` is nil and the compiled
 	-- layer dies on its first line.
-	local scope = setmetatable({}, {__index = _G})
-	scope._G = scope
+	-- One table stands in for the globals, for every environment involved.
+	--
+	-- The compiled layer assigns its entry points through `_G`, and Haxe output
+	-- defines each function in whatever environment its chunk was loaded with.
+	-- Those two do not have to agree, and when they did not, the exports were
+	-- stored in the scope but executed against the real globals, where `LuaL`
+	-- does not exist. Sharing a single globals table removes the question:
+	-- assignments, lookups and definitions all resolve to the same place,
+	-- without relying on setfenv (which Lua 5.2+ lacks) to arrange it.
+	local shared = setmetatable({}, {__index = _G})
+	local scope = setmetatable({}, {__index = shared})
+	scope._G = shared
+	PsychBindings.installLuaApi(shared)
 	PsychBindings.installLuaApi(scope)
 
 	local chunk = source
 	if type(source) == "string" then
-		chunk = loadstring and loadstring(source) or load(source, "=psych-shim")
+		-- LuaJIT and 5.1 take the environment afterwards via setfenv; 5.2+ takes it
+		-- as load's fourth argument. Passing it here matters: a plain `load` runs
+		-- the chunk against the real globals, where the shim's own `LuaL` lookup
+		-- finds nothing and Psych's constructor dies on its first line.
+		if loadstring then
+			chunk = loadstring(source)
+		else
+			chunk = load(source, "=psych-shim", "t", scope)
+		end
 	end
 	if not chunk then
 		loaded = false
@@ -284,6 +312,10 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		install = scope.lightPsychInstall,
 		createScript = scope.lightPsychCreateScript,
 		scope = scope,
+		-- The compiled layer registers through `Lua_helper` in the shared globals,
+		-- so that is where a caller finds the callbacks Psych registered.
+		bridge = PsychBindings.installLuaApi(scope),
+		globals = shared,
 	}
 	return loaded
 end
@@ -307,5 +339,29 @@ function PsychBindings.runScript(compat, source)
 	return script
 end
 
+
+--- Builds the loader Script:new should use for a Psych `.lua` script.
+--
+-- The engine's load order is fixed: loader -> setfenv -> configure -> chunk().
+-- `configure` is where the script receives its compatibility object, so a
+-- FunkinLua cannot be built at loader time. The loader therefore returns the
+-- *chunk*, which the engine runs after configure -- the first moment Psych's
+-- runtime exists.
+--
+-- Returns nil plus a message when the shim is missing, so such a script fails
+-- like a syntax error instead of quietly doing nothing.
+function PsychBindings.scriptLoader(compat)
+	local shim = PsychBindings.loadShim(compat)
+	if not shim or not shim.createScript then
+		return nil, "Psych shim unavailable"
+	end
+	return function(script, source)
+		return function()
+			local runtime = script and script._psych and script._psych.psychRuntime
+			if not runtime then return end
+			runtime(source, script)
+		end
+	end
+end
 
 return PsychBindings
