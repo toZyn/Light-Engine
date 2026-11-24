@@ -7,7 +7,6 @@ extern class Character extends FlxSprite {
 	public var animationsArray:Array<Dynamic>;
 	public var holdTimer:Float;
 	public var debugMode:Bool;
-	public var animation:Dynamic;
 	public function playAnim(animName:String, ?force:Bool = false, ?reverse:Bool = false, ?startFrame:Int = 0):Void;
 	public function dance(?ignoreDance:Bool = false):Void;
 	public function hasAnimation(anim:String):Bool;
