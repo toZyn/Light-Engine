@@ -1,9 +1,10 @@
 /**
- * The pause menu. Scripts read whether the game is paused and can open or close
- * it.
+ * The pause menu. A script calls restartSong through it, which is why the
+ * restart callback does not live on PlayState.
  */
 extern class PauseSubState extends FlxSubState {
 	public static var instance:PauseSubState;
 	public static var songPosition:Float;
+	public static function restartSong(?skipTransition:Bool = false):Void;
 	public static function resetSubState():Void;
 }

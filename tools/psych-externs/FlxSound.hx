@@ -4,6 +4,7 @@ extern class FlxSound {
 	public var volume:Float;
 	public var length:Float;
 	public var playing:Bool;
+	public var fadeTween:FlxTween;
 	public function play(?forceRestart:Bool = true):Void;
 	public function pause():Void;
 	public function resume():Void;

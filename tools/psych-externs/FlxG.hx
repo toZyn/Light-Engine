@@ -2,7 +2,7 @@ extern class FlxG {
 	public static var width:Int;
 	public static var height:Int;
 	public static var camera:FlxCamera;
-	public static var state:Dynamic;
+	public static var state:FlxState;
 	public static var keys:Dynamic;
 	public static var mouse:Dynamic;
 	public static var gamepads:Dynamic;
