@@ -200,8 +200,11 @@ jobs:
             -- The names install() is responsible for. makeLuaSprite, playSound,
             -- callScript and loadGraphic are in FunkinLua.new(), so demanding
             -- them here would fail against correct code.
-            for _, name in ipairs({{'setProperty', 'getProperty', 'setVar',
-                                    'getVar', 'getPropertyFromGroup'}}) do
+            for _, name in ipairs({{'setProperty', 'getProperty',     -- reflection
+                                    'makeLuaText', 'setTextString',   -- text
+                                    'keyboardPressed', 'saveFile',    -- extra
+                                    'musicFadeIn',                    -- deprecated
+                                    'getShaderFloat'}}) do            -- shader
               assert(registered[name], name .. ' not registered by install')
             end
             print('SHIM RAN OK')
