@@ -552,7 +552,10 @@ function HScript.install(compat, api)
 		-- environment, and without this it sees no PlayState and skips the whole
 		-- song-time half of its setup without saying so.
 		bindings.exposeGame(compat)
-		local psychScript, err = bindings.runScript(compat, source)
+		-- The name Psych sees is the script's path on disk, which is what it uses
+		-- to attribute the script to a mod folder.
+		local name = script and script.path or nil
+		local psychScript, err = bindings.runScript(compat, source, name)
 		if not psychScript and compat.psychWarn then
 			compat:psychWarn("Psych script failed: " .. tostring(err))
 		end

@@ -356,12 +356,16 @@ end
 --
 -- Returns the script object on success. The caller owns it and must keep it
 -- alive: the 128 callbacks registered during construction live on it.
-function PsychBindings.runScript(compat, source)
+function PsychBindings.runScript(compat, source, name)
 	local shim = PsychBindings.loadShim(compat)
 	if not shim or not shim.createScript then
 		return nil, "Psych shim unavailable"
 	end
-	local ok, script = pcall(shim.createScript, source)
+	-- Psych's constructor takes the script's *path*, not its code: it trims the
+	-- name, splits it on "/" to work out which mod folder the script belongs to,
+	-- and publishes it as the `scriptName` global for the mod to read. Passing the
+	-- source text left that path parsing to work on a nil and die in StringTools.
+	local ok, script = pcall(shim.createScript, name or source)
 	if not ok then
 		return nil, tostring(script)
 	end
