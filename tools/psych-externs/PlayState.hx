@@ -70,7 +70,6 @@ extern class PlayState extends MusicBeatState {
 	public function startDialogue(dialogueFile:String, ?song:String):Void;
 	public function startVideo(path:String, ?canSkip:Bool = true, ?shouldLoop:Bool = false, ?videoName:String):Void;
 	public function triggerEvent(eventName:String, value1:String, value2:String, ?strumTime:Float = 0):Void;
-	public function getLuaObject(tag:String, ?checkForTextsToo:Bool = true):Dynamic;
 	public function updateScoreText():Void;
 	public function initHScript(scriptFile:String):Void;
 }
