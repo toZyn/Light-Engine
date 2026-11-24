@@ -428,7 +428,17 @@ local function psychIdentity(state)
 		local raw = tostring(difficulty or "normal")
 		return names[raw] or (raw:gsub("^%l", string.upper))
 	end
+	-- Note skins: Psych derives a filename postfix from the skin name, and the
+	-- engine has no skin system yet, so the honest postfix is the empty one -- the
+	-- default skin -- rather than a guess that would load the wrong images.
+	local function skinPostfix()
+		return ""
+	end
 	return {
+		-- `Note` and `NoteSplash` are classes here, so the constructor's static
+		-- calls need somewhere to live. The engine's Note is a real class; its
+		-- splash equivalent does not exist yet.
+		NoteSplash = { getSplashSkinPostfix = skinPostfix },
 		Song = {
 			-- Haxe calls this the loaded song; for a running state that is the song
 			-- in the chart.
@@ -540,6 +550,12 @@ function PsychBindings.exposeGame(compat)
 	-- Class-standing-in-for-a-Haxe-class surface.
 	for name, value in pairs(psychIdentity(compat and compat.state)) do
 		if globals[name] == nil then globals[name] = value end
+	end
+	-- The engine's Note is a real class, but Psych also calls static skin helpers on
+	-- it; add them to the class itself so mods that call them keep working.
+	local note = globals.Note
+	if type(note) == "table" and note.getNoteSkinPostfix == nil then
+		note.getNoteSkinPostfix = function() return "" end
 	end
 	-- Flixel's global surface, built per call because it points at live objects.
 	local state = compat and compat.state
