@@ -208,8 +208,6 @@ function PsychBindings.installLuaApi(scope, onMissing)
 	}
 end
 
-return PsychBindings
-
 --- Loads Psych's compiled layer and returns its factory.
 --
 -- The generated file is a Lua port of Psych's entire `psychlua` package. It
@@ -287,5 +285,6 @@ function PsychBindings.runScript(compat, source)
 	end
 	return script
 end
+
 
 return PsychBindings
