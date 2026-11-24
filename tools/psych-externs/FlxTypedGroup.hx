@@ -4,6 +4,7 @@
  */
 extern class FlxTypedGroup<T> {
 	public var members:Array<T>;
+	public var destroyMembers:Bool;
 	public var length:Int;
 	public function add(object:T):T;
 	public function remove(object:T, ?splice:Bool = false):T;

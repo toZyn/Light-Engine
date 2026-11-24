@@ -5,7 +5,7 @@ extern class FlxSprite extends FlxBasic {
 	public var origin:Dynamic;
 	public var color:Int;
 	public var antialiasing:Bool;
-	public var animation:Dynamic;
+	public var animation:FlxAnimationController;
 	public var shader:Dynamic;
 	public var graphic:Dynamic;
 	public function loadGraphic(graphic:Dynamic, ?animated:Bool, ?frameWidth:Int, ?frameHeight:Int):Void;

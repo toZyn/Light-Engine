@@ -10,4 +10,6 @@ extern class FlxEase {
 	public static var backIn:Dynamic; public static var backOut:Dynamic; public static var backInOut:Dynamic;
 	public static var bounceIn:Dynamic; public static var bounceOut:Dynamic; public static var bounceInOut:Dynamic;
 	public static var elasticIn:Dynamic; public static var elasticOut:Dynamic; public static var elasticInOut:Dynamic;
+	public static var smoothStepIn:Dynamic; public static var smoothStepOut:Dynamic; public static var smoothStepInOut:Dynamic;
+	public static var smootherStepIn:Dynamic; public static var smootherStepOut:Dynamic; public static var smootherStepInOut:Dynamic;
 }
