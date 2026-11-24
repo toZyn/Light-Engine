@@ -8,6 +8,7 @@ extern class FlxSprite extends FlxBasic {
 	public var animation:FlxAnimationController;
 	public var shader:Dynamic;
 	public var graphic:Dynamic;
+	public var frames:Dynamic;
 	public function loadGraphic(graphic:Dynamic, ?animated:Bool, ?frameWidth:Int, ?frameHeight:Int):Void;
 	public function loadFrames(frames:Dynamic, ?destroy:Bool):Void;
 	public function makeGraphic(width:Int, height:Int, ?color:Int):Void;

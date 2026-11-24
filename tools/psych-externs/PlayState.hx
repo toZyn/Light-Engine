@@ -1,4 +1,4 @@
-extern class PlayState {
+extern class PlayState extends FlxState {
 	public static var instance:PlayState;
 	public static var SONG:Song;
 	public static var isStoryMode:Bool;
