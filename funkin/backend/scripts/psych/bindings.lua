@@ -138,7 +138,9 @@ function PsychBindings.installLuaApi(scope, onMissing)
 		local fn = entry.value
 		if type(fn) ~= "function" then return Lua.LUA_ERRRUN end
 		local args = registry.pendingArgs or {}
-		local results = {pcall(fn, table.unpack(args, 1, nargs or #args))}
+		-- LuaJIT has `unpack`; 5.2+ moved it onto `table`.
+		local expand = unpack or rawget(table, "unpack")
+		local results = {pcall(fn, expand(args, 1, nargs or #args))}
 		if not results[1] then
 			registry.error = results[2]
 			registry.stack[#registry.stack + 1] = {value = nil}
