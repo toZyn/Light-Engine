@@ -137,6 +137,20 @@ def report(source: Path) -> None:
     print(f"  {'total':24} {total:3} callbacks")
 
 
+def annotate(title: str, message: str) -> None:
+    """Surface a failure where CI will keep it.
+
+    Run logs are not readable from every client and the uploaded log can be out
+    of reach, so the builder reports its own failure as an annotation. A single
+    line per call, which is all GitHub keeps anyway.
+    """
+    import os
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    flat = " / ".join(line.strip() for line in message.splitlines() if line.strip())
+    print(f"::error title={title}::{flat[:1200]}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path, help="FNF-PsychEngine checkout")
@@ -145,6 +159,20 @@ def main() -> int:
     parser.add_argument("--no-clean", action="store_true")
     args = parser.parse_args()
 
+    try:
+        return run(args)
+    except SystemExit as exc:
+        if exc.code not in (0, None):
+            annotate("builder", str(exc.code))
+        raise
+    except Exception as exc:
+        # A crash in the builder is not a compile result, and it must not look
+        # like one: say what broke instead of leaving an empty error list.
+        annotate(type(exc).__name__, str(exc))
+        raise
+
+
+def run(args) -> int:
     version = check_haxe(args.haxe)
     print(f"Haxe {version}; Psych {PSYCH_REF}")
     print("callbacks to cover:")
@@ -159,8 +187,10 @@ def main() -> int:
     target = args.out / "psych-lua.lua"
     ok, output = build(args.haxe, work, target)
     if not ok:
-        print("\ncompile FAILED (this is the useful result):", file=sys.stderr)
+        print("\ncompile FAILED:", file=sys.stderr)
         print(output, file=sys.stderr)
+        first = [l for l in output.splitlines() if re.search(r"\.hx:\d+:", l)]
+        annotate(f"compile failed ({len(first)} errors)", first[0] if first else output)
         return 1
 
     print(f"\ncompiled -> {target.relative_to(ROOT)} ({target.stat().st_size} bytes)")
