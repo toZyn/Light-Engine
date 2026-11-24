@@ -413,6 +413,33 @@ local MAINMENU_FIELDS = {
 	psychEngineVersion = "1.0.4",
 }
 
+--- Builds the `FlxG` surface Psych's constructor and helpers read.
+--
+-- Flixel's global game state is not a thing this engine has: there is no FlxG table,
+-- the camera belongs to the state (`camGame`, `camHUD`), and the music is the global
+-- `game.sound.music`. Rather than pretend, each field is mapped to the live object,
+-- and the ones with no equivalent stay absent so a mod fails on a name instead of on
+-- a plausible-looking lie.
+--
+-- `songLength` is the constructor's first real read -- `FlxG.sound.music.length`
+-- decided whether a script loaded at all -- so `sound.music` has to be the playing
+-- handle, not a copy.
+local function psychFlxG(state)
+	local flx = {}
+	if type(state) == "table" then
+		local camera = state.camGame or state.camHUD
+		flx.camera = camera
+	end
+	local sound = { music = game and game.sound and game.sound.music or nil }
+	flx.sound = sound
+	flx.width, flx.height = (game and game.width) or 1280, (game and game.height) or 720
+	flx.keys = rawget(_G, "keys") or {}
+	flx.mouse = rawget(_G, "mouse") or {}
+	flx.overlap = rawget(_G, "overlap")
+	flx.gamepads = rawget(_G, "gamepads")
+	return flx
+end
+
 --- Adapts the engine's Lua modules to the shapes Psych's Haxe calls.
 --
 -- The engine and Psych name the same things differently, and in two cases the
@@ -476,6 +503,10 @@ function PsychBindings.exposeGame(compat)
 		local value = rawget(_G, engineName)
 		if value ~= nil then globals[psychName] = value end
 	end
+	-- Flixel's global surface, built per call because it points at live objects.
+	local state = compat and compat.state
+	local flx = psychFlxG(state)
+	if type(flx) == "table" then globals.FlxG = flx end
 	-- Identity fields Psych's constructor reads off a class the engine does define.
 	local mainmenu = globals.MainMenuState
 	if type(mainmenu) == "table" then
@@ -491,7 +522,6 @@ function PsychBindings.exposeGame(compat)
 	-- The constructor calls `game.luaArray:push(self)`; Psych's PlayState owns that
 	-- array, and the engine's state has no equivalent, so it is provided here
 	-- rather than making the shim special-case a nil.
-	local state = compat and compat.state
 	local play = globals.PlayState
 	if type(play) == "table" then
 		if play.instance == nil then play.instance = state end
