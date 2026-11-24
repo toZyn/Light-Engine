@@ -399,6 +399,61 @@ local LIVE_GLOBALS = {
 	MainMenuState = "MainMenuState",
 }
 
+--- Adapts the engine's Lua modules to the shapes Psych's Haxe calls.
+--
+-- The engine and Psych name the same things differently, and in two cases the
+-- shape differs, not just the name: Haxe calls `Paths.image(key)` and reads
+-- `Mods.currentModDirectory` as a field, while the engine has `paths.getPath(key)`
+-- and `Mods.currentMod`. Handing the engine table over unchanged is what produced
+-- "attempt to call field 'mods'". This translates instead of copying.
+local function psychPaths()
+	local engine = rawget(_G, "paths")
+	if type(engine) ~= "table" then return nil end
+	local adapter = {}
+	-- Path builders: Haxe hands back a path, the engine's getPath does the lookup.
+	local function builder(kind)
+		return function(key)
+			if type(engine.getPath) ~= "function" then return key end
+			return engine.getPath(key, true, false)
+		end
+	end
+	adapter.mods = function() return engine.getMods and engine.getMods("mods") or "mods" end
+	adapter.getSharedPath = builder("shared")
+	adapter.formatToSongPath = function(name)
+		if type(engine.formatToSongPath) == "function" then return engine.formatToSongPath(name) end
+		return name
+	end
+	for _, name in ipairs({ "image", "sound", "music", "font", "video", "getPath" }) do
+		adapter[name] = builder(name)
+	end
+	-- Atlas loaders live in the graphics layer, not in paths; leaving them absent
+	-- makes the shim fail with a name instead of silently loading nothing.
+	for _, name in ipairs({ "getSparrowAtlas", "getPackerAtlas", "getAtlas", "getMultiAtlas",
+		"getAsepriteAtlas", "loadAnimateAtlas", "getTextFromFile" }) do
+		if type(engine[name]) == "function" then adapter[name] = engine[name] end
+	end
+	return adapter
+end
+
+local function psychMods()
+	local engine = rawget(_G, "Mods")
+	if type(engine) ~= "table" then return nil end
+	-- A field in Haxe, a field in the engine: keep it live with a metatable so a
+	-- mod switch after load is still visible.
+	return setmetatable({}, {
+		__index = function(_, key)
+			if key == "currentModDirectory" then return engine.currentMod end
+			if key == "getGlobalMods" then
+				return function() return engine.getGlobalMods and engine.getGlobalMods() or {} end
+			end
+			if key == "loadTopMod" then
+				return function() return engine.reload and engine.reload() end
+			end
+			return engine[key]
+		end,
+	})
+end
+
 function PsychBindings.exposeGame(compat)
 	local shim = PsychBindings.loadShim(compat)
 	if not shim then return nil end
@@ -407,6 +462,11 @@ function PsychBindings.exposeGame(compat)
 		local value = rawget(_G, engineName)
 		if value ~= nil then globals[psychName] = value end
 	end
+	-- The two that need translating rather than copying.
+	local paths = psychPaths()
+	if paths then globals.Paths = paths end
+	local mods = psychMods()
+	if mods then globals.Mods = mods end
 	-- The constructor calls `game.luaArray:push(self)`; Psych's PlayState owns that
 	-- array, and the engine's state has no equivalent, so it is provided here
 	-- rather than making the shim special-case a nil.
