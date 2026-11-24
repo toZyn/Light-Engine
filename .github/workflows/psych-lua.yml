@@ -172,37 +172,35 @@ jobs:
           harness.write_text(textwrap.dedent(f"""
             package.path = './?.lua;' .. package.path
             local Bindings = require('funkin.backend.scripts.psych.bindings')
-            -- The shim runs in its own environment, the way the engine runs it:
-            -- globals it assigns stay in scope, everything else falls through to
-            -- the real ones (setmetatable, pcall, string, ...).
+
+            -- Load the shim the way the engine does. Parsing it is what tells
+            -- "compiled" apart from "runnable".
+            local chunk = assert(loadfile('{shim}'))
             local scope = setmetatable({{}}, {{__index = _G}})
             scope._G = scope
             local bridge = Bindings.installLuaApi(scope)
-
-            -- Psych's compiled layer, loaded the way the engine loads it.
-            local chunk = assert(loadfile('{shim}'))
-            setfenv(chunk, scope)
+            if setfenv then setfenv(chunk, scope) end
             chunk()
 
-            assert(type(scope.lightPsychInstall) == 'function',
-                   'the shim never exposed lightPsychInstall')
-
+            -- install(): the callbacks in the six helper classes. It does not
+            -- need a song, because those classes only use a FunkinLua object.
             local state = scope.LuaL.newstate()
-            local host = {{lua = state, callbacks = {{}}, runtimeShaders = {{}}}}
+            local host = {{lua = state, callbacks = {{}}, customFunctions = {{}}}}
             host.addLocalCallback = function(_, name, fn)
               scope.Lua_helper.add_callback(state, name, fn)
             end
             host.initLuaShader = function() return false end
 
             scope.lightPsychInstall(host)
-
-            local callbacks = bridge.registryFor(state).callbacks
+            local registered = bridge.registryFor(state).callbacks
             local count = 0
-            for _ in pairs(callbacks) do count = count + 1 end
-            print('registered ' .. count .. ' callbacks from the shim')
-            assert(count >= 200, 'expected the full Psych surface, got ' .. count)
-            assert(callbacks.setProperty, 'setProperty not registered')
-            assert(callbacks.makeLuaSprite, 'makeLuaSprite not registered')
+            for _ in pairs(registered) do count = count + 1 end
+            print('install registered ' .. count .. ' callbacks')
+            assert(count >= 90, 'helper surface incomplete: ' .. count)
+            for _, name in ipairs({{'setProperty', 'getProperty', 'makeLuaSprite',
+                                    'playSound', 'callScript', 'loadGraphic'}}) do
+              assert(registered[name], name .. ' not registered by install')
+            end
             print('SHIM RAN OK')
           """))
 
@@ -211,14 +209,11 @@ jobs:
           print(result.stdout)
           if result.returncode != 0:
               print(result.stderr, file=sys.stderr)
-              # The whole traceback, split across annotations: the last line is
-              # usually just "[C]: ?" and says nothing.
               lines = [l for l in result.stderr.splitlines() if l.strip()]
               for i in range(0, min(len(lines), 12), 4):
                   print("::error title=shim trace %d::" % i
                         + " / ".join(lines[i:i+4])[:1200])
               sys.exit(1)
-          PYEOF
 
       - name: Upload shim and compiler log
         if: always()
