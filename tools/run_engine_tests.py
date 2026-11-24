@@ -12,8 +12,8 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'psych-bindings', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors'}
-DEFAULT = ['psych-global-initialization', 'menu-asset-fallbacks', 'psych-input-utilities', 'menu-regressions', 'dense-gameplay', 'loading-ingestion', 'dense-charts', 'loading-regressions', 'scene-loading', 'loading-performance', 'difficulty-hud', 'extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'luajit-stdlib', 'psych-runtime', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'psych-bindings', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'editors-and-modding', 'recorder-and-fixes']
+STANDALONE = {'extension-examples', 'chart-timing', 'core-utilities', 'audio', 'compat', 'compat-controls', 'psych-bindings', 'psych-globals-refresh', 'psych-compiled-script', 'diagnostics', 'async', 'timer-lifecycle', 'menu-audio', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'display', 'recoverable-errors'}
+DEFAULT = ['psych-global-initialization', 'menu-asset-fallbacks', 'psych-input-utilities', 'menu-regressions', 'dense-gameplay', 'loading-ingestion', 'dense-charts', 'loading-regressions', 'scene-loading', 'loading-performance', 'difficulty-hud', 'extension-examples', 'chart-timing', 'core-utilities', 'syntax', 'luajit-stdlib', 'psych-runtime', 'property-setters', 'render-lifecycle', 'gameplay-flow', 'slow-frame', 'audio', 'menu-audio', 'timer-lifecycle', 'compat', 'compat-controls', 'psych-bindings', 'psych-globals-refresh', 'psych-compiled-script', 'diagnostics', 'error-screen', 'save-storage', 'script-errors', 'logger-startup', 'addon-assets', 'addon-modules', 'async', 'display', 'recoverable-errors', 'editors-and-modding', 'recorder-and-fixes']
 SUCCESS = {
     'extension-examples': r'EXTENSION EXAMPLES PASSED:',
     'chart-timing': r'CHART TIMING: \d+ passed, 0 failed',
@@ -28,6 +28,8 @@ SUCCESS = {
     'addon-modules': r'ADDON MODULES PASS(?:ED)?:',
     'compat-controls': r'COMPAT CONTROLS PASS:',
     'psych-bindings': r'PSYCH BINDINGS PASSED:',
+    'psych-globals-refresh': r'PSYCH GLOBALS REFRESH PASSED:',
+    'psych-compiled-script': r'PSYCH COMPILED SCRIPT PASSED:',
     'display': r'DISPLAY PASSED:',
     'recoverable-errors': r'RECOVERABLE ERRORS PASSED:',
     'luajit-stdlib': r'LUAJIT STDLIB PASS:',

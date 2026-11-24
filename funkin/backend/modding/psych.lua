@@ -72,15 +72,34 @@ end
 
 -- Whether Psych `.lua` scripts run through Psych's own compiled code.
 --
--- Off by default: the interpreter already runs these scripts, and this path is
--- newer than it is. A mod or the console can turn it on for a song.
-local runtimeEnabled = false
+-- On by default: the whole point of compiling Psych's `psychlua` was that the
+-- callbacks behave the way Psych's do, and a path nobody runs cannot regress into
+-- anything anyone notices. Keeping it off left every mod on the interpreter, so
+-- the compiled layer fixed nothing in a real song.
+--
+-- The interpreter is still reachable, and deliberately so -- it is the fallback
+-- when the compiled layer cannot register a script, and `setRuntimeEnabled(false)`
+-- restores the old behaviour for a mod that needs it. One owner at a time: a
+-- script is routed to exactly one of the two, never both.
+local runtimeEnabled = true
+local runtimeForced = nil
 function Psych.usesRuntime()
+	if runtimeForced ~= nil then return runtimeForced end
 	return runtimeEnabled == true
 end
 function Psych.setRuntimeEnabled(enabled)
 	runtimeEnabled = enabled == true
 	return runtimeEnabled
+end
+-- Per-script fallback: used when the compiled layer failed for one script, so the
+-- rest of the song keeps the compiled behaviour instead of losing it globally.
+function Psych.fallBackToInterpreter()
+	runtimeForced = false
+end
+-- Clears the per-script override so the next script gets the compiled path again.
+-- Without this one bad script would switch the whole song to the interpreter.
+function Psych.restoreRuntime()
+	runtimeForced = nil
 end
 
 local function loadHScript(path, script)
@@ -105,7 +124,24 @@ local function loadPsychScript(path, script)
 	local Builders = require "funkin.backend.scripts.psych.bindings"
 	local loader, why = Builders.scriptLoader(nil)
 	if not loader then return nil, why end
-	return loader(script, source)
+	-- The chunk the engine runs after `configure`. If Psych's runtime cannot build
+	-- a script for this source, interpret it instead: a mod that Psych itself would
+	-- run should not stop working because the compiled path missed something, and
+	-- one script falling back does not take the compiled path away from the others.
+	local chunk = loader(script, source)
+	if chunk == nil then return nil, "psych runtime unavailable" end
+	return function()
+		local compat = script._psych
+		if compat == nil then return end
+		local built, buildError = compat.psychRuntime(source, script)
+		if built == nil then
+			Psych.fallBackToInterpreter()
+			compat:psychWarn("compiled Psych layer could not run this script, "
+				.. "interpreting it instead: " .. tostring(buildError))
+			compat.loadHScript(source)
+		end
+		Psych.restoreRuntime()
+	end
 end
 
 function Psych.loadScripts(state, handler, song, chart)

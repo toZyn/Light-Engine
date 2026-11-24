@@ -3,7 +3,13 @@ local Rating = {}
 function Rating.recalculate(state)
  local scripts = state.scripts
  local function publish(name, value)
+  -- Both places, because two different readers exist: Script:set is what a native
+  -- script's variables see, and psychVariables is what api.getProperty resolves.
+  -- Only the first was written, so rating/totalPlayed/ratingFC were computed and
+  -- then unreachable -- a mod reading `getProperty("rating")` after every note got
+  -- the value from the frame its script was created.
   if scripts then scripts:set(name, value) end
+  if state.psychVariables then state.psychVariables[name] = value end
  end
  for _, entry in ipairs({{'score','score'},{'misses','misses'},{'hits','songHits'},{'combo','combo'}}) do
   publish(entry[1], state[entry[2]])

@@ -217,13 +217,21 @@ end
 local callbacks = {
 	create = "onCreate", postCreate = "onCreatePost", postUpdate = "onUpdatePost",
 	step = "onStepHit", postStep = "onStepHitPost", beat = "onBeatHit",
-	postBeat = "onBeatHitPost", songStart = "onSongStart", endSong = "onEndSong", event = "onEvent"
+	postBeat = "onBeatHitPost", songStart = "onSongStart", endSong = "onEndSong", event = "onEvent",
+	-- PlayState.hx calls `callOnScripts('onSectionHit')` when the section changes
+	-- (1.0.4, line 3284). Nothing here was listening, so a mod's own onSectionHit
+	-- never ran and mustHitSection/altAnim/gfSection/curSection kept the values
+	-- from the frame the script was created.
+	section = "onSectionHit"
 }
 
 function Compat:forward(nativeName, ...)
 	self:_active()
 	if nativeName == "step" or nativeName == "beat" then
 		self.script:set(nativeName == "step" and "curStep" or "curBeat", select(1, ...))
+	end
+	if nativeName == "section" then
+		self:_refresh("section")
 	end
 	if nativeName == "event" then
 		local event = ...
@@ -247,6 +255,9 @@ end
 function Compat:update(dt)
 	self:_active()
 	positive(dt, "elapsed time", true)
+	-- Before the callbacks, not after: a mod reads curDecStep inside onUpdate and
+	-- inside onStepHit, so the value has to be current by the time either runs.
+	self:_refresh("frame")
 	self:_callback("onUpdate", dt)
 	if self.disposed then return end
 	-- Completion callbacks can cancel peers or dispose the entire context.
@@ -267,6 +278,25 @@ function Compat:update(dt)
 		if self.disposed then return end
 	end
 	-- Sounds belong to the global SoundManager; it updates them once per frame.
+end
+
+-- Psych's globals are snapshots taken when the script was created, so anything
+-- that moves during a song has to be written back. Kept in one place (psych.refresh)
+-- so a new global is added once instead of at every call site.
+function Compat:_refresh(kind)
+	local state = self.state
+	if state == nil or state.psychVariables == nil then return end
+	local refresh = require "funkin.backend.scripts.psych.refresh"
+	local apply = refresh[kind]
+	if apply == nil then return end
+	-- A refresh must never take the song down: a mod that breaks on a stale value
+	-- already gets one report, and a second one from inside the engine hides it.
+	local ok, err = pcall(apply, self)
+	if not ok then
+		-- Same reporting as every other compatibility warning, so it lands in the
+		-- same place the mod author already looks.
+		self:psychWarn("refresh " .. kind .. " failed: " .. tostring(err))
+	end
 end
 
 function Compat:psychWarn(message, deprecated)
