@@ -18,6 +18,7 @@ class PsychBridge {
 		psychlua.ExtraFunctions.implement(funk);
 		psychlua.ReflectionFunctions.implement(funk);
 		psychlua.ShaderFunctions.implement(funk);
+		psychlua.FlxAnimateFunctions.implement(funk);
 		psychlua.DeprecatedFunctions.implement(funk);
 		#end
 		return host;
