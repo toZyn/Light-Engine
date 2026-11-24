@@ -47,8 +47,16 @@ check('a Psych script runs through the compiled layer', function()
   local Psych=require('funkin.backend.modding.psych')
   assert(Psych.usesRuntime(),'the compiled path is not the default')
 
-  local script=Script('tests/engine/compat-fixture.lua',false,true,true)
+  -- Built the way the engine builds a Psych mod script: globals published onto it,
+  -- then a compatibility context attached.
+  local globals=require('funkin.backend.scripts.psych.globals')
+  local script=Script('tests/engine/compat-fixture.lua',false,true,true,function(instance)
+   instance.psychValues=globals.initial(state,PlayState.SONG,'tests/engine/compat-fixture.lua')
+   for key,value in pairs(instance.psychValues) do instance:set(key,value) end
+   instance._psych=require('funkin.backend.scripts.compat').new(state,instance,true)
+  end)
   state.scripts:add(script)
+  state.psychVariables=script.psychValues
   local compat=script._psych
   assert(compat,'no compatibility context')
 

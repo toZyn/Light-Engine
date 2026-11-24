@@ -19,9 +19,18 @@ check('Psych globals follow the song', function()
   local conductor=state.conductor
   assert(conductor,'no conductor')
 
-  -- A script with a compatibility context, the way a Psych mod gets one.
-  local script=Script('tests/engine/compat-fixture.lua',false,true,true)
+  -- Build the script the way the engine builds a Psych mod script: the globals are
+  -- published onto it, then a compatibility context is attached. A bare Script gets
+  -- neither, which is why the first version of this test failed with "script has no
+  -- compatibility context" instead of reaching the code it was meant to test.
+  local globals=require('funkin.backend.scripts.psych.globals')
+  local script=Script('tests/engine/compat-fixture.lua',false,true,true,function(instance)
+   instance.psychValues=globals.initial(state,PlayState.SONG,'tests/engine/compat-fixture.lua')
+   for key,value in pairs(instance.psychValues) do instance:set(key,value) end
+   instance._psych=require('funkin.backend.scripts.compat').new(state,instance,true)
+  end)
   state.scripts:add(script)
+  state.psychVariables=script.psychValues
   local ctx=script._psych
   assert(ctx,'script has no compatibility context')
 
