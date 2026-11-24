@@ -3,9 +3,8 @@ name: Psych Lua shim
 # Compiles Psych Engine's own Lua layer (source/psychlua/*.hx) to Lua, so the
 # engine can run Psych's real functions instead of a hand-written port of them.
 #
-# This job is deliberately standalone: it downloads Haxe and a Psych 1.0.4
-# checkout itself, so its failure tells you something about the shim and never
-# about the game build.
+# The job downloads Haxe and a Psych 1.0.4 checkout itself, so its result says
+# something about the shim and never about the game build.
 
 on:
   workflow_dispatch:
@@ -21,7 +20,7 @@ on:
       - 'tools/build_psych_lua.py'
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   HAXE_VERSION: '4.3.7'
@@ -34,6 +33,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Check out the branch itself, not the merge ref. On pull_request the
+          # default checkout puts HEAD on refs/pull/N/merge, which is not an
+          # ancestor of the branch, so the shim commit could not be pushed.
+          ref: ${{ github.head_ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,38 +62,79 @@ jobs:
             -o /tmp/psych.tar.gz
           mkdir -p /tmp/psych
           tar -xzf /tmp/psych.tar.gz -C /tmp/psych --strip-components=1
-          ls /tmp/psych/source/psychlua | head
+          ls /tmp/psych/source/psychlua
 
       - name: Compile the shim
-        # A failing compile is a result, not noise: the error list is the exact
-        # set of engine surfaces that still have to be declared in
-        # tools/psych-externs/. The artifact is uploaded either way.
+        # This compiles today, so a failure is a regression and the job goes red.
+        # The log is still uploaded by the last step, so a break stays diagnosable.
         run: |
           set -euo pipefail
           mkdir -p build
           python3 tools/build_psych_lua.py --source /tmp/psych --out build/psych-lua \
             2>&1 | tee build/psych-lua.log
-        continue-on-error: true
+
+      - name: Check the output carries Psych's callbacks
+        # Not "a file exists" but "the file contains the functions". Every name
+        # the sources register is looked up in the generated Lua, so a shim that
+        # compiled while dropping callbacks still fails.
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import pathlib, re, sys
+
+          src = pathlib.Path('build/psych-lua/psych-lua.lua').read_text()
+          staged = sorted(pathlib.Path('build/psych-lua/src/psychlua').glob('*.hx'))
+
+          expected = set()
+          for f in staged:
+              text = f.read_text(encoding='utf-8', errors='replace')
+              expected |= set(re.findall(r'add_callback\(\s*lua\s*,\s*["\']([A-Za-z0-9_]+)["\']', text))
+              expected |= set(re.findall(r'add_callback\(\s*["\']([A-Za-z0-9_]+)["\']', text))
+              expected |= set(re.findall(r'addLocalCallback\(\s*["\']([A-Za-z0-9_]+)["\']', text))
+
+          missing = sorted(n for n in expected if n not in src)
+          carried = len(expected) - len(missing)
+
+          print(f'compiled {len(src.splitlines())} lines of Lua')
+          print(f'{len(expected)} callbacks registered across {len(staged)} sources')
+          print(f'{carried} carried into the output')
+
+          assert 'lightPsychInstall' in src, 'bridge entry point missing'
+
+          # Show a compiled callback body, not just a count. If Psych's own code
+          # survives the translation it is visible here, in the Lua.
+          sample = re.search(r'function\s*\([^)]*\)\s*\n?[\s\S]{0,700}?end', src)
+          print("::notice title=sample::" + (sample.group(0)[:900].replace(chr(10), ' | ') if sample else 'none'))
+
+          # Psych's callbacks are registered by name; confirm a few are present
+          # verbatim so the output is recognisably its source.
+          for known in ('setProperty', 'getProperty', 'makeLuaSprite', 'playSound', 'callScript', 'loadGraphic'):
+              if known in src:
+                  print(f"::notice title=callback::{known} present")
+              else:
+                  print(f"::warning title=callback::{known} missing")
+
+          print(f"::notice title=shim::{len(src.splitlines())} lines, "
+                f"{carried}/{len(expected)} callbacks carried")
+          if missing:
+              print(f"::error title=callbacks dropped ({len(missing)})::{', '.join(missing[:60])}")
+              sys.exit(1)
+          PYEOF
 
       - name: Report the remaining surface gap
-        # Logs are not always readable from automation, so the missing-symbol
-        # list is emitted as annotations: that is the whole deliverable of a
-        # failed run, and it must survive however this job is inspected.
-        if: always()
+        # Only reachable when the compile failed, and then the missing-symbol
+        # list *is* the deliverable. Run logs are not readable from every client,
+        # so it is emitted as annotations, one per category, to fit the cap.
+        if: failure()
         run: |
           set -euo pipefail
           LOG=build/psych-lua.log
           [ -f "$LOG" ] || { echo "::warning::no compiler log was produced"; exit 0; }
-          if [ -f build/psych-lua/psych-lua.lua ]; then
-            echo "::notice::compile succeeded"; exit 0
-          fi
-          python3 - "$LOG" <<'PY'
+          python3 - "$LOG" <<'PYEOF'
           import re, sys, collections
-          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-          lines = text.splitlines()
+          lines = open(sys.argv[1], encoding='utf-8', errors='replace').read().splitlines()
 
-          # GitHub keeps only the first ten annotations of a step, so one message
-          # per category beats one per symbol: nothing gets truncated away.
           kinds = collections.defaultdict(set)
           for line in lines:
               for pat, label in (
@@ -111,24 +156,104 @@ jobs:
               names = sorted(kinds[label])
               print(f"::error title={label} ({len(names)})::{', '.join(names)}")
 
-          # The raw text is what actually explains the cause.
           if errors:
-              joined = "\n".join(errors[:25])
-              print(f"::error title=first errors::{joined[:6000]}")
-          PY
+              print(f"::error title=first errors::\n".join(errors[:25])[:6000])
+          PYEOF
 
-      - name: Check the output is loadable Lua
-        id: verify
+      - name: Run the shim against the bridge
+        # Compiling proves Psych's source is expressible in Lua. This proves the
+        # result actually runs: the generated file is loaded, its callbacks are
+        # registered through the bridge, and one is invoked the way FunkinLua
+        # does. A shim that compiles but cannot execute is not support.
         if: hashFiles('build/psych-lua/psych-lua.lua') != ''
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import re, sys, pathlib
-          src = pathlib.Path('build/psych-lua/psych-lua.lua').read_text()
-          assert 'lightPsychInstall' in src, 'bridge entry point missing'
-          registered = len(re.findall(r'add_callback', src))
-          print(f'compiled {len(src.splitlines())} lines, {registered} add_callback sites')
-          PY
+          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+          python3 - <<'PYEOF'
+          import pathlib, subprocess, sys, textwrap
+
+          shim = pathlib.Path('build/psych-lua/psych-lua.lua')
+          harness = pathlib.Path('build/harness.lua')
+          harness.write_text(textwrap.dedent(f"""
+            package.path = './?.lua;' .. package.path
+            local Bindings = require('funkin.backend.scripts.psych.bindings')
+
+            -- Load the shim the way the engine does. Parsing it is what tells
+            -- "compiled" apart from "runnable".
+            local chunk = assert(loadfile('{shim}'))
+            local scope = setmetatable({{}}, {{__index = _G}})
+            scope._G = scope
+            local bridge = Bindings.installLuaApi(scope)
+            if setfenv then setfenv(chunk, scope) end
+            chunk()
+
+            -- install(): the callbacks in the six helper classes. It does not
+            -- need a song, because those classes only use a FunkinLua object.
+            local state = scope.LuaL.newstate()
+            local host = {{lua = state, callbacks = {{}}, customFunctions = {{}}}}
+            host.addLocalCallback = function(_, name, fn)
+              scope.Lua_helper.add_callback(state, name, fn)
+            end
+            host.initLuaShader = function() return false end
+
+            scope.lightPsychInstall(host)
+            local registered = bridge.registryFor(state).callbacks
+            local count = 0
+            for _ in pairs(registered) do count = count + 1 end
+            print('install registered ' .. count .. ' callbacks')
+            assert(count >= 90, 'helper surface incomplete: ' .. count)
+            -- The names install() is responsible for. makeLuaSprite, playSound,
+            -- callScript and loadGraphic are in FunkinLua.new(), so demanding
+            -- them here would fail against correct code.
+            for _, name in ipairs({{'setProperty', 'getProperty',     -- reflection
+                                    'makeLuaText', 'setTextString',   -- text
+                                    'keyboardPressed', 'saveFile',    -- extra
+                                    'musicFadeIn',                    -- deprecated
+                                    'getShaderFloat'}}) do            -- shader
+              assert(registered[name], name .. ' not registered by install')
+            end
+            print('SHIM RAN OK')
+          """))
+
+          result = subprocess.run(['lua5.1', str(harness)], text=True,
+                                  capture_output=True)
+          print(result.stdout)
+          if result.returncode != 0:
+              print(result.stderr, file=sys.stderr)
+              lines = [l for l in result.stderr.splitlines() if l.strip()]
+              for i in range(0, min(len(lines), 12), 4):
+                  print("::error title=shim trace %d::" % i
+                        + " / ".join(lines[i:i+4])[:1200])
+              sys.exit(1)
+
+      - name: Put the shim where the engine loads it
+        # The engine resolves funkin/backend/scripts/psych/shim.lua at runtime,
+        # beside its other compiled layer (runtime.lua). The shim is generated
+        # from Haxe, so it cannot be hand-maintained: the job writes it back to
+        # the branch, which is what makes the binding reachable at all. An
+        # artifact nobody commits is a build output, not a feature.
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          target=funkin/backend/scripts/psych/shim.lua
+          BRANCH="${{ github.head_ref }}"
+          cp build/psych-lua/psych-lua.lua "$target"
+          echo "shim: $(wc -l < "$target") lines"
+          # Stage first: `git diff` says nothing about an untracked file, which is
+          # exactly the case the first time the shim is added -- and it reported
+          # "already current" while the file was absent from the tree.
+          git add "$target"
+          if git diff --cached --quiet -- "$target"; then
+            echo "::notice title=shim::already current"
+            exit 0
+          fi
+          git config user.name 'psych-lua shim'
+          git config user.email 'actions@github.com'
+          git commit -q -m "Regenerate the Psych Lua shim
+
+          Built from Psych ${{ env.PSYCH_REF }} source/psychlua by this workflow."
+          git push origin "HEAD:${BRANCH}"
+          echo "::notice title=shim::committed $(git rev-parse --short HEAD)"
 
       - name: Upload shim and compiler log
         if: always()
