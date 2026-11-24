@@ -97,6 +97,19 @@ jobs:
 
           assert 'lightPsychInstall' in src, 'bridge entry point missing'
 
+          # Show a compiled callback body, not just a count. If Psych's own code
+          # survives the translation it is visible here, in the Lua.
+          sample = re.search(r'function\s*\([^)]*\)\s*\n?[\s\S]{0,700}?end', src)
+          print("::notice title=sample::" + (sample.group(0)[:900].replace(chr(10), ' | ') if sample else 'none'))
+
+          # Psych's callbacks are registered by name; confirm a few are present
+          # verbatim so the output is recognisably its source.
+          for known in ('setProperty', 'getProperty', 'makeLuaSprite', 'playSound', 'addHaxeLibrary'):
+              if known in src:
+                  print(f"::notice title=callback::{known} present")
+              else:
+                  print(f"::warning title=callback::{known} missing")
+
           print(f"::notice title=shim::{len(src.splitlines())} lines, "
                 f"{carried}/{len(expected)} callbacks carried")
           if missing:
