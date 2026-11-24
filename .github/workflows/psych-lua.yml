@@ -86,6 +86,7 @@ jobs:
               text = f.read_text(encoding='utf-8', errors='replace')
               expected |= set(re.findall(r'add_callback\(\s*lua\s*,\s*["\']([A-Za-z0-9_]+)["\']', text))
               expected |= set(re.findall(r'add_callback\(\s*["\']([A-Za-z0-9_]+)["\']', text))
+              expected |= set(re.findall(r'addLocalCallback\(\s*["\']([A-Za-z0-9_]+)["\']', text))
 
           missing = sorted(n for n in expected if n not in src)
           carried = len(expected) - len(missing)
