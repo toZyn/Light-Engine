@@ -17,16 +17,16 @@ extern abstract FlxColor(Int) from Int to Int {
 	public var alpha(get, never):Int;
 	public var alphaFloat(get, never):Float;
 
-	public static var WHITE(default, never):FlxColor;
-	public static var BLACK(default, never):FlxColor;
-	public static var RED(default, never):FlxColor;
-	public static var GREEN(default, never):FlxColor;
-	public static var BLUE(default, never):FlxColor;
-	public static var YELLOW(default, never):FlxColor;
-	public static var PURPLE(default, never):FlxColor;
-	public static var ORANGE(default, never):FlxColor;
-	public static var GRAY(default, never):FlxColor;
-	public static var PINK(default, never):FlxColor;
-	public static var CYAN(default, never):FlxColor;
-	public static var TRANSPARENT(default, never):FlxColor;
+	public static inline var WHITE:FlxColor = 0xFFFFFFFF;
+	public static inline var BLACK:FlxColor = 0xFF000000;
+	public static inline var RED:FlxColor = 0xFFFF0000;
+	public static inline var GREEN:FlxColor = 0xFF00FF00;
+	public static inline var BLUE:FlxColor = 0xFF0000FF;
+	public static inline var YELLOW:FlxColor = 0xFFFFFF00;
+	public static inline var PURPLE:FlxColor = 0xFFFF00FF;
+	public static inline var ORANGE:FlxColor = 0xFFFFA500;
+	public static inline var GRAY:FlxColor = 0xFF808080;
+	public static inline var PINK:FlxColor = 0xFFFFC0CB;
+	public static inline var CYAN:FlxColor = 0xFF00FFFF;
+	public static inline var TRANSPARENT:FlxColor = 0x00000000;
 }
