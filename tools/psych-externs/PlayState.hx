@@ -30,7 +30,6 @@ extern class PlayState extends MusicBeatState {
 	public var camFollow:Dynamic;
 	public var stage:Stage;
 	public var curStage:String;
-	public var controls:Dynamic;
 	public var isDead:Bool;
 
 	// script hosts

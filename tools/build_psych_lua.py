@@ -105,7 +105,8 @@ def stage(source: Path, work: Path) -> None:
         # path, which is where the externs live.
         header = [decl, "using StringTools;",
                   "import TextAlign.*;", "import AssetType.*;",
-                  "import FlxGamepadInputID.*;", "import FlxTweenType.*;", "import BlendMode.*;"]
+                  "import FlxGamepadInputID.*;", "import FlxTweenType.*;", "import BlendMode.*;",
+                  "import FlxAxes.*;"]
         package.joinpath(f"{name}.hx").write_text(
             "\n".join(header + body_lines), encoding="utf-8")
     if missing:

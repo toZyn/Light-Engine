@@ -10,7 +10,6 @@ extern class Note extends FlxSprite {
 	public var sustainLength:Float;
 	public var isSustainNote:Bool;
 	public var noteType:String;
-	public var noteSpeed:Float;
 	public var offsetX:Float;
 	public var offsetY:Float;
 	public var prevNote:Note;
