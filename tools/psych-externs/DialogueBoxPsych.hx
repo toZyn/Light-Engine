@@ -4,4 +4,5 @@
 extern class DialogueBoxPsych extends FlxSpriteGroup {
 	public function new(dialogueFile:DialogueFile, ?songName:String):Void;
 	public static var finishThing:Void->Void;
+	public static function parseDialogue(path:String):DialogueFile;
 }

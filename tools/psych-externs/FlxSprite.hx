@@ -18,7 +18,7 @@ extern class FlxSprite extends FlxBasic {
 	public function updateHitbox():Void;
 	public function setPosition(x:Float, y:Float):Void;
 	public function setBlendMode(mode:Dynamic):Void;
-	public function screenCenter(?axes:Dynamic):Void;
+	public function screenCenter(?axes:FlxAxes = XY):Void;
 	public function getGraphicMidpoint(?point:Dynamic):FlxPoint;
 	public var isSimple:Bool;
 }
