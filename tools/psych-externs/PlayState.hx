@@ -29,6 +29,8 @@ extern class PlayState extends MusicBeatState {
 	public var camOther:FlxCamera;
 	public var camFollow:Dynamic;
 	public var stage:Stage;
+	public var videoCutscene:VideoSprite;
+	public var persistentUpdate:Bool;
 	public var curStage:String;
 	public var isDead:Bool;
 
@@ -62,12 +64,12 @@ extern class PlayState extends MusicBeatState {
 	public var persistentUpdate:Bool;
 
 	// stage anchors the camera uses
-	public static var BF_X:Float;
-	public static var BF_Y:Float;
-	public static var DAD_X:Float;
-	public static var DAD_Y:Float;
-	public static var GF_X:Float;
-	public static var GF_Y:Float;
+	public var BF_X:Float;
+	public var BF_Y:Float;
+	public var DAD_X:Float;
+	public var DAD_Y:Float;
+	public var GF_X:Float;
+	public var GF_Y:Float;
 
 	public var healthGain:Float->Void;
 	public var healthLoss:Float->Void;

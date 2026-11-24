@@ -3,7 +3,8 @@ extern class FlxCamera {
 	public var alpha:Float;
 	public var x:Float;
 	public var y:Float;
-	public var scroll:Dynamic;
+	public var scroll:FlxPoint;
+	public var followLerp:Float;
 	public var target:Dynamic;
 	public var width:Int;
 	public var height:Int;
