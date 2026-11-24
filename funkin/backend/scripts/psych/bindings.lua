@@ -383,22 +383,29 @@ end
 --
 -- Values are copied by reference, so they stay live: the shim holds the same
 -- table the engine mutates, not a snapshot.
+-- Names the compiled layer reads, mapped to where the engine keeps them.
+--
+-- Psych's Haxe refers to `Paths`, `FlxG`, `Difficulty`, `Song`, `WeekData` and
+-- friends as global classes. The engine has Lua modules instead: `paths` is a
+-- module, and several of the others have no global at all -- their logic lives
+-- inside the compatibility layer (which is why `Psych.shaders` and `Psych.classes`
+-- exist). This table is the mapping, and it is deliberately explicit: guessing
+-- which names exist produced a shim that failed on `Paths` with "attempt to index
+-- a nil value" after everything looked fine.
 local LIVE_GLOBALS = {
-	"PlayState", "Conductor", "FlxG", "Paths", "Mods", "Song", "WeekData",
-	"Difficulty", "LuaUtils", "MainMenuState", "MusicBeatState", "HScript",
-	"CustomSubstate", "ClientPrefs", "Character", "Note", "FlxColor", "FlxMath",
-	"StringTools", "Std", "FileSystem", "GameOverSubstate", "LoadingState",
-	"ShaderFilter", "FlxRuntimeShader", "ModchartSprite", "ModchartText",
-	"ModchartAnimateSprite", "LuaL"
+	PlayState = "PlayState", Conductor = "Conductor", FlxG = "FlxG",
+	Paths = "paths", Mods = "Mods", ClientPrefs = "ClientPrefs",
+	Character = "Character", Note = "Note", GameOverSubstate = "GameOverSubstate",
+	MainMenuState = "MainMenuState",
 }
 
 function PsychBindings.exposeGame(compat)
 	local shim = PsychBindings.loadShim(compat)
 	if not shim then return nil end
 	local globals = shim.globals
-	for _, name in ipairs(LIVE_GLOBALS) do
-		local value = rawget(_G, name)
-		if value ~= nil then globals[name] = value end
+	for psychName, engineName in pairs(LIVE_GLOBALS) do
+		local value = rawget(_G, engineName)
+		if value ~= nil then globals[psychName] = value end
 	end
 	-- The constructor calls `game.luaArray:push(self)`; Psych's PlayState owns that
 	-- array, and the engine's state has no equivalent, so it is provided here

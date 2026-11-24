@@ -74,8 +74,12 @@ check('Psych globals follow the song', function()
 
   -- 5. Section flags belong to a section, so they change when the section does,
   --    not every frame. A mod that sets altAnim expects it to hold.
+  -- bopeebo parses as a V-Slice chart and carries a single section, so the flags
+  -- cannot be checked against the real chart. Synthetic sections are enough: what
+  -- is under test is that a section change reaches the script, not the chart.
   local sections=state.psychSections
-  assert(sections and #sections>1,'fixture needs more than one section')
+  assert(sections and #sections>0,'the state has no sections at all')
+  sections[2]={step=(sections[1] and sections[1].step or 0)+16}
   state.psychSectionIndex=2
   sections[2].mustHitSection=true
   sections[2].altAnim=true
