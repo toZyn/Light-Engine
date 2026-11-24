@@ -2,7 +2,7 @@
  * flixel's typed sprite group. Scripts address members by index and the group
  * helpers iterate them.
  */
-extern class FlxTypedGroup<T> {
+extern class FlxTypedGroup<T> extends FlxBasic {
 	public var members:Array<T>;
 	public var destroyMembers:Bool;
 	public var length:Int;
