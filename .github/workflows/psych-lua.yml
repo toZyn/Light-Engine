@@ -147,8 +147,9 @@ jobs:
         if: hashFiles('build/psych-lua/psych-lua.lua') != ''
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq lua5.1
+          # No apt here: `apt-get update` on this image took longer than the job's
+          # whole budget and the run was cancelled at 20m. lupa is a wheel.
+          python3 -m pip install --quiet lupa
           python3 tools/check_psych_shim.py build/psych-lua/psych-lua.lua
 
       - name: Upload shim and compiler log

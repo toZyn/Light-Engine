@@ -239,6 +239,12 @@ function PsychBindings.loadShim(compat)
 	if loaded then return loaded end
 
 	local source = compat and compat.psychShimSource or nil
+	if not source and compat and compat.psychShimSourceFor then
+		-- Ask once. The retry below reloads with this source, and that reload must
+		-- not ask again: it did, and the loader recursed until it ran out of stack.
+		source = compat.psychShimSourceFor()
+		if source then compat.psychShimSource = source end
+	end
 	if not source then
 		-- Same loader the engine uses for its own compiled runtime, so a packaged
 		-- build and a source checkout both find the file.
@@ -316,12 +322,13 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		return nil
 	end
 
-	-- The shim is loaded before any script runs, so an early miss (a caller that
-	-- only had the source) does not cost the later, fully set-up one.
-	if compat and not compat.psychShimSource then
-		local retry = compat.psychShimSourceFor and compat.psychShimSourceFor() or nil
+	-- A load that failed for want of the engine globals is retried once the host
+	-- can supply the compiled source. Guarded by a flag rather than by "no source
+	-- yet", which is true on exactly the retry as well.
+	if compat and compat.psychShimSourceFor and not compat.psychShimRetried then
+		compat.psychShimRetried = true
+		local retry = compat.psychShimSourceFor()
 		if retry then
-			loaded = nil
 			return PsychBindings.runShim(compat, retry)
 		end
 	end

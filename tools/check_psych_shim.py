@@ -11,56 +11,61 @@ Usage: tools/check_psych_shim.py build/psych-lua/psych-lua.lua
 Lives here rather than inline in the workflow because the harness is a multi-line
 Python program with its own Lua source: embedding it in a `run:` block made the
 workflow fail actionlint, which surfaced as an unrelated CI job dying at step 5.
+
+Runs the Lua in-process through lupa (a wheel, so installing takes seconds) rather
+than shelling out to a lua binary, which would need apt on the runner -- and
+apt-get update there exceeded the job's whole time budget.
 """
 import pathlib
-import subprocess
 import sys
-import tempfile
-import textwrap
 
-HARNESS = textwrap.dedent("""\
-    package.path = './?.lua;' .. package.path
-    local Bindings = require('funkin.backend.scripts.psych.bindings')
+# Names that install() is responsible for, one per helper class. makeLuaSprite,
+# playSound, callScript and loadGraphic are registered in FunkinLua.new(), so
+# they cannot appear here.
+REQUIRED = ["setProperty", "getProperty", "makeLuaText", "keyboardPressed",
+            "musicFadeIn", "getShaderFloat"]
 
-    -- Load the shim through the engine's own loader, not a copy of it. A harness
-    -- that reimplements the loader tests the harness: the first version set its
-    -- own environment and the compiled layer could not see setmetatable.
-    local compat = {{}}
-    compat.psychShimSourceFor = function()
-      return assert(io.open('{shim}', 'r')):read('*a')
-    end
-    local shim = Bindings.loadShim(compat)
-    assert(shim, 'the shim did not load')
+HARNESS = """
+package.path = './?.lua;' .. package.path
+local Bindings = require('funkin.backend.scripts.psych.bindings')
 
-    -- install() registers the six helper classes. It needs no song, because
-    -- those classes only use a FunkinLua object.
-    local state = shim.state()
-    local host = {{lua = state, callbacks = {{}}, customFunctions = {{}}}}
-    host.addLocalCallback = function(_, name, fn)
-      shim.scope.Lua_helper.add_callback(state, name, fn)
-    end
-    host.initLuaShader = function() return false end
+-- Load the shim through the engine's own loader, not a copy of it. A harness that
+-- reimplements the loader tests the harness: the first version set its own
+-- environment, and the compiled layer could not see setmetatable.
+local compat = {}
+compat.psychShimSourceFor = function()
+  return assert(io.open(SHIM_PATH, 'r')):read('*a')
+end
+local shim = Bindings.loadShim(compat)
+assert(shim, 'the shim did not load')
 
-    shim.install(host)
+-- install() registers the six helper classes. It needs no song, because those
+-- classes only use a FunkinLua object.
+local state = shim.state()
+local host = {lua = state, callbacks = {}, customFunctions = {}}
+host.addLocalCallback = function(_, name, fn)
+  shim.scope.Lua_helper.add_callback(state, name, fn)
+end
+host.initLuaShader = function() return false end
 
-    local registered = shim.bridge.registryFor(state).callbacks
-    local count = 0
-    for _ in pairs(registered) do count = count + 1 end
-    print('install registered ' .. count .. ' callbacks')
-    assert(count >= 90, 'helper surface incomplete: ' .. count)
+shim.install(host)
 
-    -- One name per helper class, each taken from that class's own source. A
-    -- regression in a specific callback should fail as itself, not as a count.
-    for _, name in ipairs({{{names}}}) do
-      assert(registered[name], name .. ' not registered by install')
-    end
-    print('SHIM RAN OK')
-""")
+local registered = shim.bridge.registryFor(state).callbacks
+local count = 0
+for _ in pairs(registered) do count = count + 1 end
+print('install registered ' .. count .. ' callbacks')
+assert(count >= 90, 'helper surface incomplete: ' .. count)
 
-# Names that install() is responsible for. makeLuaSprite, playSound, callScript
-# and loadGraphic are registered in FunkinLua.new(), so they cannot appear here.
-REQUIRED = "'setProperty', 'getProperty', 'makeLuaText', 'keyboardPressed', " \
-           "'musicFadeIn', 'getShaderFloat'"
+-- A regression in one callback should fail as itself, not as a count.
+for _, name in ipairs(NAMES) do
+  assert(registered[name], name .. ' not registered by install')
+end
+print('SHIM RAN OK')
+"""
+
+
+def lua_value(text):
+    return '"%s"' % text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def main(candidates):
@@ -72,25 +77,31 @@ def main(candidates):
         print(f"::error title=shim missing::{shim} was not produced", file=sys.stderr)
         return 1
 
-    source = HARNESS.replace("{shim}", str(shim)).replace("{names}", REQUIRED)
-    with tempfile.TemporaryDirectory() as tmp:
-        harness = pathlib.Path(tmp) / "harness.lua"
-        harness.write_text(source)
-        result = subprocess.run(
-            ["lua5.1", str(harness)], text=True, capture_output=True,
-            cwd=pathlib.Path(__file__).resolve().parents[1])
+    try:
+        from lupa import LuaRuntime
+    except ImportError:
+        print("::error title=lupa missing::pip install lupa did not take",
+              file=sys.stderr)
+        return 1
 
-    sys.stdout.write(result.stdout)
-    if result.returncode == 0:
-        return 0
+    names = "{" + ", ".join(lua_value(name) for name in REQUIRED) + "}"
+    source = (HARNESS.replace("SHIM_PATH", lua_value(str(shim)))
+                    .replace("NAMES", names))
 
-    sys.stderr.write(result.stderr)
-    # The last line of a Lua error is often just "[C]: ?" and names nothing.
-    lines = [line for line in result.stderr.splitlines() if line.strip()]
-    for start in range(0, min(len(lines), 12), 4):
-        print("::error title=shim trace {}::{}".format(
-            start, " / ".join(lines[start:start + 4])[:1200]))
-    return 1
+    runtime = LuaRuntime(unpack_returned_tuples=True)
+    try:
+        runtime.execute(source)
+    except Exception as error:  # lupa raises LuaError carrying the traceback
+        message = str(error)
+        print(message, file=sys.stderr)
+        # The last line of a Lua error is often just "[C]: ?" and names nothing,
+        # so the first frames are what says where it broke.
+        lines = [line for line in message.splitlines() if line.strip()]
+        for start in range(0, min(len(lines), 8), 4):
+            print("::error title=shim trace {}::{}".format(
+                start, " / ".join(lines[start:start + 4])[:1200]))
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
