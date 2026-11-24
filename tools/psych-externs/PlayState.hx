@@ -61,7 +61,6 @@ extern class PlayState extends MusicBeatState {
 	public var playbackRate:Float;
 	public var endingSong:Bool;
 	public var startingSong:Bool;
-	public var persistentUpdate:Bool;
 
 	// stage anchors the camera uses
 	public var BF_X:Float;

@@ -12,6 +12,7 @@ extern class FlxAnimationController {
 	public function addByPrefix(name:String, prefix:String, ?frameRate:Float = 30, ?looped:Bool = true, ?flipX:Bool = false, ?flipY:Bool = false):Void;
 	public function addByIndices(name:String, prefix:String, indices:Array<Int>, ?postfix:String = '', ?frameRate:Float = 30, ?looped:Bool = true, ?flipX:Bool = false, ?flipY:Bool = false):Void;
 	public function play(name:String, ?force:Bool = true, ?reversed:Bool = false, ?frame:Int = -1):Void;
+	public var curAnim:FlxAnimation;
 	public function stop():Void;
 	public function exists(name:String):Bool;
 }

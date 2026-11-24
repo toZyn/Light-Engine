@@ -7,4 +7,7 @@ extern class FlxPoint {
 	public var y:Float;
 	public function new(?x:Float = 0, ?y:Float = 0):Void;
 	public function set(?x:Float, ?y:Float):FlxPoint;
+	public function add(point:FlxPoint):FlxPoint;
+	public function subtract(point:FlxPoint):FlxPoint;
+	public function copyFrom(point:FlxPoint):FlxPoint;
 }
