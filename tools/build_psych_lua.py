@@ -127,7 +127,7 @@ def build(haxe: str, work: Path, target: Path) -> tuple[bool, str]:
         "-cp", str(work),
         "-D", "lua_vanilla",
         "-D", "lua-jit",
-        *[f"-D {d}" for d in PSYCH_DEFINES],
+        *[arg for d in PSYCH_DEFINES for arg in ("-D", d)],
         "-dce", "full",
         "-main", "PsychBridge",
         "-lua", str(target),
