@@ -6,4 +6,5 @@ extern class StageFile {
 	public var directory:String;
 	public var defaultZoom:Float;
 	public var isPixelStage:Bool;
+	public var hide_girlfriend:Bool;
 }

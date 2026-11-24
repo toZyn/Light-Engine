@@ -9,7 +9,6 @@ extern class PlayState extends FlxState {
 	public static var changedDifficulty:Bool;
 	public static var deathCounter:Int;
 	public var isDead:Bool;
-	public var members:Array<FlxBasic>;
 	public var boyfriendGroup:FlxSpriteGroup;
 	public var gfGroup:FlxSpriteGroup;
 	public var dadGroup:FlxSpriteGroup;
