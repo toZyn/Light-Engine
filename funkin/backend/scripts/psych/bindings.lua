@@ -402,6 +402,16 @@ local LIVE_GLOBALS = {
 	Character = "Character", Note = "Note", GameOverSubstate = "GameOverSubstate",
 	MainMenuState = "MainMenuState",
 }
+-- Fields Psych's constructor reads off those globals, which the engine does not
+-- define but a mod can legitimately check with `version` or `getProperty`.
+--
+-- `MainMenuState.psychEngineVersion` is the first one that bit: the constructor
+-- trims it to publish the `version` global, and a state table has no such field, so
+-- the whole script died on a nil trim. These are identity values, not behaviour --
+-- the engine targets one Psych release.
+local MAINMENU_FIELDS = {
+	psychEngineVersion = "1.0.4",
+}
 
 --- Adapts the engine's Lua modules to the shapes Psych's Haxe calls.
 --
@@ -465,6 +475,13 @@ function PsychBindings.exposeGame(compat)
 	for psychName, engineName in pairs(LIVE_GLOBALS) do
 		local value = rawget(_G, engineName)
 		if value ~= nil then globals[psychName] = value end
+	end
+	-- Identity fields Psych's constructor reads off a class the engine does define.
+	local mainmenu = globals.MainMenuState
+	if type(mainmenu) == "table" then
+		for field, value in pairs(MAINMENU_FIELDS) do
+			if mainmenu[field] == nil then mainmenu[field] = value end
+		end
 	end
 	-- The two that need translating rather than copying.
 	local paths = psychPaths()
