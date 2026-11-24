@@ -1,5 +1,6 @@
 extern class PlayState {
-	public static var instance:Dynamic;
+	public static var instance:PlayState;
+	public static var SONG:Song;
 	public static var isStoryMode:Bool;
 	public static var seenCutscene:Bool;
 	public static var storyWeek:Int;
@@ -7,4 +8,13 @@ extern class PlayState {
 	public static var chartingMode:Bool;
 	public static var changedDifficulty:Bool;
 	public static var deathCounter:Int;
+	public var isDead:Bool;
+	public var members:Array<FlxBasic>;
+	public var boyfriendGroup:FlxSpriteGroup;
+	public var gfGroup:FlxSpriteGroup;
+	public var dadGroup:FlxSpriteGroup;
+	public var boyfriend:Dynamic;
+	public var gf:Dynamic;
+	public var dad:Dynamic;
+	public var curStage:String;
 }
