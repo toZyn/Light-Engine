@@ -20,5 +20,5 @@ extern class FlxSprite extends FlxBasic {
 	public function setBlendMode(mode:Dynamic):Void;
 	public function screenCenter(?axes:Dynamic):Void;
 	public function getGraphicMidpoint(?point:Dynamic):FlxPoint;
-	public function isSimple:Bool;
+	public var isSimple:Bool;
 }
