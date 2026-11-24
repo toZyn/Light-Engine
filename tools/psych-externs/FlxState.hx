@@ -3,6 +3,7 @@
  * state, which is why `add` and `members` are needed here.
  */
 extern class FlxState extends FlxBasic {
+	public function new():Void;
 	public var members:Array<FlxBasic>;
 	public var persistentUpdate:Bool;
 	public var persistentDraw:Bool;

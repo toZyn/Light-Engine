@@ -4,6 +4,7 @@
  * whichever is current.
  */
 extern class GameOverSubstate extends FlxSubState {
+	public function new():Void;
 	public static var instance:GameOverSubstate;
 	public static var characterName:String;
 	public static var loopSoundName:String;

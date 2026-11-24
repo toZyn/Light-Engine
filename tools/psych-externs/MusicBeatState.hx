@@ -3,6 +3,7 @@
  * accessor, which is why PlayState inherits both.
  */
 extern class MusicBeatState extends FlxState {
+	public function new():Void;
 	public static function getState():FlxState;
 	public static function getVariables():Map<String, Dynamic>;
 	public static function switchState(state:Dynamic):Void;
