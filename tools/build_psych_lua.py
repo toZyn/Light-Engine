@@ -107,6 +107,19 @@ def stage(source: Path, work: Path) -> None:
         raise SystemExit("missing Psych sources:\n  " + "\n  ".join(missing))
 
 
+# Psych wraps whole files in these flags, so without them the shim silently omits
+# features: FlxAnimateFunctions, for instance, is entirely inside `#if flxanimate`.
+# The set matches what a normal Psych build defines.
+PSYCH_DEFINES = [
+    "LUA_ALLOWED",
+    "MODS_ALLOWED",
+    "HSCRIPT_ALLOWED",
+    "flxanimate",
+    "FLX_PITCH",
+    "VIDEOS_ALLOWED",
+]
+
+
 def build(haxe: str, work: Path, target: Path) -> tuple[bool, str]:
     command = [
         haxe,
@@ -114,6 +127,7 @@ def build(haxe: str, work: Path, target: Path) -> tuple[bool, str]:
         "-cp", str(work),
         "-D", "lua_vanilla",
         "-D", "lua-jit",
+        *[f"-D {d}" for d in PSYCH_DEFINES],
         "-dce", "full",
         "-main", "PsychBridge",
         "-lua", str(target),
