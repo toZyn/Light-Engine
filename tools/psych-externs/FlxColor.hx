@@ -4,20 +4,16 @@
  * Modelling it as an abstract matters. Psych passes raw hex numbers
  * (`0xFFFFFFFF`) *and* `FlxColor` constants to the same parameters, which only
  * compiles if the type converts from Int.
+ *
+ * The channels are reached through `@:forward` because an abstract cannot
+ * declare its own fields; `FlxColorChannels` is the shape they resolve to.
  */
-extern abstract FlxColor(Int) from Int to Int {
+@:forward(red, green, blue, alpha, alphaFloat)
+extern abstract FlxColor(FlxColorChannels) from Int to Int {
 	public static function fromString(color:String):FlxColor;
 	public static function fromRGB(red:Int, green:Int, blue:Int):FlxColor;
 	public static function fromHSV(hue:Float, saturation:Float, brightness:Float):FlxColor;
 	public static function getColor32(alpha:Int, red:Int, green:Int, blue:Int):FlxColor;
-
-	// Declared as plain fields: an extern abstract cannot carry accessor bodies,
-	// and these are only ever read or assigned by Psych.
-	public var red:Int;
-	public var green:Int;
-	public var blue:Int;
-	public var alpha:Int;
-	public var alphaFloat:Float;
 
 	public static inline var WHITE:FlxColor = 0xFFFFFFFF;
 	public static inline var BLACK:FlxColor = 0xFF000000;
