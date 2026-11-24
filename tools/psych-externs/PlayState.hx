@@ -75,6 +75,7 @@ extern class PlayState extends MusicBeatState {
 	public var healthGain:Float->Void;
 	public var healthLoss:Float->Void;
 
+	public function new():Void;
 	public function getLuaObject(tag:String):Dynamic;
 	public function addCharacterToList(newCharacter:String, type:Int):Void;
 	public function updateScoreText():Void;
