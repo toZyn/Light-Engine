@@ -37,6 +37,18 @@ function onSectionHit()
 end
 ]]
 
+-- The argument name is the last plausible nil at the trim. Check it here so the
+-- failure names the variable instead of pointing at StringTools.
+check('the script path reaches Psych as a string', function()
+ local text=assert(io.open('tests/engine/compat-fixture.lua','r')):read('*a')
+ local chunk=assert(load(text,'tests/engine/compat-fixture.lua'))
+ local script={path='tests/engine/compat-fixture.lua',variables={},set=function() end}
+ local returned=chunk(script)
+ print('PROBE path='..tostring(script.path)..' chunkReturned='..type(returned)
+  ..' os="'..tostring(os.getenv('ENGINE_ROOT'))..'"')
+ assert(type(script.path)=='string' and #script.path>0,'script.path is not a string')
+end)
+
 check('a Psych script runs through the compiled layer', function()
   local state=PlayState(false,'bopeebo','normal')
   state:preload()
