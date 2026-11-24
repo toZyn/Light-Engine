@@ -1,15 +1,17 @@
 /**
- * flixel's colour: an abstract over Int with implicit conversion both ways.
+ * flixel's colour.
  *
- * Modelling it as an abstract matters. Psych passes raw hex numbers
- * (`0xFFFFFFFF`) *and* `FlxColor` constants to the same parameters, which only
- * compiles if the type converts from Int.
- *
- * The channels are reached through `@:forward` because an abstract cannot
- * declare its own fields; `FlxColorChannels` is the shape they resolve to.
+ * Psych passes raw hex numbers (`0xFFFFFFFF`) and `FlxColor` constants to the
+ * same parameters and assigns channels (`curColor.alphaFloat = ...`), so this has
+ * to be an abstract that converts from Int *and* exposes fields. Haxe forbids
+ * declaring fields on an abstract, hence the `@:forward` companion: conversion
+ * happens through the explicit @:from/@:to below.
  */
-@:forward(red, green, blue, alpha, alphaFloat)
-extern abstract FlxColor(FlxColorChannels) from Int to Int {
+@:forward
+extern abstract FlxColor(FlxColorChannels) {
+	@:from public static function fromInt(value:Int):FlxColor;
+	@:to public function toInt():Int;
+
 	public static function fromString(color:String):FlxColor;
 	public static function fromRGB(red:Int, green:Int, blue:Int):FlxColor;
 	public static function fromHSV(hue:Float, saturation:Float, brightness:Float):FlxColor;

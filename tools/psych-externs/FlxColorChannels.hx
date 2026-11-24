@@ -1,6 +1,6 @@
 /**
- * The channel view of a colour. Kept separate because Haxe abstracts cannot
- * declare fields, and Psych reads and assigns these directly.
+ * The channel view behind FlxColor. An abstract cannot declare fields, so this
+ * carries them and FlxColor forwards to them.
  */
 extern class FlxColorChannels {
 	public var red:Int;
