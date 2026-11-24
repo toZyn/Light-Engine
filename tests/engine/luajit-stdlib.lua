@@ -21,8 +21,10 @@ check('engine sources do not call Lua 5.2+ standard library functions',function(
    local info=love.filesystem.getInfo(file)
    if info.type=='directory' then scan(file)
    -- override.lua *defines* the 5.2+/5.3+ shims, so it legitimately contains
-   -- these names. runtime.lua is generated Haxe output with its own shims.
+   -- these names. runtime.lua and shim.lua are generated Haxe output with their
+   -- own shims (`_hx_table.unpack = table.unpack or unpack`).
    elseif name:match('%.lua$') and not file:match('psych/runtime%.lua$')
+    and not file:match('psych/shim%.lua$')
     and not file:match('loxel/lib/override%.lua$') then
     local source=love.filesystem.read(file) or ''
     -- Strip comments and string literals so documentation and messages pass.

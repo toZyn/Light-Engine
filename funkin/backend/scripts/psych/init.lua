@@ -532,6 +532,37 @@ function HScript.install(compat, api)
 		return false
 	end
 
+	-- Psych's own compiled layer, for scripts that need it. Separate from the
+	-- HScript path above because it runs Psych's code rather than interpreting
+	-- the script directly: `createScript` builds a FunkinLua, which registers the
+	-- 222 callbacks and then runs the source itself.
+	--
+	-- Lazy: most sessions never touch a Psych mod, and loading the shim costs a
+	-- 6,300-line chunk of table construction.
+	local function psychBindings()
+		return require("funkin.backend.scripts.psych.bindings")
+	end
+
+	-- Runs `source` as a Psych script. `script` is the engine's Script object,
+	-- when there is one; the Psych object is kept on it so the engine can reach
+	-- the callbacks it registered.
+	compat.psychRuntime = function(source, script)
+		local bindings = psychBindings()
+		local psychScript, err = bindings.runScript(compat, source)
+		if not psychScript and compat.psychWarn then
+			compat:psychWarn("Psych script failed: " .. tostring(err))
+		end
+		if script and psychScript then script.psychScript = psychScript end
+		return psychScript, err
+	end
+
+	compat.psychInstall = function(host)
+		local bindings = psychBindings()
+		local shim = bindings.loadShim(compat)
+		if not shim then return nil end
+		return shim.install(host)
+	end
+
 	return function(source)
 		local interpreter = getSession()
 		interpreter:eval(source)

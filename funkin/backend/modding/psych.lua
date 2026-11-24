@@ -70,10 +70,42 @@ function Psych.alias(key)
 	return key:match("^data/(characters/.+)$") or key:match("^data/(stages/.+)$")
 end
 
+-- Whether Psych `.lua` scripts run through Psych's own compiled code.
+--
+-- Off by default: the interpreter already runs these scripts, and this path is
+-- newer than it is. A mod or the console can turn it on for a song.
+local runtimeEnabled = false
+function Psych.usesRuntime()
+	return runtimeEnabled == true
+end
+function Psych.setRuntimeEnabled(enabled)
+	runtimeEnabled = enabled == true
+	return runtimeEnabled
+end
+
 local function loadHScript(path, script)
 	local source, err = love.filesystem.read(path)
 	if not source then return nil, err end
 	return function() script.hscriptCall, script.hscriptHas = script._psych.loadHScript(source) end
+end
+
+-- Runs a Psych `.lua` through Psych's own compiled `psychlua` code.
+--
+-- The engine can interpret these scripts directly, but Psych does not: it hands
+-- them to FunkinLua, which registers the callback surface and then runs the
+-- source. Going through Psych's code is what makes a mod see the same functions,
+-- the same argument handling and the same callback names it would have in Psych.
+--
+-- The engine runs the loader before `configure`, and configure is where the
+-- script gets its compatibility object, so a FunkinLua cannot exist yet. What
+-- comes back is the chunk the engine runs afterwards.
+local function loadPsychScript(path, script)
+	local source, err = love.filesystem.read(path)
+	if not source then return nil, err end
+	local Builders = require "funkin.backend.scripts.psych.bindings"
+	local loader, why = Builders.scriptLoader(nil)
+	if not loader then return nil, why end
+	return loader(script, source)
 end
 
 function Psych.loadScripts(state, handler, song, chart)
@@ -98,7 +130,12 @@ function Psych.loadScripts(state, handler, song, chart)
 			instance.psychValues = globals.initial(state, chart, root .. file)
 			for key, value in pairs(instance.psychValues) do instance:set(key, value) end
 			instance._psych = require("funkin.backend.scripts.compat").new(state, instance, true)
-		end, file:match("%.hx$") and loadHScript or nil)
+		end, file:match("%.hx$") and loadHScript
+			-- Opt-in while the Psych runtime is still being brought up: the engine's
+			-- own interpreter is what loads these scripts today, and routing every
+			-- mod through the new path before it is proven would regress them all.
+			-- `config.psychRuntime` selects Psych's own code instead.
+			or (file:match("%.lua$") and Psych.usesRuntime() and loadPsychScript or nil))
 		loading[file] = nil
 		if script.closed then return end
 		loaded[file] = script

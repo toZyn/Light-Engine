@@ -7,8 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-24
+
 ### Fixed
 
+- A Psych callback that answers `nil` no longer reports `-1` as its result.
+  `Convert.fromLua(lua, -1)` is how Psych retrieves a return value, and it was
+  being handed the index instead of reading the stack, so every nil-returning
+  callback looked like it returned a number.
+- A failed Psych shim load is no longer remembered for the rest of the process.
+  The shim needs engine globals that do not exist before a song starts, so
+  latching the first failure made the binding unreachable for the whole session.
+  The reload is attempted once, guarded by a flag: asking again on every retry
+  recursed until the loader ran out of stack.
+- The compiled Psych layer sees the four modules it talks to. `Lua_helper`,
+  `Lua`, `LuaL` and `Convert` now exist for it, so its callbacks register against
+  the engine instead of nowhere; loading it with a plain `load()` had left it
+  looking in the real globals, where `LuaL` is absent and Psych's constructor
+  died on its first line.
 - Arrow sprites no longer render in the wrong lane and the notefield update no
   longer dies with `attempt to perform arithmetic on field 'direction' (a nil
   value)`. `Note:setSkin` cleared `direction` for the length of a skin reload and
@@ -90,6 +106,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Light Engine can run Psych Engine 1.0.4's own Lua layer instead of a port of
+  it. Psych's `source/psychlua/*.hx` is compiled to Lua by
+  `tools/build_psych_lua.py` and shipped as
+  `funkin/backend/scripts/psych/shim.lua`; the job regenerates and commits it, so
+  the file cannot drift from the sources it is built from. All 222 callbacks
+  Psych registers are carried, and 230 including its local ones.
+- `funkin/backend/scripts/psych/bindings.lua` supplies the Lua API that compiled
+  layer expects. There is no second Lua state to marshal into — the engine's Haxe
+  values are already Lua values — so `Convert` is the identity and a callback
+  registry stands in for the C stack. What survives is the part that matters:
+  Psych's own argument handling, coercion and callback ordering.
+- `tools/check_psych_shim.py` runs the compiled shim in CI: it loads through the
+  engine's loader, registers the helper surface and checks one callback per
+  helper class by name. Compiling proved the source was expressible in Lua;
+  this proves the result executes.
+- `tests/engine/psych-bindings.lua` covers the bridge itself — return values,
+  `nil` answers, an unregistered name, a callback that raises, and two script
+  states not seeing each other's functions.
 - The remaining Psych 1.0.4 Lua functions: `doTweenX/Y/Angle/Alpha/Zoom`,
   `noteTweenX/Y/Angle/Alpha/Direction`, `pauseSound`, `resumeSound` and
   `precacheImage`/`precacheSound`/`precacheMusic`.
@@ -145,6 +179,12 @@ objects that Psych scripts read and write directly.
 ### Compatibility
 - Psych Engine 1.0.4 compatibility remains partial; HUD coverage is limited to
   the time bar, score text and botplay text.
+- The compiled Psych layer is opt-in (`Psych.setRuntimeEnabled(true)`). The
+  engine's interpreter still runs Psych `.lua` mods by default, because routing
+  every mod through the newer path before it is proven would regress the ones
+  that work today. Callbacks registered from `FunkinLua.new()` need a live song,
+  so the song-time half of the binding is reachable but not yet exercised end to
+  end — that is the next step for this path.
 - Validation used a Lua harness with LÖVE stubs, configured with LuaJIT
   standard library semantics (`table.pack`/`table.unpack` and `math.type`
   removed, matching the runtime), plus the existing native suites. A new

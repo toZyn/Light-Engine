@@ -1,0 +1,164 @@
+name: Psych Lua shim
+
+# Compiles Psych Engine's own Lua layer (source/psychlua/*.hx) to Lua, so the
+# engine can run Psych's real functions instead of a hand-written port of them.
+#
+# This job is deliberately standalone: it downloads Haxe and a Psych 1.0.4
+# checkout itself, so its failure tells you something about the shim and never
+# about the game build.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/psych-externs/**'
+      - 'tools/build_psych_lua.py'
+      - '.github/workflows/psych-lua.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools/psych-externs/**'
+      - 'tools/build_psych_lua.py'
+
+permissions:
+  contents: read
+
+env:
+  HAXE_VERSION: '4.3.7'
+  PSYCH_REF: '1.0.4'
+
+jobs:
+  compile:
+    name: Compile Psych 1.0.4 Lua layer to Lua
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the branch itself, not the merge ref. On pull_request the
+          # default checkout puts HEAD on refs/pull/N/merge, which is not an
+          # ancestor of the branch, so the shim commit could not be pushed.
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Haxe
+        run: |
+          set -euo pipefail
+          url="https://github.com/HaxeFoundation/haxe/releases/download/${HAXE_VERSION}/haxe-${HAXE_VERSION}-linux64.tar.gz"
+          curl -fsSL "$url" -o /tmp/haxe.tar.gz
+          mkdir -p "$HOME/haxe"
+          tar -xzf /tmp/haxe.tar.gz -C "$HOME/haxe" --strip-components=1
+          echo "$HOME/haxe" >> "$GITHUB_PATH"
+          "$HOME/haxe/haxe" --version
+
+      - name: Fetch Psych ${{ env.PSYCH_REF }} sources
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            "https://codeload.github.com/ShadowMario/FNF-PsychEngine/tar.gz/refs/tags/${PSYCH_REF}" \
+            -o /tmp/psych.tar.gz
+          mkdir -p /tmp/psych
+          tar -xzf /tmp/psych.tar.gz -C /tmp/psych --strip-components=1
+          ls /tmp/psych/source/psychlua | head
+
+      - name: Compile the shim
+        # A failing compile is a result, not noise: the error list is the exact
+        # set of engine surfaces that still have to be declared in
+        # tools/psych-externs/. The artifact is uploaded either way.
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          python3 tools/build_psych_lua.py --source /tmp/psych --out build/psych-lua \
+            2>&1 | tee build/psych-lua.log
+        continue-on-error: true
+
+      - name: Report the remaining surface gap
+        # Logs are not always readable from automation, so the missing-symbol
+        # list is emitted as annotations: that is the whole deliverable of a
+        # failed run, and it must survive however this job is inspected.
+        if: always()
+        run: |
+          set -euo pipefail
+          LOG=build/psych-lua.log
+          [ -f "$LOG" ] || { echo "::warning::no compiler log was produced"; exit 0; }
+          if [ -f build/psych-lua/psych-lua.lua ]; then
+            echo "::notice::compile succeeded"; exit 0
+          fi
+          python3 - "$LOG" <<'PY'
+          import re, sys, collections
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          lines = text.splitlines()
+
+          # GitHub keeps only the first ten annotations of a step, so one message
+          # per category beats one per symbol: nothing gets truncated away.
+          kinds = collections.defaultdict(set)
+          for line in lines:
+              for pat, label in (
+                  (r"Unknown identifier : (\w+)", 'identifier'),
+                  (r"Unknown type : (\w+)", 'type'),
+                  (r"has no field (\w+)", 'field'),
+                  (r"Module (\w+) does not define", 'module'),
+              ):
+                  m = re.search(pat, line)
+                  if m:
+                      kinds[label].add(m.group(1))
+                      break
+
+          errors = [l for l in lines if re.search(r"\.hx:\d+:", l)]
+          print(f"RESULT {len(errors)} errors, "
+                + ", ".join(f"{k}={len(v)}" for k, v in sorted(kinds.items())))
+
+          for label in sorted(kinds):
+              names = sorted(kinds[label])
+              print(f"::error title={label} ({len(names)})::{', '.join(names)}")
+
+          # The raw text is what actually explains the cause.
+          if errors:
+              joined = "\n".join(errors[:25])
+              print(f"::error title=first errors::{joined[:6000]}")
+          PY
+
+      - name: Check the output is loadable Lua
+        id: verify
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, sys, pathlib
+          src = pathlib.Path('build/psych-lua/psych-lua.lua').read_text()
+          assert 'lightPsychInstall' in src, 'bridge entry point missing'
+          registered = len(re.findall(r'add_callback', src))
+          print(f'compiled {len(src.splitlines())} lines, {registered} add_callback sites')
+          PY
+
+      - name: Run the shim against the bridge
+        # Compiling proves Psych's source is expressible in Lua. This proves the
+        # result actually runs: the generated file is loaded, its callbacks are
+        # registered through the bridge, and the well-known ones are checked.
+        #
+        # The harness lives in tools/ rather than inline: a heredoc inside a
+        # `run:` block is a YAML block scalar containing a multi-line Python
+        # program, and actionlint rejects the combination during engine-checks --
+        # where the failure surfaces as an unrelated job dying at step 5.
+        if: hashFiles('build/psych-lua/psych-lua.lua') != ''
+        run: |
+          set -euo pipefail
+          # No apt here: `apt-get update` on this image took longer than the job's
+          # whole budget and the run was cancelled at 20m. lupa is a wheel.
+          python3 -m pip install --quiet lupa
+          python3 tools/check_psych_shim.py build/psych-lua/psych-lua.lua
+
+      - name: Upload shim and compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psych-lua-shim
+          path: |
+            build/psych-lua/psych-lua.lua
+            build/psych-lua.log
+          if-no-files-found: warn
+          retention-days: 14
