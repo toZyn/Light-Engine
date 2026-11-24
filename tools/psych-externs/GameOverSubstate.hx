@@ -1,8 +1,9 @@
 /**
- * The game-over screen. It is a state like PlayState, which is why
- * LuaUtils.getTargetInstance can return either of them.
+ * The game-over screen, a substate of the play state. Both it and PlayState
+ * resolve to a FlxState, which is what lets LuaUtils.getTargetInstance return
+ * whichever is current.
  */
-extern class GameOverSubstate extends FlxState {
+extern class GameOverSubstate extends FlxSubState {
 	public static var instance:GameOverSubstate;
 	public static var characterName:String;
 	public static var loopSoundName:String;
