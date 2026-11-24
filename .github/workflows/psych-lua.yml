@@ -33,6 +33,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Check out the branch itself, not the merge ref. On pull_request the
+          # default checkout puts HEAD on refs/pull/N/merge, which is not an
+          # ancestor of the branch, so the shim commit could not be pushed.
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -231,6 +236,7 @@ jobs:
         run: |
           set -euo pipefail
           target=funkin/backend/scripts/psych/shim.lua
+          BRANCH="${{ github.head_ref || github.ref_name }}"
           cp build/psych-lua/psych-lua.lua "$target"
           echo "shim: $(wc -l < "$target") lines"
           # Stage first: `git diff` says nothing about an untracked file, which is
@@ -246,7 +252,7 @@ jobs:
           git commit -q -m "Regenerate the Psych Lua shim
 
           Built from Psych ${{ env.PSYCH_REF }} source/psychlua by this workflow."
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+          git push origin "HEAD:${BRANCH}"
           echo "::notice title=shim::committed $(git rev-parse --short HEAD)"
 
       - name: Upload shim and compiler log
