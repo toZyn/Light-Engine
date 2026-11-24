@@ -33,7 +33,6 @@ extern class PlayState extends MusicBeatState {
 	public var healthBar:Bar;
 	public var timeBar:Bar;
 	public var scoreText:FlxText;
-	public var persistentUpdate:Bool;
 	public var curStage:String;
 	public var isDead:Bool;
 

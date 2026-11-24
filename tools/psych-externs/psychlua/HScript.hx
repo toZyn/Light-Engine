@@ -8,6 +8,7 @@ extern class HScript {
 	public var origin:String;
 	public var modFolder:String;
 	public function new(?path:String, ?name:String):Void;
+	public static function implement(funk:Dynamic):Void;
 	public function destroy():Void;
 	public function call(func:String, ?args:Array<Dynamic>):Dynamic;
 	public function set(variable:String, data:Dynamic):Void;
