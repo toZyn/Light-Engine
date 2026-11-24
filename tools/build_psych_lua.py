@@ -55,6 +55,10 @@ def check_haxe(haxe: str) -> str:
     return version
 
 
+# Imports that resolve against Haxe's stdlib or the externs, not the engine.
+ENGINE_FREE_IMPORT = re.compile(r"\s*import\s+(haxe\.|Type\.|Std\.)")
+
+
 def stage(source: Path, work: Path) -> None:
     """Copy the psychlua sources, dropping the imports that point into the engine.
 
@@ -75,9 +79,14 @@ def stage(source: Path, work: Path) -> None:
         lines = body.splitlines()
         # `package` has to stay first; imports go right after it.
         decl = next((l for l in lines if re.match(r"\s*package\s", l)), "package psychlua;")
+        # Keep the imports that belong to Haxe's own standard library: those
+        # types exist, and dropping them only invents errors. Everything that
+        # points into the engine is still stripped, so the compiler keeps
+        # naming the engine surface instead of stopping at the import.
         body_lines = [l for l in lines
-                      if not re.match(r"\s*import\s", l)
-                      and not re.match(r"\s*package\s", l)]
+                      if not re.match(r"\s*package\s", l)
+                      and not (re.match(r"\s*import\s", l)
+                               and not ENGINE_FREE_IMPORT.match(l))]
         # No imports are added. Haxe resolves a bare type name first in the
         # file's own package, then at the root of the class path, which is
         # exactly where the externs live -- so `Paths` and `FlxSprite` in
