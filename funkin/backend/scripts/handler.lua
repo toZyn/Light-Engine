@@ -150,7 +150,14 @@ function ScriptsHandler:preparePsychEvent(event)
 	local offset
 	for _, script in ipairs(self.scripts) do
 		if script._psych then
-			script:call("onEventPushed", event.e, value1 or "", value2 or "", event.t)
+			-- Through the bridge: `script:call` runs the engine's interpreter and a
+			-- compiled script's own callbacks would never see these.
+			if script.psychScript and script.psychScript.call then
+				script.psychScript:call("onEventPushed",
+					{event.e, value1 or "", value2 or "", event.t, length = 4})
+			else
+				script:call("onEventPushed", event.e, value1 or "", value2 or "", event.t)
+			end
 			if not offset then
 				-- `eventEarlyTrigger` is a Psych callback that is not in the
 				-- compatibility layer's name map, because the engine calls it here
