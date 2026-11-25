@@ -144,8 +144,18 @@ check('a Psych script runs through the compiled layer', function()
   local before = readGlobal('sections')
   psych:call('onBeatHit', {length = 0})
   psych:call('onSectionHit', {length = 0})
+  local function typeOfGlobal(name)
+   return shim.scope.Lua.type(psych.lua, 0)
+  end
+  local g = {}
+  for _, n in ipairs({'onBeatHit', 'onSectionHit', 'onCreate'}) do
+   g[n] = tostring(readGlobal(n))
+  end
+  local status = psych:call('onBeatHit', {length = 0})
   print('PROBE before=' .. tostring(before)
-   .. ' beat=' .. tostring(getter('beats')) .. ' after=' .. tostring(getter('sections')))
+   .. ' beat=' .. tostring(getter('beats')) .. ' after=' .. tostring(getter('sections'))
+   .. ' onBeatHit=' .. g.onBeatHit .. ' onSectionHit=' .. g.onSectionHit
+   .. ' status=' .. tostring(status) .. ' closed=' .. tostring(psych.closed))
  end
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
