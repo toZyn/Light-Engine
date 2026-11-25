@@ -11,7 +11,7 @@
 -- because the engine itself runs on LuaJIT. So the boundary collapses:
 --
 --   * `Lua_helper.add_callback` records the function in a registry;
---   * `Convert.toLua`/`fromLua` are the identity;
+--   * `Convert.toLua` pushes, `Convert.fromLua` reads back the top of the stack;
 --   * `Lua.getglobal` looks in that registry, `Lua.pcall` calls what it found.
 --
 -- What is left is the part that matters: Psych's argument handling, its
@@ -137,7 +137,12 @@ function PsychBindings.installLuaApi(scope, onMissing)
 	Lua.tostring = function(state, index)
 		local registry = registryFor(state)
 		local entry = registry.stack[#registry.stack]
-		if not entry or entry.value == nil then return nil end
+		if not entry or entry.value == nil then
+			-- A failed call leaves a nil on the stack and the message in the
+			-- registry; this is the call that is supposed to print that message.
+			if registry.error then return tostring(registry.error) end
+			return nil
+		end
 		-- A status code is not the value that was asked about. Psych prints whatever
 		-- comes back as the error when loading fails, so answering with the status
 		-- made every load failure report itself as a number and nothing else. The
@@ -160,14 +165,23 @@ function PsychBindings.installLuaApi(scope, onMissing)
 	-- the caller, not the stack, because Psych already has them as Lua values.
 	Lua.pcall = function(state, nargs, nresults, errfunc)
 		local registry = registryFor(state)
-		local entry = registry.stack[#registry.stack]
-		if not entry then return Lua.LUA_ERRRUN end
-		local fn = entry.value
+		local count = (nargs or 0) + 1
+		local stack = registry.stack
+		-- Psych calls this after pushing the function and then each argument, so the
+		-- frame is the last nargs+1 entries: the function first, then its arguments.
+		-- Reading the top of the stack as the function is what made every call pass
+		-- the last argument as the callee.
+		if #stack < count then return Lua.LUA_ERRRUN end
+		local frame = {}
+		for index = #stack - count + 1, #stack do frame[#frame + 1] = stack[index] end
+		for _ = 1, count do stack[#stack] = nil end
+		local fn = frame[1] and frame[1].value
 		if type(fn) ~= "function" then return Lua.LUA_ERRRUN end
-		local args = registry.pendingArgs or {}
+		local args = {}
+		for index = 2, #frame do args[#args + 1] = frame[index].value end
 		-- LuaJIT has `unpack`; 5.2+ moved it onto `table`.
 		local expand = unpack or rawget(table, "unpack")
-		local results = {pcall(fn, expand(args, 1, nargs or #args))}
+		local results = {pcall(fn, expand(args, 1, #args))}
 		if not results[1] then
 			registry.error = results[2]
 			registry.stack[#registry.stack + 1] = {value = nil}
@@ -239,7 +253,15 @@ function PsychBindings.installLuaApi(scope, onMissing)
 	-- callback's return value. Passing the index through unchanged returned the
 	-- index itself (-1), which every callback then reported as its result.
 	local Convert = {__name__ = "Convert"}
-	Convert.toLua = function(_, value) return identity(value) end
+	-- `toLua` is Psych's "push this value for the following Lua call". `set()` is
+	-- `Convert.toLua(lua, data); Lua.setglobal(lua, name);`, so a toLua that only
+	-- returned its argument left the stack empty and setglobal stored nil -- every
+	-- global the constructor and every setVar went in as nil, silently.
+	Convert.toLua = function(state, value)
+		local registry = registryFor(state)
+		registry.stack[#registry.stack + 1] = {value = value}
+		return value
+	end
 	Convert.fromLua = function(state, index)
 		if type(index) ~= "number" then return index end
 		local registry = registryFor(state)
