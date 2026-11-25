@@ -124,10 +124,6 @@ check('a Psych script runs through the compiled layer', function()
  runScript('onCreate')
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
 
- print('PROBE setVarType=' .. tostring(readGlobal('setVarType'))
-  .. ' setOk=' .. tostring(readGlobal('setOk')) .. ' setErr=' .. tostring(readGlobal('setErr'))
-  .. ' getOk=' .. tostring(readGlobal('getOk')) .. ' getValue=' .. tostring(readGlobal('getValue')))
-
  -- setVar/getVar is how a mod publishes state for other scripts and for the engine.
  -- It is also the only signal that the helper functions were installed on the script
  -- object: such a script constructs cleanly and then dies on its first helper call.
@@ -137,28 +133,6 @@ check('a Psych script runs through the compiled layer', function()
  assert(type(getter) == 'function', 'getVar was not registered on the script')
  local stored = getter('createdFlag')
  assert(stored == 'yes', 'setVar did not reach the store getVar reads, got ' .. tostring(stored))
-
- -- Diagnostic: does the engine-side call reach a plain callback, and what does the
- -- shim report for it?
- do
-  local before = readGlobal('sections')
-  psych:call('onBeatHit', {length = 0})
-  psych:call('onSectionHit', {length = 0})
-  local function typeOfGlobal(name)
-   return shim.scope.Lua.type(psych.lua, 0)
-  end
-  local g = {}
-  for _, n in ipairs({'onBeatHit', 'onSectionHit', 'onCreate'}) do
-   g[n] = tostring(readGlobal(n))
-  end
-  local status = psych:call('onBeatHit', {length = 0})
-  local callbackError = shim.scope.Lua.readerror(psych.lua)
-  print('PROBE before=' .. tostring(before)
-   .. ' beat=' .. tostring(getter('beats')) .. ' after=' .. tostring(getter('sections'))
-   .. ' onBeatHit=' .. g.onBeatHit .. ' onSectionHit=' .. g.onSectionHit
-   .. ' status=' .. tostring(status) .. ' closed=' .. tostring(psych.closed)
-   .. ' err=' .. tostring(callbackError))
- end
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
  --    PlayState:onSectionHit; the engine raised no such signal at all.
