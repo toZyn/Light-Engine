@@ -431,6 +431,12 @@ function onEvent(name:String, a:String, b:String) {
    print('PROBE addLuaScript=' .. tostring(vars.addLuaScript('extra/helper'))
     .. ' findScript=' .. tostring(scripts.scripts[1].psychScript.findScript
       and scripts.scripts[1].psychScript:findScript('extra/helper')))
+   do
+    local psych = scripts.scripts[1].psychScript
+    local shim = require('funkin.backend.scripts.psych.bindings').loadShim(scripts.scripts[1]._psych)
+    print('PROBE error=' .. tostring(shim.scope.Lua.readerror(psych.lua))
+     .. ' pushedTime=' .. tostring(vars.pushedTime))
+   end
    assert(vars.addLuaScript('extra/helper'))
    assert(vars.isRunning('extra/helper.lua'))
    assert(vars.callScript('extra/helper', 'sum', {4, 5}) == 9)
