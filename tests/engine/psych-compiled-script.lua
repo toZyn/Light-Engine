@@ -112,6 +112,14 @@ check('a Psych script runs through the compiled layer', function()
  local function runScript(fn)
   psych:call(fn, {})
  end
+ -- A script's globals live in its own Lua state, not in this file's environment, so
+ -- they are read through the shim's Lua module rather than looked up here.
+ local shim = require('funkin.backend.scripts.psych.bindings').loadShim(compat)
+ assert(shim and shim.scope and shim.scope.Lua, 'the shim exposes no Lua module')
+ local Lua = shim.scope.Lua
+ local function readGlobal(name)
+  return Lua.readglobal(psych.lua, name)
+ end
  runScript('onCreate')
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
  -- setVar/getVar is how a mod publishes state for other scripts and for the engine;
