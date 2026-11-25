@@ -22,6 +22,9 @@
 
 local PsychBindings = {}
 
+-- Which state the MusicBeatState store currently points at.
+local storeOwner
+
 -- Registries. One table of callbacks per script, so two scripts cannot see each
 -- other's functions, which is the isolation a real Lua state would give.
 local registries = setmetatable({}, {__mode = "k"})
@@ -636,7 +639,11 @@ local function psychMusicBeatState(shared, state)
 	local store
 	return {
 		getVariables = function()
+			-- Until there is a state to back it, there is no store. Creating an empty
+			-- one instead is how the very first connection -- made before any state
+			-- existed -- pinned every later write to a table nothing could read.
 			if store then return store end
+			if type(state) ~= "table" then return { h = {} } end
 			local newMap = shared.__haxe_ds_StringMap
 			if type(newMap) == "table" and type(newMap.new) == "function" then
 				store = newMap.new()
@@ -648,10 +655,8 @@ local function psychMusicBeatState(shared, state)
 			-- published a value through setVar could not be read by getProperty or by
 			-- any engine test, and anything the engine published was invisible to the
 			-- mod. That split is what every "the value is nil" report came down to.
-			if type(state) == "table" then
-				state.psychVariables = state.psychVariables or {}
-				store.h = state.psychVariables
-			end
+			state.psychVariables = state.psychVariables or {}
+			store.h = state.psychVariables
 			return store
 		end,
 		getState = function()
@@ -799,7 +804,12 @@ function PsychBindings.exposeGame(compat)
 	-- Re-created for each connection, not once per process: the store belongs to the
 	-- state being played. Created once, the first state's table was reused for the
 	-- rest of the session -- a new song writing into the previous song's variables.
-	if state ~= nil then globals.MusicBeatState = psychMusicBeatState(globals, state) end
+	-- Rebuilt whenever the state changes: the store belongs to the state being
+	-- played, so a new connection must not inherit the previous one's table.
+	if state ~= nil and state ~= storeOwner then
+		storeOwner = state
+		globals.MusicBeatState = psychMusicBeatState(globals, state)
+	end
 	if globals.FileSystem == nil then
 		local filesystem = psychFileSystem()
 		if filesystem then globals.FileSystem = filesystem end
