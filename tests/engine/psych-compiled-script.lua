@@ -14,7 +14,11 @@
 local SOURCE = [[
 function onCreate()
   created = true
-  setVar('createdFlag', 'yes')
+  setVarType = type(setVar)
+  local ok, err = pcall(function() setVar('createdFlag', 'yes') end)
+  setOk, setErr = ok, tostring(err)
+  local ok2, value = pcall(function() return getVar('createdFlag') end)
+  getOk, getValue = ok2, tostring(value)
 end
 
 function onUpdatePost(elapsed)
@@ -119,6 +123,10 @@ check('a Psych script runs through the compiled layer', function()
  -- 3. The mod's own code runs.
  runScript('onCreate')
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
+
+ print('PROBE setVarType=' .. tostring(readGlobal('setVarType'))
+  .. ' setOk=' .. tostring(readGlobal('setOk')) .. ' setErr=' .. tostring(readGlobal('setErr'))
+  .. ' getOk=' .. tostring(readGlobal('getOk')) .. ' getValue=' .. tostring(readGlobal('getValue')))
 
  -- setVar/getVar is how a mod publishes state for other scripts and for the engine.
  -- It is also the only signal that the helper functions were installed on the script
