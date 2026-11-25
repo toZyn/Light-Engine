@@ -652,14 +652,19 @@ local function psychMusicBeatState(shared, state)
 		return type(owner) == "table" and owner or nil
 	end
 	local function ensure()
-		if store then return store end
 		local owner = currentState()
-		if owner == nil then return nil end
+		if owner == nil then return store end
+		-- A store created before its owner existed -- during construction -- is not
+		-- the store the mod will write to; re-anchor it once there is a state, even
+		-- if something was already created.
+		if store and store.h == owner.psychVariables then return store end
+		if store == nil then
 		local newMap = shared.__haxe_ds_StringMap
 		if type(newMap) == "table" and type(newMap.new) == "function" then
 			store = newMap.new()
 		else
 			store = { h = {} }
+		end
 		end
 		owner.psychVariables = owner.psychVariables or {}
 		store.h = owner.psychVariables
