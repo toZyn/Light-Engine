@@ -548,6 +548,37 @@ local function psychIdentity(state)
 	}
 end
 
+--- `MusicBeatState`, the store Psych keeps script variables in.
+--
+-- 79 call sites in the compiled layer go through `MusicBeatState.getVariables()`,
+-- which is where setVar/getVar read and write, and `getState()` is how the
+-- reflection helpers resolve an object by name. The engine's states have no such
+-- static, so those 79 call sites had nothing to talk to.
+--
+-- One store per game, created through the compiled layer's own StringMap so the
+-- values it holds are the ones Psych's `tnull` handling expects.
+local function psychMusicBeatState(shared)
+	local store
+	return {
+		getVariables = function()
+			if store then return store end
+			local newMap = shared.__haxe_ds_StringMap
+			if type(newMap) == "table" and type(newMap.new) == "function" then
+				store = newMap.new()
+			else
+				store = { h = {} }
+			end
+			return store
+		end,
+		getState = function()
+			return game and game.getState and game.getState() or nil
+		end,
+		switchState = function(state)
+			if game and game.switchState then return game.switchState(state) end
+		end,
+	}
+end
+
 --- `FileSystem`, over the game's filesystem.
 --
 -- Psych asks whether a script exists before deciding whether to load it by path or
@@ -677,6 +708,9 @@ function PsychBindings.exposeGame(compat)
 	local note = globals.Note
 	if type(note) == "table" and note.getNoteSkinPostfix == nil then
 		note.getNoteSkinPostfix = function() return "" end
+	end
+	if globals.MusicBeatState == nil then
+		globals.MusicBeatState = psychMusicBeatState(globals)
 	end
 	if globals.FileSystem == nil then
 		local filesystem = psychFileSystem()
