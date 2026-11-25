@@ -339,6 +339,35 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		return nil
 	end
 
+	-- Two of the modules Psych's constructor calls were not part of the compile:
+	-- `psychlua.HScript` (runHaxeCode / runHaxeFunction) and `psychlua.CustomSubstate`
+	-- (mod-defined substates). Python's MODULES list in tools/build_psych_lua.py
+	-- leaves them out because they are a different feature, not because they are
+	-- small, but the constructor calls `implement` on both unconditionally.
+	--
+	-- Providing an `implement` that registers nothing keeps the constructor working
+	-- for mods that never touch those features, and leaves a mod that does use them
+	-- failing on the function's own name -- `runHaxeCode` is nil -- instead of on a
+	-- package that does not exist. Implementing them is separate work, not a gap in
+	-- this path.
+	local function unsupportedModule(name)
+		return {
+			implement = function() end,
+			__lightEngineUnsupported = name,
+		}
+	end
+	for _, entry in ipairs({ { "HScript", "runHaxeCode / runHaxeFunction" },
+		{ "CustomSubstate", "mod-defined substates" } }) do
+		local package = shared.psychlua
+		local seen = type(package) == "table" and package[entry[1]]
+		if seen == nil then
+			shared.psychlua[entry[1]] = unsupportedModule(entry[2])
+			if entry[1] == "CustomSubstate" then
+				shared.CustomSubstate = shared.psychlua.CustomSubstate
+			end
+		end
+	end
+
 	-- A load that failed for want of the engine globals is retried once the host
 	-- can supply the compiled source. Guarded by a flag rather than by "no source
 	-- yet", which is true on exactly the retry as well.
