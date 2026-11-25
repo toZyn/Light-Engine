@@ -109,8 +109,11 @@ check('a Psych script runs through the compiled layer', function()
  --    helper functions were installed on the script object: a script without them
  --    constructs cleanly and then fails on its first helper call, which is what a
  --    mod would have hit.
+ --
+ --    The argument list has to be a Haxe array ({length = 0}), not a Lua table:
+ --    Psych walks it by .length before calling, and an empty Lua table has none.
  local function runScript(fn)
-  psych:call(fn, {})
+  psych:call(fn, {length = 0})
  end
  -- A script's globals live in its own Lua state, not in this file's environment, so
  -- they are read through the shim's Lua module rather than looked up here.
