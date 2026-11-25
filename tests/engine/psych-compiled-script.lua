@@ -2,15 +2,15 @@
 -- real PlayState can be built.
 --
 -- Runs a Psych `.lua`, on disk, through Psych's own compiled layer -- inside a real
--- PlayState, and then calls back into it the way the engine does.
+-- PlayState -- and calls back into it the way the engine does.
 --
 -- This is the test that was missing. The binding had been verified against a fake
 -- host and a synthetic state, which proved the registry worked and proved nothing
 -- about whether a mod could run: FunkinLua.new() reads a live song, and no test had
--- one. Every failure here so far named a real missing piece -- StringTools.trim
--- receiving nil, PlayState.instance absent, Paths.image not existing, FlxG.sound,
--- Song, the note-skin postfix -- and each would have broken a shipped mod the same
--- way.
+-- one. Every failure here named a real missing piece -- StringTools.trim receiving
+-- nil, PlayState.instance, Paths.image, FlxG.sound, Song, the note-skin postfix,
+-- psychlua, FileSystem, MusicBeatState -- and each would have broken a shipped mod
+-- the same way.
 local SOURCE = [[
 function onCreate()
   created = true
@@ -83,8 +83,9 @@ check('a Psych script runs through the compiled layer', function()
   error('the compiled layer could not run a Psych script: ' .. tostring(script.psychError))
  end
 
- -- 1. The constructor saw a live song. When it does not, it silently skips the whole
- --    song-time half of its setup, which is the failure that looked like success.
+ -- 1. The constructor saw a live song and registered the script where the engine
+ --    looks. When it does not see a song it silently skips the whole song-time half
+ --    of its setup, which is the failure that looked like success.
  assert(PlayState.instance == state, 'the constructor did not see the running state')
  assert(state.luaArray ~= nil, 'the script was never registered on luaArray')
  -- Psych reads this as a Haxe Array: zero-based with a .length field. Walking it
@@ -96,72 +97,49 @@ check('a Psych script runs through the compiled layer', function()
  end
  assert(registered, 'the script exists but is not in luaArray, so the engine will never call it')
 
- -- 2. The constructor ran. Its published globals go through Convert.toLua, which in
- --    this layer is the identity and does not write to the script's environment, so
- --    reading them here would measure the shim's plumbing rather than the mod. What
- --    matters for a mod is that construction finished and left a live script.
+ -- 2. Construction finished and left a live script, named by its path.
  assert(psych.lua ~= nil, 'the compiled script has no Lua state')
  assert(psych.callbacks ~= nil, 'the constructor registered no callbacks')
  assert(psych.scriptName == PATH, 'the script name is not the path Psych was given: '
   .. tostring(psych.scriptName))
 
- -- 3. The mod's own code runs and writes through setVar. This is the check that the
- --    helper functions were installed on the script object: a script without them
- --    constructs cleanly and then fails on its first helper call, which is what a
- --    mod would have hit.
- --
- --    The argument list has to be a Haxe array ({length = 0}), not a Lua table:
- --    Psych walks it by .length before calling, and an empty Lua table has none.
- local function runScript(fn)
-  psych:call(fn, {length = 0})
- end
  -- A script's globals live in its own Lua state, not in this file's environment, so
- -- they are read through the shim's Lua module rather than looked up here.
+ -- they are read through the shim's Lua module. The argument list below has to be a
+ -- Haxe array ({length = 0}): Psych walks it by .length before calling.
  local shim = require('funkin.backend.scripts.psych.bindings').loadShim(compat)
  assert(shim and shim.scope and shim.scope.Lua, 'the shim exposes no Lua module')
  local Lua = shim.scope.Lua
  local function readGlobal(name)
   return Lua.readglobal(psych.lua, name)
  end
+ local function runScript(fn)
+  psych:call(fn, {length = 0})
+ end
+
+ -- 3. The mod's own code runs.
  runScript('onCreate')
- do
-  -- Diagnostic: call the registered setVar the way a script does.
-  local setter = readGlobal('setVar')
-  local store = require('funkin.backend.scripts.psych.bindings')
-  local ok, err = pcall(setter, 'probeKey', 'probeValue')
-  local getter2 = readGlobal('getVar')
-  print('PROBE setterRan=' .. tostring(ok) .. ' err=' .. tostring(err)
-   .. ' readBack=' .. tostring(getter2 and getter2('probeKey')))
- end
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
- -- setVar/getVar is how a mod publishes state for other scripts and for the engine;
- -- reaching it proves the helper functions were installed on the script object.
- -- readGlobal consults the callbacks first, which is what the script itself sees:
- -- getVar is a callback, setVar is one too, and the pair round-trips through the
- -- shared variable store. Reading createdFlag as a global is wrong -- Psych's setVar
- -- does not create a global, it writes to the store getVar reads.
+
+ -- setVar/getVar is how a mod publishes state for other scripts and for the engine.
+ -- It is also the only signal that the helper functions were installed on the script
+ -- object: such a script constructs cleanly and then dies on its first helper call.
+ -- setVar does not create a global -- it writes to the store getVar reads -- so this
+ -- is a round trip, not a global lookup.
  local getter = readGlobal('getVar')
- do
-  local reg = require('funkin.backend.scripts.psych.bindings')
-  print('PROBE lua=' .. tostring(psych.lua) .. ' ncallbacks=' .. tostring(type(getter)))
- end
  assert(type(getter) == 'function', 'getVar was not registered on the script')
- print('PROBE getter=' .. tostring(getter('createdFlag'))
-  ..' sections=' .. tostring(readGlobal('sections'))
-  ..' beats=' .. tostring(readGlobal('beats')))
- assert(getter('createdFlag') == 'yes', 'setVar did not reach the store getVar reads')
+ local stored = getter('createdFlag')
+ assert(stored == 'yes', 'setVar did not reach the store getVar reads, got ' .. tostring(stored))
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
- --    PlayState:onSectionHit; the engine had no such wiring at all.
+ --    PlayState:onSectionHit; the engine raised no such signal at all.
  runScript('onSectionHit')
- assert(readGlobal('sections') == 1, 'onSectionHit did not reach the script')
+ assert(getter('sections') == 1, 'onSectionHit did not reach the script')
 
- -- 5. Per-frame globals are numbers by the time a mod does arithmetic on them, which
- --    is the original user-visible failure: "attempt to perform arithmetic on a nil
- --    value" inside onStepHit.
+ -- 5. The playhead globals are numbers by the time a mod does arithmetic on them,
+ --    which is the original user-visible failure: "attempt to perform arithmetic on
+ --    a nil value" inside onStepHit.
  runScript('onStepHit')
  runScript('onBeatHit')
- assert(readGlobal('beats') == 1, 'onBeatHit did not reach the script')
- assert(readGlobal('fine') == tonumber(readGlobal('curDecStep')) or readGlobal('fine') ~= nil,
-  'curDecStep arithmetic did not run, so the playhead globals are still nil')
+ assert(getter('beats') == 1, 'onBeatHit did not reach the script')
+ assert(readGlobal('fine') ~= nil, 'onStepHit did not run, so curDecStep is still nil')
 end)
