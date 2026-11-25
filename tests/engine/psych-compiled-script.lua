@@ -133,6 +133,9 @@ check('a Psych script runs through the compiled layer', function()
  -- does not create a global, it writes to the store getVar reads.
  local getter = readGlobal('getVar')
  assert(type(getter) == 'function', 'getVar was not registered on the script')
+ print('PROBE getter=' .. tostring(getter('createdFlag'))
+  ..' sections=' .. tostring(readGlobal('sections'))
+  ..' beats=' .. tostring(readGlobal('beats')))
  assert(getter('createdFlag') == 'yes', 'setVar did not reach the store getVar reads')
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
