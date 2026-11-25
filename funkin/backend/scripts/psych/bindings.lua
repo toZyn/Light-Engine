@@ -796,9 +796,10 @@ function PsychBindings.exposeGame(compat)
 	if type(note) == "table" and note.getNoteSkinPostfix == nil then
 		note.getNoteSkinPostfix = function() return "" end
 	end
-	if globals.MusicBeatState == nil then
-		globals.MusicBeatState = psychMusicBeatState(globals, state)
-	end
+	-- Re-created for each connection, not once per process: the store belongs to the
+	-- state being played. Created once, the first state's table was reused for the
+	-- rest of the session -- a new song writing into the previous song's variables.
+	if state ~= nil then globals.MusicBeatState = psychMusicBeatState(globals, state) end
 	if globals.FileSystem == nil then
 		local filesystem = psychFileSystem()
 		if filesystem then globals.FileSystem = filesystem end
