@@ -138,6 +138,14 @@ function PsychBindings.installLuaApi(scope, onMissing)
 		local registry = registryFor(state)
 		local entry = registry.stack[#registry.stack]
 		if not entry or entry.value == nil then return nil end
+		-- A status code is not the value that was asked about. Psych prints whatever
+		-- comes back as the error when loading fails, so answering with the status
+		-- made every load failure report itself as a number and nothing else. The
+		-- real message is in the registry.
+		if type(index) == "number" and index ~= -1 and type(entry.value) == "number" then
+			if registry.error then return tostring(registry.error) end
+			return nil
+		end
 		return tostring(entry.value)
 	end
 
@@ -203,10 +211,23 @@ function PsychBindings.installLuaApi(scope, onMissing)
 		return Lua.LUA_OK
 	end
 	LuaL.dofile = function(state, path)
-		local handle = io and io.open and io.open(path, "r")
-		if not handle then return Lua.LUA_ERRRUN end
-		local source = handle:read("*a")
-		handle:close()
+		-- A mod's scripts live in the game's filesystem -- a mounted archive in a
+		-- packaged build, the save directory when a mod is installed at runtime.
+		-- `io.open` only sees the real disk, so reading through LÖVE first is what
+		-- makes a mod script load at all outside a source checkout.
+		local source
+		if love and love.filesystem and love.filesystem.read then
+			source = love.filesystem.read(path)
+		end
+		if not source then
+			local handle = io and io.open and io.open(path, "r")
+			if not handle then
+				registryFor(state).error = "could not read script: " .. tostring(path)
+				return Lua.LUA_ERRRUN
+			end
+			source = handle:read("*a")
+			handle:close()
+		end
 		return LuaL.dostring(state, source)
 	end
 	LuaL.loadstring = LuaL.dostring
