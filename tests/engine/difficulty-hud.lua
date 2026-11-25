@@ -425,6 +425,8 @@ function onEvent(name:String, a:String, b:String) {
     .. ' err=' .. tostring(scripts.scripts[1].psychError)
     .. ' nscripts=' .. tostring(#scripts.scripts))
    assert(vars.created and vars.lastEvent == 'Test:one:two')
+   print('PROBE pushedTime=' .. tostring(vars.pushedTime) .. ' countdown=' .. tostring(vars.countdownCounter)
+    .. ' onEventPushed=' .. tostring(vars.onEventPushed) .. ' onCountdownTick=' .. tostring(vars.onCountdownTick))
    assert(vars.pushedTime == 300 and vars.countdownCounter == 0)
    assert(vars.addLuaScript('extra/helper'))
    assert(vars.isRunning('extra/helper.lua'))
