@@ -417,22 +417,6 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		return nil
 	end
 
-	-- `cast value:String` in Haxe turns a number into its string form, so
-	-- `argStr.length > n` is false for a non-string and the function returns the
-	-- value untouched. The compiled output keeps the number and takes `#argStr`,
-	-- which raises in Lua -- so `setVar('beats', 1)` failed before storing anything,
-	-- and every numeric variable a mod tried to publish was lost. Returning the
-	-- value for a non-string is what the cast does.
-	local reflection = shared.__psychlua_ReflectionFunctions
-	if type(reflection) == "table" and type(reflection.parseSingleInstance) == "function" then
-		local parse = reflection.parseSingleInstance
-		reflection.parseSingleInstance = function(value)
-			local kind = type(value)
-			if kind ~= "string" and kind ~= "table" then return value end
-			return parse(value)
-		end
-	end
-
 	-- Two of the modules Psych's constructor calls were not part of the compile:
 	-- `psychlua.HScript` (runHaxeCode / runHaxeFunction) and `psychlua.CustomSubstate`
 	-- (mod-defined substates). Python's MODULES list in tools/build_psych_lua.py
@@ -470,6 +454,24 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		local retry = compat.psychShimSourceFor()
 		if retry then
 			return PsychBindings.runShim(compat, retry)
+		end
+	end
+
+	-- `cast value:String` in Haxe turns a number into its string form, so
+	-- `argStr.length > n` is false for a non-string and the value is returned
+	-- untouched. The compiled output keeps the number and takes `#argStr`, which
+	-- raises in Lua -- so `setVar('beats', 1)` failed before storing anything and
+	-- every numeric variable a mod published was lost, while string values worked.
+	--
+	-- Applied after the chunk has run, because the function does not exist before
+	-- it defines itself.
+	local reflection = shared.__psychlua_ReflectionFunctions
+	if type(reflection) == "table" and type(reflection.parseSingleInstance) == "function" then
+		local parse = reflection.parseSingleInstance
+		reflection.parseSingleInstance = function(value)
+			local kind = type(value)
+			if kind ~= "string" and kind ~= "table" then return value end
+			return parse(value)
 		end
 	end
 
