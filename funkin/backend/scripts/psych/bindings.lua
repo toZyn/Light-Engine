@@ -548,6 +548,36 @@ local function psychIdentity(state)
 	}
 end
 
+--- `FileSystem`, over the game's filesystem.
+--
+-- Psych asks whether a script exists before deciding whether to load it by path or
+-- to treat the argument as source. The engine has no FileSystem class, so that check
+-- was the thing standing between a mod file and its own code -- and, because it is
+-- read first, the failure said "attempt to index FileSystem" rather than naming the
+-- script.
+--
+-- Every path a mod uses is a path in the game's filesystem, not on the real disk.
+local function psychFileSystem()
+	local filesystem = love and love.filesystem
+	if not filesystem then return nil end
+	return {
+		exists = function(path)
+			if type(path) ~= "string" then return false end
+			local info = filesystem.getInfo(path)
+			return info ~= nil
+		end,
+		readDirectory = function(path)
+			local items = filesystem.getDirectoryItems(path) or {}
+			local array = { length = #items }
+			for index, name in ipairs(items) do array[index - 1] = name end
+			return array
+		end,
+		deleteFile = function(path)
+			return filesystem.remove(path)
+		end,
+	}
+end
+
 --- Builds the `FlxG` surface Psych's constructor and helpers read.
 --
 -- Flixel's global game state is not a thing this engine has: there is no FlxG table,
@@ -647,6 +677,10 @@ function PsychBindings.exposeGame(compat)
 	local note = globals.Note
 	if type(note) == "table" and note.getNoteSkinPostfix == nil then
 		note.getNoteSkinPostfix = function() return "" end
+	end
+	if globals.FileSystem == nil then
+		local filesystem = psychFileSystem()
+		if filesystem then globals.FileSystem = filesystem end
 	end
 	-- Flixel's global surface, built per call because it points at live objects.
 	local state = compat and compat.state
