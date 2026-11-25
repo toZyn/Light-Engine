@@ -532,6 +532,26 @@ function PsychBindings.bindVariables(script, luaState)
 	})
 end
 
+--- Copies what a mod's script defined back into `script.variables`.
+--
+-- The read-through in bindVariables covers keys that were never set on `variables`,
+-- but anything the compatibility layer already published is set there and would
+-- shadow the script's own value -- a mod that wrote `countdownCounter` in a callback
+-- stayed invisible behind the initial snapshot. The engine calls sync after each
+-- callback, which is exactly when the script's values are new.
+function PsychBindings.syncVariables(script)
+	if type(script) ~= "table" or script.variables == nil then return end
+	local luaState = script.psychScript and script.psychScript.lua
+	if luaState == nil then return end
+	local registry = registryFor(luaState)
+	local variables = script.variables
+	local bound = getmetatable(variables) and getmetatable(variables).__psychBound
+	if bound ~= registry.globals then return end
+	for key, value in pairs(registry.globals) do
+		if type(key) == "string" then rawset(variables, key, value) end
+	end
+end
+
 --- Writes a global into a script's own environment.
 --
 -- The refresh publishes the values that change per frame, and a compiled Psych

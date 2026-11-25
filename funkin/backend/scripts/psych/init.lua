@@ -565,7 +565,19 @@ function HScript.install(compat, api)
 			-- The engine reads `script.variables`; the mod writes its own environment.
 			-- Without this the two never meet and a callback that ran looks identical
 			-- to one that did not.
-			if psychScript then bindings.bindVariables(script, psychScript.lua) end
+			if psychScript then
+				bindings.bindVariables(script, psychScript.lua)
+				-- The engine reads `variables` right after a callback when it asks what
+				-- the script did, so the script's own values are copied back there.
+				local rawCall = psychScript.call
+				if type(rawCall) == "function" then
+					psychScript.call = function(self, name, args)
+						local result = rawCall(self, name, args)
+						bindings.syncVariables(script)
+						return result
+					end
+				end
+			end
 		end
 		return psychScript, err
 	end
