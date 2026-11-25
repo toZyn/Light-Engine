@@ -736,6 +736,26 @@ local function psychMusicBeatState(shared, state)
 	}
 end
 
+--- `AssetType`, openfl's asset kinds.
+--
+-- Psych passes `AssetType.TEXT` to `Paths.getPath` and `Assets.exists`. The enum was
+-- never provided, so `Paths.getPath(file, nil)` was called with no key at all: every
+-- path lookup through Psych's own helpers -- findScript, dialogue, audio -- resolved
+-- to garbage, and addLuaScript could not find a script that existed.
+--
+-- Values follow tools/psych-externs/AssetType.hx, which is what the compile was
+-- type-checked against.
+local ASSET_TYPES = { "BINARY", "FONT", "IMAGE", "MOVIE_CLIP", "SOUND", "TEXT" }
+
+local function psychAssetType()
+	local enum = { __name__ = true }
+	for index, name in ipairs(ASSET_TYPES) do
+		enum[name] = name
+		enum[index] = name
+	end
+	return enum
+end
+
 --- `FileSystem`, over the game's filesystem.
 --
 -- Psych asks whether a script exists before deciding whether to load it by path or
@@ -883,6 +903,7 @@ function PsychBindings.exposeGame(compat)
 		-- exists, so this only has to exist for the constructor's calls.
 		globals.MusicBeatState = psychMusicBeatState(globals, nil)
 	end
+	if globals.AssetType == nil then globals.AssetType = psychAssetType() end
 	if globals.FileSystem == nil then
 		local filesystem = psychFileSystem()
 		if filesystem then globals.FileSystem = filesystem end
