@@ -568,6 +568,7 @@ local function psychMusicBeatState(shared)
 			else
 				store = { h = {} }
 			end
+			print("PROBE store id=" .. tostring(store) .. " keys=" .. tostring(store and store.h and next(store.h)))
 			return store
 		end,
 		getState = function()
