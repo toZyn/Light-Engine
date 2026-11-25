@@ -293,6 +293,23 @@ function PsychBindings.runShim(compat, chunkOrSource)
 	PsychBindings.installLuaApi(shared)
 	PsychBindings.installLuaApi(scope)
 
+	-- Haxe resolves `psychlua.HScript.implement(...)` through a package table that
+	-- its runtime builds. The compiled output here registers classes only in its own
+	-- local `_hxClasses`, so the package does not exist and the constructor dies on
+	-- its last few lines -- after doing all of its real work.
+	--
+	-- It has to exist before the chunk runs: the shim resolves the package while it
+	-- defines those classes, not when it calls them.
+	shared.psychlua = setmetatable({}, {
+		__index = function(_, name)
+			local classes = shared._hxClasses
+			if type(classes) == "table" then
+				return classes["psychlua." .. name]
+			end
+			return nil
+		end,
+	})
+
 	local chunk = source
 	if type(source) == "string" then
 		-- LuaJIT and 5.1 take the environment afterwards via setfenv; 5.2+ takes it
@@ -331,29 +348,6 @@ function PsychBindings.runShim(compat, chunkOrSource)
 		if retry then
 			return PsychBindings.runShim(compat, retry)
 		end
-	end
-
-	-- Haxe's package namespace. The compiled output registers every class by its
-	-- dotted name in `_hxClasses` (psychlua.FunkinLua, psychlua.HScript, ...) but
-	-- also indexes them through the package table `psychlua.HScript.implement(...)`.
-	-- In Haxe that package is part of the runtime; in flat Lua it is nil, so the
-	-- constructor dies on its last few lines after doing all its real work.
-	--
-	-- Exposing it as a view of `_hxClasses` keeps one registration list instead of
-	-- a second one that can disagree with it.
-	local packageClasses = shared._hxClasses
-	if type(packageClasses) == "table" then
-		-- Merging in now, while they are known; the rest resolve later.
-		local psychluaPackage = {}
-		local naming = setmetatable({}, {
-			__index = function(_, name)
-				local class = packageClasses["psychlua." .. name]
-				psychluaPackage[name] = class
-				return class
-			end,
-		})
-		shared.psychlua = psychluaPackage
-		setmetatable(psychluaPackage, naming)
 	end
 
 	loaded = {
