@@ -640,37 +640,43 @@ end
 -- values it holds are the ones Psych's `tnull` handling expects.
 local function psychMusicBeatState(shared, state)
 	local store
+	-- The backing table is resolved lazily and only once there is a state to own it.
+	--
+	-- getVariables() is called during construction, before the state exists, and
+	-- whatever store it hands back is the one that gets written to. Creating it then
+	-- meant every mod wrote into a table nothing could read -- the value was present
+	-- in the store and absent from state.psychVariables. So the store is created on
+	-- the first real use, and the engine's own table backs it from then on.
+	local function currentState()
+		local owner = (compatState and compatState()) or state
+		return type(owner) == "table" and owner or nil
+	end
+	local function ensure()
+		if store then return store end
+		local owner = currentState()
+		if owner == nil then return nil end
+		local newMap = shared.__haxe_ds_StringMap
+		if type(newMap) == "table" and type(newMap.new) == "function" then
+			store = newMap.new()
+		else
+			store = { h = {} }
+		end
+		owner.psychVariables = owner.psychVariables or {}
+		store.h = owner.psychVariables
+		return store
+	end
+	-- A store for a caller that only wants to read the map shape. Not memoised, so it
+	-- cannot become the one a mod writes to before a state exists.
+	local function scratch() return { h = {} } end
 	return {
 		getVariables = function()
-			-- Until there is a state to back it, there is no store. Creating an empty
-			-- one instead is how the very first connection -- made before any state
-			-- existed -- pinned every later write to a table nothing could read.
-				if store then return store end
-			-- Read the state now rather than through the closure's `state`: the
-			-- first connection can happen before a state exists, and a closure that
-			-- captured that nil kept writing to a table nothing could read.
-			local owner = (compatState and compatState()) or state
-			if type(owner) ~= "table" then return { h = {} } end
-			local newMap = shared.__haxe_ds_StringMap
-			if type(newMap) == "table" and type(newMap.new) == "function" then
-				store = newMap.new()
-			else
-				store = { h = {} }
-			end
-			-- Backed by the state's own table. Psych's setVar and the engine's
-			-- getProperty have to be one store: with a private one, a mod that
-			-- published a value through setVar could not be read by getProperty or by
-			-- any engine test, and anything the engine published was invisible to the
-			-- mod. That split is what every "the value is nil" report came down to.
-			owner.psychVariables = owner.psychVariables or {}
-			store.h = owner.psychVariables
-			return store
+			return ensure() or scratch()
 		end,
 		getState = function()
 			return game and game.getState and game.getState() or nil
 		end,
-		switchState = function(state)
-			if game and game.switchState then return game.switchState(state) end
+		switchState = function(target)
+			if game and game.switchState then return game.switchState(target) end
 		end,
 	}
 end
@@ -817,6 +823,10 @@ function PsychBindings.exposeGame(compat)
 	if state ~= nil and state ~= storeOwner then
 		storeOwner = state
 		globals.MusicBeatState = psychMusicBeatState(globals, state)
+	elseif globals.MusicBeatState == nil then
+		-- Nothing to own the store yet. It is rebuilt below as soon as a state
+		-- exists, so this only has to exist for the constructor's calls.
+		globals.MusicBeatState = psychMusicBeatState(globals, nil)
 	end
 	if globals.FileSystem == nil then
 		local filesystem = psychFileSystem()
