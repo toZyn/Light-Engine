@@ -124,6 +124,15 @@ check('a Psych script runs through the compiled layer', function()
   return Lua.readglobal(psych.lua, name)
  end
  runScript('onCreate')
+ do
+  -- Diagnostic: call the registered setVar the way a script does.
+  local setter = readGlobal('setVar')
+  local store = require('funkin.backend.scripts.psych.bindings')
+  local ok, err = pcall(setter, 'probeKey', 'probeValue')
+  local getter2 = readGlobal('getVar')
+  print('PROBE setterRan=' .. tostring(ok) .. ' err=' .. tostring(err)
+   .. ' readBack=' .. tostring(getter2 and getter2('probeKey')))
+ end
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
  -- setVar/getVar is how a mod publishes state for other scripts and for the engine;
  -- reaching it proves the helper functions were installed on the script object.
