@@ -131,6 +131,15 @@ check('a Psych script runs through the compiled layer', function()
  -- is a round trip, not a global lookup.
  local getter = readGlobal('getVar')
  assert(type(getter) == 'function', 'getVar was not registered on the script')
+ do
+  local mbs = shim.globals.MusicBeatState
+  local vars = mbs and mbs.getVariables and mbs.getVariables()
+  local compatState = compat.state
+  print('PROBE stateMatch=' .. tostring(compatState == state)
+   .. ' engineState=' .. tostring(game.getState and game.getState())
+   .. ' varsH=' .. tostring(vars and vars.h) .. ' stateVars=' .. tostring(state.psychVariables)
+   .. ' same=' .. tostring(vars and vars.h == state.psychVariables))
+ end
  local stored = getter('createdFlag')
  assert(stored == 'yes', 'setVar did not reach the store getVar reads, got ' .. tostring(stored))
  -- And it is the engine's own store. Two stores is the split that made every value a
