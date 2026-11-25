@@ -139,11 +139,17 @@ check('a Psych script runs through the compiled layer', function()
  runScript('onSectionHit')
  assert(getter('sections') == 1, 'onSectionHit did not reach the script')
 
- -- 5. The playhead globals are numbers by the time a mod does arithmetic on them,
- --    which is the original user-visible failure: "attempt to perform arithmetic on
- --    a nil value" inside onStepHit.
+ -- 5. The playhead globals are numbers by the time a mod does arithmetic on them.
+ --    This is the original user-visible failure: "attempt to perform arithmetic on a
+ --    nil value" inside onStepHit. The refresh runs through the compatibility
+ --    context, which is what the engine calls every frame.
+ compat:update(0.016)
+ assert(type(readGlobal('curDecStep')) == 'number',
+  'curDecStep is not published into the script: ' .. tostring(readGlobal('curDecStep')))
+ assert(type(readGlobal('curBeat')) == 'number', 'curBeat is not published into the script')
+
  runScript('onStepHit')
  runScript('onBeatHit')
  assert(getter('beats') == 1, 'onBeatHit did not reach the script')
- assert(readGlobal('fine') ~= nil, 'onStepHit did not run, so curDecStep is still nil')
+ assert(readGlobal('fine') ~= nil, 'onStepHit raised, so curDecStep arithmetic is still broken')
 end)

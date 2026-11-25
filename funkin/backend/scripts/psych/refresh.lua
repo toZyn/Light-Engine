@@ -43,6 +43,13 @@ function Refresh.frame(compat)
 		-- `Script:set`, and getProperty resolves the latter. Writing both keeps
 		-- `curDecStep` and `getProperty("curDecStep")` from disagreeing.
 		if script.set then script:set(key, current) end
+		-- The compiled Psych script reads its own environment, which is a different
+		-- table from `psychVariables`; writing only to the wrapper is what left
+		-- `curDecStep` nil inside a mod.
+		local psych = script.psychScript
+		if psych then
+			require("funkin.backend.scripts.psych.bindings").writeGlobal(psych.lua, key, current)
+		end
 	end
 
 	if conductor then

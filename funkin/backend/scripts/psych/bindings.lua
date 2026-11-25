@@ -496,6 +496,19 @@ function PsychBindings.runShim(compat, chunkOrSource)
 	return loaded
 end
 
+--- Writes a global into a script's own environment.
+--
+-- The refresh publishes the values that change per frame, and a compiled Psych
+-- script reads them from the environment it runs in -- not from the wrapper's
+-- `variables` table. Writing only to the wrapper left every playhead global nil
+-- inside the mod, which is the original complaint.
+function PsychBindings.writeGlobal(luaState, name, value)
+	if luaState == nil then return false end
+	local registry = registryFor(luaState)
+	registry.globals[name] = value
+	return true
+end
+
 --- Runs `source` as a Psych script.
 --
 -- Returns the script object on success. The caller owns it and must keep it
