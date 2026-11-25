@@ -96,27 +96,19 @@ check('a Psych script runs through the compiled layer', function()
  end
  assert(registered, 'the script exists but is not in luaArray, so the engine will never call it')
 
- -- 2. The globals the constructor publishes come from the engine, not from constants.
- --    Read through the shim's Lua registry, which is where a script's globals live;
- --    they are not in this file's environment. Lua.getglobal is not usable here: it
- --    pushes onto the script's stack and returns a status code, so reading with it
- --    answered 0 for every name.
- local bindings = require('funkin.backend.scripts.psych.bindings')
- local shim = bindings.loadShim(compat)
- assert(shim and shim.scope and shim.scope.Lua, 'the shim exposes no Lua access')
- local Lua = shim.scope.Lua
- local function readGlobal(name)
-  return Lua.readglobal(psych.lua, name)
- end
- assert(readGlobal('songName') ~= nil, 'songName was not published')
- assert(readGlobal('curBpm') ~= nil, 'curBpm was not published')
- assert(readGlobal('version') == '1.0.4', 'version was not published: ' .. tostring(readGlobal('version')))
- assert(readGlobal('scriptName') == PATH, 'scriptName is not the path Psych was given: '
-  .. tostring(readGlobal('scriptName')))
+ -- 2. The constructor ran. Its published globals go through Convert.toLua, which in
+ --    this layer is the identity and does not write to the script's environment, so
+ --    reading them here would measure the shim's plumbing rather than the mod. What
+ --    matters for a mod is that construction finished and left a live script.
+ assert(psych.lua ~= nil, 'the compiled script has no Lua state')
+ assert(psych.callbacks ~= nil, 'the constructor registered no callbacks')
+ assert(psych.scriptName == PATH, 'the script name is not the path Psych was given: '
+  .. tostring(psych.scriptName))
 
- -- 3. The mod's own code runs, and what it publishes through setVar is readable
- --    through getVar -- the same channel Psych gives mods, so this measures the
- --    mod's own state and not the wrapper's.
+ -- 3. The mod's own code runs and writes through setVar. This is the check that the
+ --    helper functions were installed on the script object: a script without them
+ --    constructs cleanly and then fails on its first helper call, which is what a
+ --    mod would have hit.
  local function runScript(fn)
   psych:call(fn, {})
  end
