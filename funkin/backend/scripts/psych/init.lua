@@ -562,6 +562,10 @@ function HScript.install(compat, api)
 		if script then
 			script.psychScript = psychScript
 			script.psychError = psychScript and nil or err
+			-- The engine reads `script.variables`; the mod writes its own environment.
+			-- Without this the two never meet and a callback that ran looks identical
+			-- to one that did not.
+			if psychScript then bindings.bindVariables(script, psychScript.lua) end
 		end
 		return psychScript, err
 	end

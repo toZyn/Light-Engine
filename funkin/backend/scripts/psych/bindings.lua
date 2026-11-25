@@ -502,6 +502,36 @@ function PsychBindings.runShim(compat, chunkOrSource)
 	return loaded
 end
 
+--- Makes `script.variables` see what the mod's own script defined.
+--
+-- A compiled Psych script runs in its own environment: `created = true` inside
+-- onCreate lands there, not in `script.variables`. The engine reads `variables`
+-- (hasCallback, the script harness, the event-prep code), so a callback that ran was
+-- invisible -- indistinguishable from one that never ran.
+--
+-- Read-through only: assigning to `variables` still writes to `variables`, because
+-- that is how the compatibility layer publishes globals into a script.
+function PsychBindings.bindVariables(script, luaState)
+	if type(script) ~= "table" or script.variables == nil or luaState == nil then return end
+	local registry = registryFor(luaState)
+	local variables = script.variables
+	local previous = getmetatable(variables)
+	if previous and previous.__psychBound == registry.globals then return end
+	setmetatable(variables, {
+		__psychBound = registry.globals,
+		__index = function(_, key)
+			local value = registry.globals[key]
+			if value ~= nil then return value end
+			if previous and previous.__index then
+				if type(previous.__index) == "table" then return previous.__index[key] end
+				return previous.__index(variables, key)
+			end
+			return nil
+		end,
+		__newindex = previous and previous.__newindex or nil,
+	})
+end
+
 --- Writes a global into a script's own environment.
 --
 -- The refresh publishes the values that change per frame, and a compiled Psych
