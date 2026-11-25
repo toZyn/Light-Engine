@@ -119,6 +119,19 @@ function PsychBindings.installLuaApi(scope, onMissing)
 		return value
 	end
 
+	-- The last error this script raised, or nil.
+	--
+	-- Psych reports a failed callback through `luaTrace`, which does nothing unless
+	-- the mod turns on `luaDebugMode`. A mod whose callback throws therefore fails
+	-- completely silently: no trace, no debug text, nothing. The engine needs to be
+	-- able to log that -- and to a person debugging a mod, this is the whole story.
+	Lua.readerror = function(state)
+		local registry = registryFor(state)
+		local value = registry.error
+		registry.error = nil
+		return value
+	end
+
 	Lua.type = function(state, index)
 		local registry = registryFor(state)
 		local entry = registry.stack[#registry.stack]

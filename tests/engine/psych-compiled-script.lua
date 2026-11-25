@@ -152,10 +152,12 @@ check('a Psych script runs through the compiled layer', function()
    g[n] = tostring(readGlobal(n))
   end
   local status = psych:call('onBeatHit', {length = 0})
+  local callbackError = shim.scope.Lua.readerror(psych.lua)
   print('PROBE before=' .. tostring(before)
    .. ' beat=' .. tostring(getter('beats')) .. ' after=' .. tostring(getter('sections'))
    .. ' onBeatHit=' .. g.onBeatHit .. ' onSectionHit=' .. g.onSectionHit
-   .. ' status=' .. tostring(status) .. ' closed=' .. tostring(psych.closed))
+   .. ' status=' .. tostring(status) .. ' closed=' .. tostring(psych.closed)
+   .. ' err=' .. tostring(callbackError))
  end
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
