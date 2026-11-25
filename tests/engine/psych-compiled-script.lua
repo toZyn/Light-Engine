@@ -87,8 +87,13 @@ check('a Psych script runs through the compiled layer', function()
  --    song-time half of its setup, which is the failure that looked like success.
  assert(PlayState.instance == state, 'the constructor did not see the running state')
  assert(state.luaArray ~= nil, 'the script was never registered on luaArray')
+ -- Psych reads this as a Haxe Array: zero-based with a .length field. Walking it
+ -- that way is the check that matters -- a push that discards its argument makes
+ -- every mod load and then be invisible to the engine.
  local registered = false
- for _, entry in ipairs(state.luaArray) do if entry == psych then registered = true end end
+ for i = 0, (state.luaArray.length or 0) - 1 do
+  if state.luaArray[i] == psych then registered = true end
+ end
  assert(registered, 'the script exists but is not in luaArray, so the engine will never call it')
 
  -- 2. The globals the constructor publishes come from the engine, not from constants.

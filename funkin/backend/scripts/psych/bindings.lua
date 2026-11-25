@@ -631,11 +631,33 @@ function PsychBindings.exposeGame(compat)
 	-- The constructor calls `game.luaArray:push(self)`; Psych's PlayState owns that
 	-- array, and the engine's state has no equivalent, so it is provided here
 	-- rather than making the shim special-case a nil.
+	--
+	-- It has to actually store the script. The first version returned the value and
+	-- dropped it, which made every mod load, register nothing, and never be called
+	-- -- a script that exists and is invisible. Psych reads this as a Haxe Array:
+	-- zero-based, with a `.length` field, and `getRunningScripts` walks it that way.
 	local play = globals.PlayState
 	if type(play) == "table" then
 		if play.instance == nil then play.instance = state end
 		if play.luaArray == nil then
-			play.luaArray = {push = function(_, value) return value end}
+			local array = { length = 0 }
+			function array:push(value)
+				self[self.length] = value
+				self.length = self.length + 1
+				return value
+			end
+			function array:remove(value)
+				for i = 0, self.length - 1 do
+					if self[i] == value then
+						for j = i, self.length - 2 do self[j] = self[j + 1] end
+						self[self.length - 1] = nil
+						self.length = self.length - 1
+						return true
+					end
+				end
+				return false
+			end
+			play.luaArray = array
 		end
 	end
 	-- `game.luaArray` above and `PlayState.instance.luaArray` in helpers must be the
