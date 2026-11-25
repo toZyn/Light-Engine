@@ -240,6 +240,16 @@ function Compat:forward(nativeName, ...)
 		if self.script._psych then
 			local a, b = values, nil
 			if type(values) == "table" then a, b = values[1], values[2] end
+			-- Underscore names because the compiled script is called directly, not
+			-- through the interpreter: `_` in Lua is a placeholder, and passing it as
+			-- the first argument made onEvent receive "_", "one", "two" -- so a mod
+			-- recording `name . ":" . a . ":" . b` got the wrong string and never
+			-- matched on the name.
+			local script = self.script
+			if script and script.psychScript and script.psychScript.call then
+				return script.psychScript:call(self.callbackNames.event,
+					{event.e, a or "", b or "", event.t or 0, length = 4})
+			end
 			return self:_callback(self.callbackNames.event, event.e, a or "", b or "", event.t or 0)
 		end
 		if type(values) == "table" and values[1] ~= nil then
