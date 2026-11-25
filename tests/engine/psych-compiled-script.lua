@@ -124,14 +124,16 @@ check('a Psych script runs through the compiled layer', function()
   return Lua.readglobal(psych.lua, name)
  end
  runScript('onCreate')
- print('PROBE created=' .. tostring(readGlobal('created'))
-  ..' createdFlag=' .. tostring(readGlobal('createdFlag'))
-  ..' setVar=' .. tostring(readGlobal('setVar'))
-  ..' getVar=' .. tostring(readGlobal('getVar')))
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
  -- setVar/getVar is how a mod publishes state for other scripts and for the engine;
  -- reaching it proves the helper functions were installed on the script object.
- assert(readGlobal('createdFlag') == 'yes', 'setVar did not reach the store, so the helpers are not installed')
+ -- readGlobal consults the callbacks first, which is what the script itself sees:
+ -- getVar is a callback, setVar is one too, and the pair round-trips through the
+ -- shared variable store. Reading createdFlag as a global is wrong -- Psych's setVar
+ -- does not create a global, it writes to the store getVar reads.
+ local getter = readGlobal('getVar')
+ assert(type(getter) == 'function', 'getVar was not registered on the script')
+ assert(getter('createdFlag') == 'yes', 'setVar did not reach the store getVar reads')
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
  --    PlayState:onSectionHit; the engine had no such wiring at all.
