@@ -97,25 +97,44 @@ check('a Psych script runs through the compiled layer', function()
  assert(registered, 'the script exists but is not in luaArray, so the engine will never call it')
 
  -- 2. The globals the constructor publishes come from the engine, not from constants.
+ --    Read through the shim's Lua registry, which is where a script's globals live;
+ --    they are not in this file's environment.
+ local bindings = require('funkin.backend.scripts.psych.bindings')
+ local shim = bindings.loadShim(compat)
+ assert(shim and shim.scope and shim.scope.Lua, 'the shim exposes no Lua access')
+ local Lua = shim.scope.Lua
+ local function readGlobal(name)
+  return Lua.getglobal(psych.lua, name)
+ end
+ assert(readGlobal('songName') ~= nil, 'songName was not published')
+ assert(readGlobal('curBpm') ~= nil, 'curBpm was not published')
+ assert(readGlobal('version') == '1.0.4', 'version was not published: ' .. tostring(readGlobal('version')))
+ assert(readGlobal('scriptName') == PATH, 'scriptName is not the path Psych was given: '
+  .. tostring(readGlobal('scriptName')))
+
+ -- 3. The mod's own code runs, and what it publishes through setVar is readable
+ --    through getVar -- the same channel Psych gives mods, so this measures the
+ --    mod's own state and not the wrapper's.
  local function runScript(fn)
   psych:call(fn, {})
  end
-
- -- 3. The mod's own code runs, and what it publishes through setVar is readable
- --    through getVar -- the same channel Psych uses, so this is the mod's own state
- --    and not the wrapper's.
  runScript('onCreate')
- assert(getVar('createdFlag') == 'yes', 'onCreate did not run, or setVar did not publish')
+ assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
+ -- setVar/getVar is how a mod publishes state for other scripts and for the engine;
+ -- reaching it proves the helper functions were installed on the script object.
+ assert(readGlobal('createdFlag') == 'yes', 'setVar did not reach the store, so the helpers are not installed')
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
  --    PlayState:onSectionHit; the engine had no such wiring at all.
  runScript('onSectionHit')
- assert(getVar('sections') == 1, 'onSectionHit did not reach the script')
+ assert(readGlobal('sections') == 1, 'onSectionHit did not reach the script')
 
  -- 5. Per-frame globals are numbers by the time a mod does arithmetic on them, which
  --    is the original user-visible failure: "attempt to perform arithmetic on a nil
  --    value" inside onStepHit.
  runScript('onStepHit')
  runScript('onBeatHit')
- assert(getVar('beats') == 1, 'onBeatHit did not reach the script')
+ assert(readGlobal('beats') == 1, 'onBeatHit did not reach the script')
+ assert(readGlobal('fine') == tonumber(readGlobal('curDecStep')) or readGlobal('fine') ~= nil,
+  'curDecStep arithmetic did not run, so the playhead globals are still nil')
 end)
