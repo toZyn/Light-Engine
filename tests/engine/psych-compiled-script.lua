@@ -133,6 +133,10 @@ check('a Psych script runs through the compiled layer', function()
  assert(type(getter) == 'function', 'getVar was not registered on the script')
  local stored = getter('createdFlag')
  assert(stored == 'yes', 'setVar did not reach the store getVar reads, got ' .. tostring(stored))
+ -- And it is the engine's own store. Two stores is the split that made every value a
+ -- mod published unreadable to getProperty and to the engine.
+ assert(state.psychVariables.createdFlag == 'yes',
+  'setVar wrote somewhere the engine cannot read: state.psychVariables has no createdFlag')
 
  -- 4. The section callback exists and reaches the script. Psych raises it from
  --    PlayState:onSectionHit; the engine raised no such signal at all.

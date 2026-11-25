@@ -632,7 +632,7 @@ end
 --
 -- One store per game, created through the compiled layer's own StringMap so the
 -- values it holds are the ones Psych's `tnull` handling expects.
-local function psychMusicBeatState(shared)
+local function psychMusicBeatState(shared, state)
 	local store
 	return {
 		getVariables = function()
@@ -642,6 +642,15 @@ local function psychMusicBeatState(shared)
 				store = newMap.new()
 			else
 				store = { h = {} }
+			end
+			-- Backed by the state's own table. Psych's setVar and the engine's
+			-- getProperty have to be one store: with a private one, a mod that
+			-- published a value through setVar could not be read by getProperty or by
+			-- any engine test, and anything the engine published was invisible to the
+			-- mod. That split is what every "the value is nil" report came down to.
+			if type(state) == "table" then
+				state.psychVariables = state.psychVariables or {}
+				store.h = state.psychVariables
 			end
 			return store
 		end,
@@ -770,6 +779,9 @@ function PsychBindings.exposeGame(compat)
 	local shim = PsychBindings.loadShim(compat)
 	if not shim then return nil end
 	local globals = shim.globals
+	-- One local for the whole function: reading compat.state again further down is
+	-- how this briefly used a `state` before declaring it.
+	local state = compat and compat.state
 	for psychName, engineName in pairs(LIVE_GLOBALS) do
 		local value = rawget(_G, engineName)
 		if value ~= nil then globals[psychName] = value end
@@ -785,14 +797,13 @@ function PsychBindings.exposeGame(compat)
 		note.getNoteSkinPostfix = function() return "" end
 	end
 	if globals.MusicBeatState == nil then
-		globals.MusicBeatState = psychMusicBeatState(globals)
+		globals.MusicBeatState = psychMusicBeatState(globals, state)
 	end
 	if globals.FileSystem == nil then
 		local filesystem = psychFileSystem()
 		if filesystem then globals.FileSystem = filesystem end
 	end
 	-- Flixel's global surface, built per call because it points at live objects.
-	local state = compat and compat.state
 	local flx = psychFlxG(state)
 	if type(flx) == "table" then globals.FlxG = flx end
 	-- Identity fields Psych's constructor reads off a class the engine does define.
