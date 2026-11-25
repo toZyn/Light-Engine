@@ -428,6 +428,9 @@ function onEvent(name:String, a:String, b:String) {
    print('PROBE pushedTime=' .. tostring(vars.pushedTime) .. ' countdown=' .. tostring(vars.countdownCounter)
     .. ' onEventPushed=' .. tostring(vars.onEventPushed) .. ' onCountdownTick=' .. tostring(vars.onCountdownTick))
    assert(vars.pushedTime == 300 and vars.countdownCounter == 0)
+   print('PROBE addLuaScript=' .. tostring(vars.addLuaScript('extra/helper'))
+    .. ' findScript=' .. tostring(scripts.scripts[1].psychScript.findScript
+      and scripts.scripts[1].psychScript:findScript('extra/helper')))
    assert(vars.addLuaScript('extra/helper'))
    assert(vars.isRunning('extra/helper.lua'))
    assert(vars.callScript('extra/helper', 'sum', {4, 5}) == 9)
