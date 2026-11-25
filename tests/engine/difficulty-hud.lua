@@ -420,8 +420,23 @@ function onEvent(name:String, a:String, b:String) {
    assert(game.camera.zoom == 1.5 and state.members[members + 1].x == 32)
    game.camera.zoom = zoom
    local vars = scripts.scripts[1].variables
+   print('PROBE created=' .. tostring(vars.created) .. ' lastEvent=' .. tostring(vars.lastEvent)
+    .. ' psych=' .. tostring(scripts.scripts[1].psychScript ~= nil)
+    .. ' err=' .. tostring(scripts.scripts[1].psychError)
+    .. ' nscripts=' .. tostring(#scripts.scripts))
    assert(vars.created and vars.lastEvent == 'Test:one:two')
+   print('PROBE pushedTime=' .. tostring(vars.pushedTime) .. ' countdown=' .. tostring(vars.countdownCounter)
+    .. ' onEventPushed=' .. tostring(vars.onEventPushed) .. ' onCountdownTick=' .. tostring(vars.onCountdownTick))
    assert(vars.pushedTime == 300 and vars.countdownCounter == 0)
+   print('PROBE addLuaScript=' .. tostring(vars.addLuaScript('extra/helper'))
+    .. ' findScript=' .. tostring(scripts.scripts[1].psychScript.findScript
+      and scripts.scripts[1].psychScript:findScript('extra/helper')))
+   do
+    local psych = scripts.scripts[1].psychScript
+    local shim = require('funkin.backend.scripts.psych.bindings').loadShim(scripts.scripts[1]._psych)
+    print('PROBE error=' .. tostring(shim.scope.Lua.readerror(psych.lua))
+     .. ' pushedTime=' .. tostring(vars.pushedTime))
+   end
    assert(vars.addLuaScript('extra/helper'))
    assert(vars.isRunning('extra/helper.lua'))
    assert(vars.callScript('extra/helper', 'sum', {4, 5}) == 9)

@@ -172,6 +172,16 @@ function vslice.parse(data, events, meta, diff, options)
 
 	chart.notes = diffnotes and processNotes(diffnotes, options and options.consume) or {enemy = {}, player = {}}
 	chart.events = table.clone(events or data.events or {})
+	-- Events that came from a Psych mod's `events.json` are Psych events: the engine
+	-- only offers them to onEventPushed / eventEarlyTrigger when they are marked, so
+	-- without this a mod's early-trigger request was silently ignored on any chart
+	-- parsed through this path. `events` is the separate sidecar, so anything in it
+	-- is by definition a Psych event, not a V-Slice one.
+	if events ~= nil then
+		for _, event in ipairs(chart.events) do
+			if type(event) == "table" then event.psych = true end
+		end
+	end
 
 	return chart
 end

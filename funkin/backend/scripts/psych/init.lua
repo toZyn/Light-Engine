@@ -548,11 +548,37 @@ function HScript.install(compat, api)
 	-- the callbacks it registered.
 	compat.psychRuntime = function(source, script)
 		local bindings = psychBindings()
-		local psychScript, err = bindings.runScript(compat, source)
+		-- Hand the compiled layer the live game first: it runs in its own
+		-- environment, and without this it sees no PlayState and skips the whole
+		-- song-time half of its setup without saying so.
+		bindings.exposeGame(compat)
+		-- The name Psych sees is the script's path on disk, which is what it uses
+		-- to attribute the script to a mod folder.
+		local name = script and script.path or nil
+		local psychScript, err = bindings.runScript(compat, source, name)
 		if not psychScript and compat.psychWarn then
 			compat:psychWarn("Psych script failed: " .. tostring(err))
 		end
-		if script and psychScript then script.psychScript = psychScript end
+		if script then
+			script.psychScript = psychScript
+			script.psychError = psychScript and nil or err
+			-- The engine reads `script.variables`; the mod writes its own environment.
+			-- Without this the two never meet and a callback that ran looks identical
+			-- to one that did not.
+			if psychScript then
+				bindings.bindVariables(script, psychScript.lua)
+				-- The engine reads `variables` right after a callback when it asks what
+				-- the script did, so the script's own values are copied back there.
+				local rawCall = psychScript.call
+				if type(rawCall) == "function" then
+					psychScript.call = function(self, name, args)
+						local result = rawCall(self, name, args)
+						bindings.syncVariables(script)
+						return result
+					end
+				end
+			end
+		end
 		return psychScript, err
 	end
 
