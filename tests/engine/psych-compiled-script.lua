@@ -124,6 +124,10 @@ check('a Psych script runs through the compiled layer', function()
   return Lua.readglobal(psych.lua, name)
  end
  runScript('onCreate')
+ print('PROBE created=' .. tostring(readGlobal('created'))
+  ..' createdFlag=' .. tostring(readGlobal('createdFlag'))
+  ..' setVar=' .. tostring(readGlobal('setVar'))
+  ..' getVar=' .. tostring(readGlobal('getVar')))
  assert(readGlobal('created') == true, 'onCreate did not run, or its globals were not published')
  -- setVar/getVar is how a mod publishes state for other scripts and for the engine;
  -- reaching it proves the helper functions were installed on the script object.
