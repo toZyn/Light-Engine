@@ -39,9 +39,16 @@ local function registryFor(state)
 	-- script's own `function onCreate()` and Psych's `set('curBeat', 4)` share one
 	-- Lua state, so a script can read what Psych set and Psych can call what the
 	-- script defined. One table with a fallback to the real globals reproduces it.
+	--
+	-- `callbacks` and `globals` are two views of that one table, because they are
+	-- two views in Psych too: `Lua_helper.add_callback(lua, "setVar", fn)` makes
+	-- setVar a global the script calls, and `set(name, value)` does the same. Keeping
+	-- them apart left every one of Psych's 222 functions registered but invisible to
+	-- the mod -- a script that loads, runs, and calls nil.
+	local env = setmetatable({}, {__index = _G})
 	registry = {
-		callbacks = {},
-		globals = setmetatable({}, {__index = _G}),
+		callbacks = env,
+		globals = env,
 		stack = {},
 	}
 	registries[state] = registry
