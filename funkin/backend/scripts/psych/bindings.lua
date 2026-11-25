@@ -464,8 +464,10 @@ function PsychBindings.runShim(compat, chunkOrSource)
 	-- every numeric variable a mod published was lost, while string values worked.
 	--
 	-- Applied after the chunk has run, because the function does not exist before
-	-- it defines itself.
-	local reflection = shared.__psychlua_ReflectionFunctions
+	-- it defines itself. It is in the chunk's own environment: a global assignment in
+	-- the compiled code lands in the scope it was loaded with, not in `shared`.
+	local reflection = rawget(scope, "__psychlua_ReflectionFunctions")
+		or rawget(shared, "__psychlua_ReflectionFunctions")
 	if type(reflection) == "table" and type(reflection.parseSingleInstance) == "function" then
 		local parse = reflection.parseSingleInstance
 		reflection.parseSingleInstance = function(value)
