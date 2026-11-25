@@ -132,6 +132,10 @@ check('a Psych script runs through the compiled layer', function()
  -- shared variable store. Reading createdFlag as a global is wrong -- Psych's setVar
  -- does not create a global, it writes to the store getVar reads.
  local getter = readGlobal('getVar')
+ do
+  local reg = require('funkin.backend.scripts.psych.bindings')
+  print('PROBE lua=' .. tostring(psych.lua) .. ' ncallbacks=' .. tostring(type(getter)))
+ end
  assert(type(getter) == 'function', 'getVar was not registered on the script')
  print('PROBE getter=' .. tostring(getter('createdFlag'))
   ..' sections=' .. tostring(readGlobal('sections'))
