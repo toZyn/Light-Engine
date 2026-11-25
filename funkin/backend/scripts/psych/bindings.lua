@@ -22,8 +22,11 @@
 
 local PsychBindings = {}
 
--- Which state the MusicBeatState store currently points at.
+-- Which state the MusicBeatState store currently points at, and how to ask for the
+-- current one. A connection is made before a state exists, so the store cannot be
+-- bound at connection time; it binds when first used.
 local storeOwner
+local compatState
 
 -- Registries. One table of callbacks per script, so two scripts cannot see each
 -- other's functions, which is the isolation a real Lua state would give.
@@ -642,8 +645,12 @@ local function psychMusicBeatState(shared, state)
 			-- Until there is a state to back it, there is no store. Creating an empty
 			-- one instead is how the very first connection -- made before any state
 			-- existed -- pinned every later write to a table nothing could read.
-			if store then return store end
-			if type(state) ~= "table" then return { h = {} } end
+				if store then return store end
+			-- Read the state now rather than through the closure's `state`: the
+			-- first connection can happen before a state exists, and a closure that
+			-- captured that nil kept writing to a table nothing could read.
+			local owner = (compatState and compatState()) or state
+			if type(owner) ~= "table" then return { h = {} } end
 			local newMap = shared.__haxe_ds_StringMap
 			if type(newMap) == "table" and type(newMap.new) == "function" then
 				store = newMap.new()
@@ -655,8 +662,8 @@ local function psychMusicBeatState(shared, state)
 			-- published a value through setVar could not be read by getProperty or by
 			-- any engine test, and anything the engine published was invisible to the
 			-- mod. That split is what every "the value is nil" report came down to.
-			state.psychVariables = state.psychVariables or {}
-			store.h = state.psychVariables
+			owner.psychVariables = owner.psychVariables or {}
+			store.h = owner.psychVariables
 			return store
 		end,
 		getState = function()
@@ -787,6 +794,7 @@ function PsychBindings.exposeGame(compat)
 	-- One local for the whole function: reading compat.state again further down is
 	-- how this briefly used a `state` before declaring it.
 	local state = compat and compat.state
+	compatState = function() return compat and compat.state end
 	for psychName, engineName in pairs(LIVE_GLOBALS) do
 		local value = rawget(_G, engineName)
 		if value ~= nil then globals[psychName] = value end
