@@ -138,6 +138,16 @@ check('a Psych script runs through the compiled layer', function()
  local stored = getter('createdFlag')
  assert(stored == 'yes', 'setVar did not reach the store getVar reads, got ' .. tostring(stored))
 
+ -- Diagnostic: does the engine-side call reach a plain callback, and what does the
+ -- shim report for it?
+ do
+  local before = readGlobal('sections')
+  psych:call('onBeatHit', {length = 0})
+  psych:call('onSectionHit', {length = 0})
+  print('PROBE before=' .. tostring(before)
+   .. ' beat=' .. tostring(getter('beats')) .. ' after=' .. tostring(getter('sections')))
+ end
+
  -- 4. The section callback exists and reaches the script. Psych raises it from
  --    PlayState:onSectionHit; the engine raised no such signal at all.
  runScript('onSectionHit')
