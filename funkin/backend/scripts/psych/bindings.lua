@@ -56,6 +56,10 @@ end
 --
 -- These are the four externs Psych's layer talks to. Everything else it calls is
 -- either its own code or the engine surface bound separately.
+-- One module for every scope: the shim reads globals through the same object the
+-- engine does, so there is one stack and one registry, not one per environment.
+local Lua
+
 function PsychBindings.installLuaApi(scope, onMissing)
 	scope = scope or _G
 
@@ -66,7 +70,7 @@ function PsychBindings.installLuaApi(scope, onMissing)
 		registry.callbacks[name] = callback
 	end
 
-	local Lua = {__name__ = "Lua"}
+	Lua = {__name__ = "Lua"}
 	Lua.LUA_TNONE = -1
 	Lua.LUA_TNIL = 0
 	Lua.LUA_TBOOLEAN = 1
@@ -95,6 +99,17 @@ function PsychBindings.installLuaApi(scope, onMissing)
 		if value == nil then value = registry.globals[name] end
 		registry.stack[#registry.stack + 1] = {name = name, value = value}
 		return 0
+	end
+
+	-- The value `Lua.getglobal` just pushed, without the stack dance. A host
+	-- inspecting a script -- what scriptName was set to, what a callback wrote --
+	-- has no C stack to consult, and faking the sequence is how it first read 0
+	-- for every global.
+	Lua.readglobal = function(state, name)
+		local registry = registryFor(state)
+		local value = registry.callbacks[name]
+		if value == nil then value = registry.globals[name] end
+		return value
 	end
 
 	Lua.type = function(state, index)

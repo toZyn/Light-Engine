@@ -98,13 +98,15 @@ check('a Psych script runs through the compiled layer', function()
 
  -- 2. The globals the constructor publishes come from the engine, not from constants.
  --    Read through the shim's Lua registry, which is where a script's globals live;
- --    they are not in this file's environment.
+ --    they are not in this file's environment. Lua.getglobal is not usable here: it
+ --    pushes onto the script's stack and returns a status code, so reading with it
+ --    answered 0 for every name.
  local bindings = require('funkin.backend.scripts.psych.bindings')
  local shim = bindings.loadShim(compat)
  assert(shim and shim.scope and shim.scope.Lua, 'the shim exposes no Lua access')
  local Lua = shim.scope.Lua
  local function readGlobal(name)
-  return Lua.getglobal(psych.lua, name)
+  return Lua.readglobal(psych.lua, name)
  end
  assert(readGlobal('songName') ~= nil, 'songName was not published')
  assert(readGlobal('curBpm') ~= nil, 'curBpm was not published')
