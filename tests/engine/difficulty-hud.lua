@@ -420,6 +420,10 @@ function onEvent(name:String, a:String, b:String) {
    assert(game.camera.zoom == 1.5 and state.members[members + 1].x == 32)
    game.camera.zoom = zoom
    local vars = scripts.scripts[1].variables
+   print('PROBE created=' .. tostring(vars.created) .. ' lastEvent=' .. tostring(vars.lastEvent)
+    .. ' psych=' .. tostring(scripts.scripts[1].psychScript ~= nil)
+    .. ' err=' .. tostring(scripts.scripts[1].psychError)
+    .. ' nscripts=' .. tostring(#scripts.scripts))
    assert(vars.created and vars.lastEvent == 'Test:one:two')
    assert(vars.pushedTime == 300 and vars.countdownCounter == 0)
    assert(vars.addLuaScript('extra/helper'))
